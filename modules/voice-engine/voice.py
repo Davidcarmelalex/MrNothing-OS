@@ -1,153 +1,118 @@
 #!/usr/bin/env python3
 """
-MrNothing Voice Engine — Whisper STT + TTS
-Local speech recognition via OpenAI Whisper (open source).
-TTS via termux-tts-speak or pyttsx3.
+MrNothing OS — Voice Engine Module
+Text-to-speech and speech-to-text wrappers using Termux API.
+Falls back to espeak on systems without Termux.
 """
-import os, sys, subprocess, time, json
+import subprocess, shutil, os
 from pathlib import Path
+from datetime import datetime
 
-VERSION = "1.0.0"
 HOME = Path.home() / "mrnothing"
-AUDIO_DIR = HOME / "audio"
 LOG = HOME / "logs" / "voice.log"
+AUDIO_DIR = HOME / "audio"
 
-def log(msg):
-    ts = time.strftime("%H:%M:%S")
-    print(f"[{ts}] [VOICE] {msg}")
 
-def speak(text):
-    """Text-to-speech output."""
-    # Try termux-tts-speak first (native Android TTS)
+def log(msg: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] [VOICE] {msg}"
+    print(line)
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+
+def _has_termux() -> bool:
+    return shutil.which("termux-tts-speak") is not None
+
+
+def _has_espeak() -> bool:
+    return shutil.which("espeak") is not None
+
+
+def speak(text: str, engine: str = "auto") -> bool:
+    """Text-to-speech."""
+    if engine == "auto":
+        engine = "termux" if _has_termux() else "espeak" if _has_espeak() else "print"
+
     try:
-        result = subprocess.run(
-            ["termux-tts-speak", text],
-            capture_output=True, timeout=30
-        )
-        if result.returncode == 0:
+        if engine == "termux":
+            subprocess.run(["termux-tts-speak", text], timeout=30, check=True)
+            log(f"TTS (termux): {text[:50]}...")
             return True
-    except FileNotFoundError:
-        pass
-
-    # Fallback: pyttsx3
-    try:
-        import pyttsx3
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
-        return True
-    except ImportError:
-        pass
-
-    # Last resort: espeak
-    try:
-        subprocess.run(["espeak", text], capture_output=True, timeout=10)
-        return True
-    except FileNotFoundError:
-        log("No TTS available. Install termux-api or run: pip install pyttsx3")
+        elif engine == "espeak":
+            subprocess.run(["espeak", text], timeout=30, check=True)
+            log(f"TTS (espeak): {text[:50]}...")
+            return True
+        else:
+            print(f"[TTS] {text}")
+            return True
+    except Exception as e:
+        log(f"TTS error: {e}")
         return False
 
-def record_audio(duration=5, output_file=None):
-    """Record audio via termux-microphone-record."""
-    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    if not output_file:
-        output_file = AUDIO_DIR / f"recording_{int(time.time())}.wav"
+
+def listen(duration: int = 5) -> str:
+    """Speech-to-text. Requires Termux API."""
+    if not _has_termux():
+        log("STT requires Termux API. Install: pkg install termux-api")
+        return ""
+
     try:
-        log(f"Recording {duration}s of audio...")
-        subprocess.run(
-            ["termux-microphone-record", "-f", str(output_file), "-d", str(duration)],
-            timeout=duration + 5
+        result = subprocess.run(
+            ["termux-speech-to-text", "-l", "en", "-t", str(duration)],
+            capture_output=True, text=True, timeout=duration + 10
         )
-        return output_file if Path(output_file).exists() else None
-    except FileNotFoundError:
-        log("termux-microphone-record not found. Install termux-api package.")
-        return None
+        text = result.stdout.strip()
+        log(f"STT heard: {text[:50]}...")
+        return text
     except Exception as e:
-        log(f"Recording error: {e}")
-        return None
+        log(f"STT error: {e}")
+        return ""
 
-def transcribe(audio_file):
-    """Transcribe audio using OpenAI Whisper (local)."""
-    try:
-        import whisper
-        log("Loading Whisper model (tiny — fast on mobile)...")
-        model = whisper.load_model("tiny")
-        log(f"Transcribing {audio_file}...")
-        result = model.transcribe(str(audio_file))
-        return result["text"].strip()
-    except ImportError:
-        log("Whisper not installed. Run: pip install openai-whisper")
-        return None
-    except Exception as e:
-        log(f"Transcription error: {e}")
-        return None
 
-def listen_and_respond(callback=None):
-    """Full loop: record → transcribe → callback → speak response."""
-    audio = record_audio(duration=5)
-    if not audio:
-        speak("Microphone not available.")
-        return None
+def save_tts(text: str, filename: Optional[str] = None) -> Optional[Path]:
+    """Save TTS to audio file."""
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    if not filename:
+        filename = f"tts_{datetime.now().strftime('%H%M%S')}.wav"
+    path = AUDIO_DIR / filename
 
-    text = transcribe(audio)
-    if not text:
-        speak("Could not transcribe audio.")
-        return None
+    if _has_termux():
+        try:
+            subprocess.run(
+                ["termux-tts-speak", "-f", str(path), text],
+                timeout=30, check=True
+            )
+            log(f"Saved TTS: {path}")
+            return path
+        except Exception as e:
+            log(f"Save TTS error: {e}")
+    return None
 
-    log(f"Heard: {text}")
-
-    if callback:
-        response = callback(text)
-        if response:
-            speak(response)
-        return response
-
-    return text
 
 def main():
-    print(f"\n[VOICE ENGINE v{VERSION}] Whisper STT + Android TTS")
-    print("Commands: speak <text>, listen, test, status, exit\n")
+    print("\n[MrNothing Voice Engine]")
+    print(f"Termux TTS: {'available' if _has_termux() else 'not available'}")
+    print(f"eSpeak: {'available' if _has_espeak() else 'not available'}")
+    print("Commands: speak <text>, listen, exit\n")
 
     while True:
         try:
             cmd = input("voice> ").strip()
-            if not cmd: continue
-            parts = cmd.split(None, 1)
-
-            if parts[0] == "exit": break
-
-            elif parts[0] == "speak" and len(parts) > 1:
-                speak(parts[1])
-
-            elif parts[0] == "listen":
-                print("Listening for 5 seconds...")
-                text = listen_and_respond()
-                if text:
-                    print(f"Transcribed: {text}")
-
-            elif parts[0] == "test":
-                speak("MrNothing voice engine online. Systems nominal.")
-
-            elif parts[0] == "status":
-                # Check what's available
-                tts_ok = subprocess.run(["which", "termux-tts-speak"],
-                                        capture_output=True).returncode == 0
-                mic_ok = subprocess.run(["which", "termux-microphone-record"],
-                                        capture_output=True).returncode == 0
-                whisper_ok = False
-                try:
-                    import whisper
-                    whisper_ok = True
-                except: pass
-                print(f"  TTS (termux-tts-speak): {'✓' if tts_ok else '✗'}")
-                print(f"  Microphone:             {'✓' if mic_ok else '✗'}")
-                print(f"  Whisper STT:            {'✓' if whisper_ok else '✗'}")
-
+            if cmd == "exit":
+                break
+            elif cmd.startswith("speak "):
+                speak(cmd[6:])
+            elif cmd == "listen":
+                text = listen()
+                print(f"Heard: {text}")
             else:
-                print("Commands: speak <text>, listen, test, status, exit")
-
+                print("Commands: speak <text>, listen, exit")
         except (KeyboardInterrupt, EOFError):
             break
 
+
 if __name__ == "__main__":
+    from typing import Optional
     main()
