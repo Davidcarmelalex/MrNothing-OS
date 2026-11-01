@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from dataclasses import replace
 
@@ -81,6 +82,18 @@ class AdmissionTests(unittest.TestCase):
         small = DurableReplayLedger(os.path.join(self.temp.name, "small.sqlite"), max_entries=1)
         self.assertTrue(self.check(ledger=small).admitted)
         self.assertEqual(self.check(self.command(command_id="id-2"), ledger=small).reason, "REPLAY_OR_CAPACITY")
+
+    def test_concurrent_replay_only_one_wins(self):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda _: self.check(), range(8)))
+        self.assertEqual(sum(result.admitted for result in results), 1)
+
+    def test_separate_devices_have_separate_replay_namespaces(self):
+        self.assertTrue(self.check().admitted)
+        other_key = b"another-independent-device-key-32-bytes"
+        other = self.command()
+        other = replace(other, signature=sign(other, other_key))
+        self.assertTrue(self.check(other, device_id="pixel-two", device_key=other_key).admitted)
 
     def test_database_unavailable_fails_closed(self):
         self.ledger.path = os.path.join(self.temp.name, "missing", "db.sqlite")
