@@ -18,7 +18,7 @@
 ## Highest-priority engineering backlog
 1. **SEC-001**: make signed command admission fail closed with durable replay state, explicit device-key boundary, strict payload validation and restart tests. *No network exposure.*
 2. **CI-002**: pin Android build tooling and add reproducibility/manifest security checks; retain debug artifact labels. **IMPLEMENTED AND CI-PASSING** at `ecfbf9f` (two successful runs), but independent signoff and release-grade provenance remain pending. Do not duplicate this task.
-3. **UX-003**: TalkBack/large-font accessible launcher with emergency stock-launcher recovery.
+3. **UX-003**: accessible launcher and owner-controlled stock-launcher recovery. **SOURCE IMPLEMENTED** at `6cb27de` with contrast, 56dp touch-target and recovery source gates; TalkBack/large-font emulator tests and independent review remain open. Do not mark M2 complete.
 4. **AGENT-004**: authenticated device enrollment and revocation design, Keystore-bound keys, idempotent task executor with cancellation.
 5. **QA-005**: Android emulator E2E launch/role tests and screenshot/accessibility evidence.
 6. **HW-006**: Pixel hardware matrix, SIM audio feasibility and firmware rollback validation after hardware is available.
