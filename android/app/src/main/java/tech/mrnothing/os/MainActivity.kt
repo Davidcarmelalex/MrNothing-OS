@@ -113,11 +113,11 @@ class MainActivity : Activity() {
 
         root.addView(label("Device status", 22f, accentColor, heading = true))
         val info = DeviceDiagnostics.snapshot(this)
-        val battery = info.batteryPercent?.let { "$"+"{it}%" } ?: "Unavailable"
+        val battery = info.batteryPercent?.let { "${it}%" } ?: "Unavailable"
         root.addView(label(
-            "$"+"{info.manufacturer} $"+"{info.model} · Android $"+"{info.androidRelease}\n" +
-                "Battery: $"+"{battery}\n" +
-                "Default Home: $"+"{if (selected) "Mr. Nothing" else "Another launcher"}\n" +
+            "${info.manufacturer} ${info.model} · Android ${info.androidRelease}\n" +
+                "Battery: ${battery}\n" +
+                "Default Home: ${if (selected) "Mr. Nothing" else "Another launcher"}\n" +
                 "Agent: Offline · Cellular AI audio: Unverified",
             16f,
             secondaryTextColor
@@ -150,7 +150,7 @@ class MainActivity : Activity() {
         } else {
             apps.forEach { app ->
                 addAction(root, app.label,
-                    "Open $"+"{app.label}, package $"+"{app.packageName}") {
+                    "Open ${app.label}, package ${app.packageName}") {
                     AppCatalog.launch(this, app.packageName)
                 }
             }
