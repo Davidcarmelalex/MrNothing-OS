@@ -4,49 +4,73 @@ import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
+import android.graphics.Color
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
-import android.graphics.Color
 
-/** Minimal functional HOME-role shell. Not a ROM or autonomous agent yet. */
+/** First runnable HOME experience; deliberately no privileged background control. */
 class MainActivity : Activity() {
+    private val purple = Color.rgb(174, 139, 255)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        render()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        render()
+    }
+
+    private fun render() {
+        val scroll = ScrollView(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(40, 80, 40, 40)
-            setBackgroundColor(Color.rgb(10, 10, 18))
+            setPadding(40, 70, 40, 60)
+            setBackgroundColor(Color.rgb(11, 11, 20))
         }
-        val title = TextView(this).apply {
-            text = "MR. NOTHING OS"
-            textSize = 30f
-            setTextColor(Color.WHITE)
+        fun text(value: String, size: Float, color: Int = Color.WHITE): TextView =
+            TextView(this).apply {
+                this.text = value
+                textSize = size
+                setTextColor(color)
+                setPadding(0, 10, 0, 14)
+            }
+        fun action(label: String, run: () -> Unit) {
+            root.addView(Button(this).apply {
+                text = label
+                setOnClickListener { run() }
+            })
         }
-        val status = TextView(this).apply {
-            text = "Phase 1 developer preview • Android HOME shell\nAgent: not connected\nTelephony: not connected"
-            textSize = 16f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 32, 0, 32)
-        }
-        val home = Button(this).apply {
-            text = "Set as default Home"
-            setOnClickListener {
-                val roles = getSystemService(RoleManager::class.java)
-                if (roles.isRoleAvailable(RoleManager.ROLE_HOME) &&
-                    !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
-                    startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_HOME), 100)
-                }
+
+        root.addView(text("MR. NOTHING", 34f, purple))
+        root.addView(text("AGENTIC OPERATING SYSTEM  /  DEVELOPER PREVIEW", 12f, Color.LTGRAY))
+        root.addView(text("Your phone. Your intelligence.", 20f))
+        val info = DeviceDiagnostics.snapshot(this)
+        root.addView(text("DEVICE STATUS", 16f, purple))
+        root.addView(text(
+            "${info.manufacturer} ${info.model} · Android ${info.androidRelease}\n" +
+            "Battery: ${info.batteryPercent?.toString() ?: "Unavailable"}%\n" +
+            "Home role: ${if (info.homeRoleHeld) "Active" else "Not selected"}\n" +
+            "Agent: Offline · SIM audio: Unverified",
+            15f, Color.LTGRAY
+        ))
+        action("Make Mr. Nothing my Home") {
+            val manager = getSystemService(RoleManager::class.java)
+            if (manager.isRoleAvailable(RoleManager.ROLE_HOME) &&
+                !manager.isRoleHeld(RoleManager.ROLE_HOME)) {
+                startActivityForResult(manager.createRequestRoleIntent(RoleManager.ROLE_HOME), 100)
             }
         }
-        val apps = Button(this).apply {
-            text = "Open Android Settings"
-            setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+        action("Android Settings") { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        root.addView(text("YOUR APPS", 16f, purple))
+        AppCatalog.installed(this).filterNot { it.packageName == packageName }.forEach { app ->
+            action(app.label) { AppCatalog.launch(this, app.packageName) }
         }
-        root.addView(title)
-        root.addView(status)
-        root.addView(home)
-        root.addView(apps)
-        setContentView(root)
+        scroll.addView(root)
+        setContentView(scroll)
     }
 }
