@@ -5,7 +5,6 @@ The caller must authenticate the transport and select a unique key for the
 authenticated device. No command is executed by this module.
 """
 from dataclasses import dataclass
-import hashlib
 import hmac
 import json
 import sqlite3
