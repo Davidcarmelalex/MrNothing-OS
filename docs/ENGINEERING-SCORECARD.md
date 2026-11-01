@@ -1,28 +1,17 @@
-# Engineering scorecard — Phase 1
+# Engineering scorecard — evidence-based
 
-**Overall estimated maturity: 12% of final target (subjective engineering estimate, not test coverage).**
+**Audit date:** 2026-11-02. **Source of truth:** [engineering roadmap](ENGINEERING-FACTORY-ROADMAP.md) and current GitHub Actions results.
 
-| Area | Estimate | Evidence |
-| --- | ---: | --- |
-| Architecture and product definition | 55% | Phase 1 plan and hardware handoff |
-| Android launcher and app shell | 25% | Kotlin HOME role, app catalog and device dashboard |
-| Authorization and policy | 25% | Python/Kotlin policies; Python CI tests passed |
-| Remote authenticated command transport | 0% | No pairing, credential storage or live transport |
-| Agent reasoning and tool execution | 5% | Limited local command router; no autonomous planner |
-| Multilingual voice interface | 0% | Not implemented |
-| Native SIM telephony and bidirectional audio | 0% | Not implemented; requires physical-device research |
-| Custom Pixel 9 Pro firmware / root | 0% | Not implemented |
-| One-click provisioning and rollback | 0% | Not implemented |
-| End-to-end QA, reliability and release | 5% | CI authored, Android build not yet verified |
+| Area | Verified evidence | Remaining gate |
+| --- | --- | --- |
+| Android launcher | Kotlin HOME activity, app catalog, device diagnostics; Android CI build green at baseline commit `f159e14` | Emulator/device install, TalkBack and lifecycle tests |
+| Security policy | Python policy tests; HMAC/freshness/replay prototypes | Device-bound enrollment, key revocation, audit and independent review |
+| Command admission | Durable SQLite replay ledger, strict validation and negative tests | Network authentication, device key storage and production integration |
+| HERMES orchestration | Constrained adapter and local validation tests | Actual agent planner, executor, cancellation and task verification |
+| Voice and SIM telephony | Design only | Real Pixel hardware and legal/consent validation |
+| Pixel AOSP firmware | Design only | Build, compatible drivers, secure boot, OTA and rollback |
+| Release | CI debug APK artifact available at baseline | Signed reproducible release, SBOM and recovery drill |
 
-Estimates are approximate and not an arithmetic mean. Do not represent scaffolded code as production-ready. Android CI must pass before claiming an APK exists. Pixel hardware is necessary for modem and firmware validation.
+**Gate status:** M1 IN PROGRESS; M2 IN PROGRESS; M3 NOT STARTED; M4 NOT STARTED; M5 NOT STARTED; M6 IN PROGRESS; M7 BLOCKED ON HARDWARE; M8 BLOCKED. **No milestone complete or independently approved.**
 
-## Definition of done
-- Signed installable launcher with accessible UI and safe recovery.
-- Authenticated owner pairing, encrypted transport and replay prevention.
-- Permissioned agent task planning, human confirmation and auditable results.
-- Voice commands, verified supported app workflows, and reliable error recovery.
-- SIM call answering/placing and independently proven bidirectional speech path.
-- Pixel-specific firmware verified with telephony, verified boot, OTA and rollback.
-- Device provisioning with backups and explicit unlock/flash confirmations.
-- Threat model, privacy review, tests and repeatable release artifacts.
+Previous overall completion percentages were subjective planning estimates, not objective evidence. Do not use them as a release metric. Verify latest CI before reporting green status for a new commit.
