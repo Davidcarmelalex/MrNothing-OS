@@ -3,17 +3,24 @@ on:
   push:
     branches: [main, feat/phase1-agentic-phone]
   pull_request:
+permissions:
+  contents: read
 jobs:
   python-policy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: bash scripts/phase1-preflight.sh
+      - name: Python security tests and static compilation
+        run: bash scripts/phase1-preflight.sh
+      - name: Android source-manifest security gate
+        run: python3 scripts/android_manifest_gate.py android/app/src/main/AndroidManifest.xml
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: android
@@ -32,13 +39,28 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-      - name: Build and test without Gradle wrapper
+      - name: Download and checksum-verify Gradle 8.9
         run: |
-          curl -fsSLo /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q /tmp/gradle.zip -d /tmp
-          /tmp/gradle-8.9/bin/gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+      - name: Build, unit test and compare repeat debug APK
+        run: |
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/first-build.apk"
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon clean :app:assembleDebug
+          cmp "$RUNNER_TEMP/first-build.apk" app/build/outputs/apk/debug/app-debug.apk
+          echo "Repeat debug APK is byte-identical within this runner"
+      - name: Generate unsigned debug artifact metadata
+        run: |
+          python3 ../scripts/android_build_provenance.py --apk app/build/outputs/apk/debug/app-debug.apk --commit "$(git rev-parse HEAD)" --output app/build/outputs/apk/debug/provenance.json
+          sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: mrnothing-phase1-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: mrnothing-phase1-debug-not-for-release
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/provenance.json
+            android/app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
+          retention-days: 7
