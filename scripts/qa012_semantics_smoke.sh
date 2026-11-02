@@ -6,7 +6,7 @@ case "$ANDROID_SERIAL" in emulator-*) ;; *) echo 'Refusing non-emulator target' 
 adb -s "$ANDROID_SERIAL" get-state | grep -qx device
 adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d '\r' | grep -qx 1
 mkdir -p "$QA012_OUTPUT"
-adb -s "$ANDROID_SERIAL" shell am start -W -n tech.mrnothing.os/.MainActivity > "$QA012_OUTPUT/start.txt"
+adb -s "$ANDROID_SERIAL" shell am start -W -S -n tech.mrnothing.os/.MainActivity > "$QA012_OUTPUT/start.txt"
 grep -q 'Status: ok' "$QA012_OUTPUT/start.txt"
 sleep 2
 adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa012-hierarchy.xml >/dev/null

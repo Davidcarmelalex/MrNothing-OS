@@ -99,4 +99,5 @@ class Qa012Tests(unittest.TestCase):
         self.assertNotIn("settings put", SHELL)
         self.assertNotIn("cmd role add-role-holder", SHELL)
         self.assertNotIn("pm install", SHELL)
+        self.assertIn("am start -W -S -n tech.mrnothing.os/.MainActivity", SHELL)
         self.assertIn("qa012_semantics_smoke.sh", WORKFLOW)
