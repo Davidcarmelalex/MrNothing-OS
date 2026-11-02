@@ -44,7 +44,8 @@ internal object OwnerKeystorePreflight {
         else OwnerKeyReadiness.BLOCKED
 
     /** Positive readiness is NOT proof of owner authentication or consent. */
-    fun inspectExisting(): OwnerKeyReadiness = try {
+    fun inspectExisting(): OwnerKeyReadiness {
+        return try {
         val store = KeyStore.getInstance("AndroidKeyStore")
         store.load(null)
         val entry = store.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
@@ -69,7 +70,8 @@ internal object OwnerKeystorePreflight {
         OwnerKeyReadiness.BLOCKED
     } catch (_: IOException) {
         OwnerKeyReadiness.BLOCKED
-    } catch (_: RuntimeException) {
-        OwnerKeyReadiness.BLOCKED
+        } catch (_: RuntimeException) {
+            OwnerKeyReadiness.BLOCKED
+        }
     }
 }
