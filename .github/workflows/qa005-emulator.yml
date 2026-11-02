@@ -16,6 +16,8 @@ on:
       - 'tests/test_qa008_role_accept.py'
       - 'scripts/qa009_*'
       - 'tests/test_qa009_stock_recovery.py'
+      - 'scripts/qa010_*'
+      - 'tests/test_qa010_accessibility.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -116,6 +118,10 @@ jobs:
           QA008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa008
           QA009_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa009
         run: bash scripts/qa009_stock_recovery_smoke.sh
+      - name: "QA-010: keyboard focus and accessible recovery"
+        env:
+          QA010_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa010
+        run: bash scripts/qa010_keyboard_navigation_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
