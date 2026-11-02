@@ -27,8 +27,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn('AVD creation failed', self.workflow)
 
     def test_avd_home_is_shared_by_creation_and_emulator(self):
-        self.assertIn('ANDROID_AVD_HOME: ${{ runner.temp }}/mrnothing-avds', self.workflow)
-        self.assertIn('ANDROID_USER_HOME: ${{ runner.temp }}/mrnothing-android-user', self.workflow)
+        self.assertIn('export ANDROID_AVD_HOME="$RUNNER_TEMP/mrnothing-avds"', self.workflow)
+        self.assertIn('export ANDROID_USER_HOME="$RUNNER_TEMP/mrnothing-android-user"', self.workflow)
         self.assertIn('mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"', self.workflow)
         self.assertIn('-p "$ANDROID_AVD_HOME/mrnothing_qa005.avd"', self.workflow)
 
