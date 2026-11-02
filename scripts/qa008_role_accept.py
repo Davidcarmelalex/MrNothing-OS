@@ -12,6 +12,45 @@ else:
 
 APPROVE = frozenset({"allow", "set as default", "set as default app", "set default", "ok"})
 
+def select_coordinates(path: Path) -> tuple[int, int]:
+    """Select only the Mr. Nothing option in the real system HOME chooser.
+
+    The Android 15 permission-controller chooser disables its approval button
+    until a radio option is selected. Never select by screen coordinates alone.
+    """
+    verify_consent_prompt(path)
+    candidates = []
+    for row in ET.parse(path).getroot().iter("node"):
+        if row.attrib.get("class") != "android.widget.LinearLayout":
+            continue
+        children = list(row.iter("node"))
+        labels = [
+            node for node in children
+            if node.attrib.get("class") == "android.widget.TextView"
+            and node.attrib.get("text") == "Mr. Nothing OS"
+            and "permissioncontroller" in node.attrib.get("package", "").lower()
+        ]
+        radios = [
+            node for node in children
+            if node.attrib.get("class") == "android.widget.RadioButton"
+            and "permissioncontroller" in node.attrib.get("package", "").lower()
+        ]
+        if len(labels) != 1 or len(radios) != 1:
+            continue
+        radio = radios[0].attrib
+        if radio.get("checkable") != "true" or radio.get("enabled") != "true":
+            continue
+        if radio.get("checked") != "false":
+            continue
+        match = BOUNDS.fullmatch(labels[0].attrib.get("bounds", ""))
+        if match:
+            x1, y1, x2, y2 = map(int, match.groups())
+            if x2 > x1 and y2 > y1:
+                candidates.append(((x1 + x2) // 2, (y1 + y2) // 2))
+    if len(candidates) != 1:
+        raise ValueError("Expected exactly one unselected system HOME option for Mr. Nothing")
+    return candidates[0]
+
 def approve_coordinates(path: Path) -> tuple[int, int]:
     verify_consent_prompt(path)
     candidates = []
@@ -48,7 +87,9 @@ def verify_settings(path: Path) -> None:
         raise ValueError("Android stock HOME settings not visible")
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "approve":
+    if len(sys.argv) == 3 and sys.argv[1] == "select":
+        print(*select_coordinates(Path(sys.argv[2])))
+    elif len(sys.argv) == 3 and sys.argv[1] == "approve":
         print(*approve_coordinates(Path(sys.argv[2])))
     elif len(sys.argv) == 4 and sys.argv[1] == "granted":
         verify_granted(Path(sys.argv[2]).read_text(), Path(sys.argv[3]).read_text())
@@ -60,4 +101,4 @@ if __name__ == "__main__":
         print(*tap_coordinates(Path(sys.argv[2]),
             "Recovery: open Android Home app settings to select the stock launcher"))
     else:
-        raise SystemExit("usage: qa008_role_accept.py approve|granted|home|settings|recovery")
+        raise SystemExit("usage: qa008_role_accept.py select|approve|granted|home|settings|recovery")

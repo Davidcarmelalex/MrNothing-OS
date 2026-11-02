@@ -20,7 +20,14 @@ adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
 sleep 3
 adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa008-prompt.xml >/dev/null
 adb -s "$ANDROID_SERIAL" pull /sdcard/qa008-prompt.xml "$QA008_OUTPUT/prompt.xml" >/dev/null
-read -r x y < <(python3 scripts/qa008_role_accept.py approve "$QA008_OUTPUT/prompt.xml")
+# The Android 15 system chooser initially disables Set as default until
+# the owner explicitly selects the Mr. Nothing radio option.
+read -r x y < <(python3 scripts/qa008_role_accept.py select "$QA008_OUTPUT/prompt.xml")
+adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
+sleep 2
+adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa008-selected.xml >/dev/null
+adb -s "$ANDROID_SERIAL" pull /sdcard/qa008-selected.xml "$QA008_OUTPUT/selected.xml" >/dev/null
+read -r x y < <(python3 scripts/qa008_role_accept.py approve "$QA008_OUTPUT/selected.xml")
 adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
 sleep 3
 adb -s "$ANDROID_SERIAL" shell cmd role get-role-holders android.app.role.HOME > "$QA008_OUTPUT/role-after.txt"

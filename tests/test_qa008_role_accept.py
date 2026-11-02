@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 import unittest
 import subprocess
 import sys
-from scripts.qa008_role_accept import approve_coordinates, verify_granted, verify_home, verify_settings
+from scripts.qa008_role_accept import approve_coordinates, select_coordinates, verify_granted, verify_home, verify_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "scripts/qa008_role_accept_smoke.sh").read_text()
@@ -38,6 +38,38 @@ class Qa008Tests(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True, check=True,
         )
         self.assertEqual(result.stdout.strip(), "60 50")
+
+    def selection_prompt(self, label="Mr. Nothing OS", radio_checked="false"):
+        return self.prompt(
+            '<node package="com.google.android.permissioncontroller" class="android.widget.LinearLayout">'
+            '<node package="com.google.android.permissioncontroller" class="android.widget.TextView" text="' + label + '" bounds="[200,840][540,920]"/>'
+            '<node package="com.google.android.permissioncontroller" class="android.widget.RadioButton" checkable="true" checked="' + radio_checked + '" enabled="true" bounds="[860,840][945,920]"/>'
+            '</node>'
+            '<node package="com.google.android.permissioncontroller" class="android.widget.LinearLayout">'
+            '<node package="com.google.android.permissioncontroller" class="android.widget.TextView" text="Pixel Launcher" bounds="[200,1010][540,1090]"/>'
+            '<node package="com.google.android.permissioncontroller" class="android.widget.RadioButton" checkable="true" checked="false" enabled="true" bounds="[860,1010][945,1090]"/>'
+            '</node>'
+            '<node package="com.google.android.permissioncontroller" text="Set as default" clickable="true" enabled="false" bounds="[690,1273][978,1415]"/>'
+        )
+
+    def test_select_exact_system_home_option(self):
+        self.assertEqual(select_coordinates(self.selection_prompt()), (370, 880))
+
+    def test_select_rejects_already_selected_option(self):
+        with self.assertRaises(ValueError):
+            select_coordinates(self.selection_prompt(radio_checked="true"))
+
+    def test_select_rejects_wrong_app(self):
+        with self.assertRaises(ValueError):
+            select_coordinates(self.selection_prompt(label="Other Launcher"))
+
+    def test_approve_rejects_disabled_control(self):
+        with self.assertRaises(ValueError):
+            approve_coordinates(self.selection_prompt())
+
+    def test_script_selects_before_approving(self):
+        self.assertLess(SCRIPT.index("qa008_role_accept.py select"), SCRIPT.index("qa008_role_accept.py approve"))
+        self.assertIn("qa008-selected.xml", SCRIPT)
 
     def test_approve_system_control(self):
         p = self.prompt('<node package="com.google.android.permissioncontroller" text="Set as default" clickable="true" enabled="true" bounds="[10,20][110,80]"/>')
