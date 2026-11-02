@@ -74,3 +74,12 @@ touches, and pure Kotlin/Python regression tests. See
 [SEC-014E](SEC-014E-PREVIEW-OVERLAY-HARDENING.md). Android CI and independent
 review must be checked separately. No permission or executor is enabled; no
 M1–M8 gate is complete. Upstream shared `SKILL.md` remains unverified.
+
+## SEC-014G — read-only AndroidKeyStore readiness (2026-11-03)
+
+A fail-closed, non-integrated AndroidKeyStore alias inspection and pure
+Kotlin policy were added for hardware-backed, per-use-authenticated P-256
+owner keys. No key is created, no consent is issued, and no device executor
+is enabled. See SEC-014G-ANDROID-KEYSTORE-READINESS.md.
+CI, Android runtime, physical hardware and independent signoff are separate
+gates; M1–M8 remain incomplete. Upstream shared SKILL.md is unverified.
