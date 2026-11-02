@@ -20,6 +20,16 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn('timeout 180s adb -s "$ANDROID_SERIAL" wait-for-device', self.workflow)
         self.assertIn("Emulator boot timed out", self.workflow)
 
+    def test_avd_profile_is_explicit_and_creation_is_verified(self):
+        self.assertIn('-d pixel', self.workflow)
+        self.assertIn('emulator -list-avds', self.workflow)
+        self.assertIn('grep -Fxq mrnothing_qa005', self.workflow)
+        self.assertIn('AVD creation failed', self.workflow)
+
+    def test_emulator_never_starts_before_avd_gate(self):
+        self.assertLess(self.workflow.index('grep -Fxq mrnothing_qa005'),
+                        self.workflow.index('nohup emulator -avd mrnothing_qa005'))
+
     def test_emulator_diagnostics_always_uploaded(self):
         self.assertIn("Capture emulator diagnostics", self.workflow)
         self.assertIn("if: always()", self.workflow)
