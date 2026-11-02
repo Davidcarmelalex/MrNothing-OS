@@ -14,6 +14,8 @@ on:
       - 'tests/test_qa007_role_consent.py'
       - 'scripts/qa008_*'
       - 'tests/test_qa008_role_accept.py'
+      - 'scripts/qa009_*'
+      - 'tests/test_qa009_stock_recovery.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -109,6 +111,11 @@ jobs:
         env:
           QA008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa008
         run: bash scripts/qa008_role_accept_smoke.sh
+      - name: "QA-009: restore stock launcher through system UI"
+        env:
+          QA008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa008
+          QA009_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa009
+        run: bash scripts/qa009_stock_recovery_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
