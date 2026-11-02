@@ -12,6 +12,8 @@ on:
       - 'tests/test_qa006_large_text.py'
       - 'scripts/qa007_*'
       - 'tests/test_qa007_role_consent.py'
+      - 'scripts/qa008_*'
+      - 'tests/test_qa008_role_accept.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -103,6 +105,10 @@ jobs:
         env:
           QA007_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa007
         run: bash scripts/qa007_role_consent_smoke.sh
+      - name: "QA-008: explicit HOME consent and recovery route"
+        env:
+          QA008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa008
+        run: bash scripts/qa008_role_accept_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
