@@ -18,6 +18,8 @@ on:
       - 'tests/test_qa009_stock_recovery.py'
       - 'scripts/qa010_*'
       - 'tests/test_qa010_accessibility.py'
+      - 'scripts/qa011_*'
+      - 'tests/test_qa011_talkback_preflight.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -122,6 +124,10 @@ jobs:
         env:
           QA010_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa010
         run: bash scripts/qa010_keyboard_navigation_smoke.sh
+      - name: "QA-011: read-only TalkBack availability (NOT acceptance)"
+        env:
+          QA011_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa011
+        run: bash scripts/qa011_talkback_preflight.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
