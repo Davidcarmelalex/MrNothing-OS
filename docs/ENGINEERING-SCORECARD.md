@@ -66,3 +66,11 @@ tests reject unsafe states; no consent issuance or device execution is enabled.
 See [SEC-014D](SEC-014D-DEVICE-LOCK-PREFLIGHT.md). GitHub CI and independent
 security review remain separate acceptance gates. SEC-014 and all milestones
 remain open. Upstream SKILL.md remains unverified.
+
+## SEC-014E — credential preview overlay hardening (2026-11-02)
+
+Added `FLAG_SECURE`, obscured-touch filtering, preview revocation on suspicious
+touches, and pure Kotlin/Python regression tests. See
+[SEC-014E](SEC-014E-PREVIEW-OVERLAY-HARDENING.md). Android CI and independent
+review must be checked separately. No permission or executor is enabled; no
+M1–M8 gate is complete. Upstream shared `SKILL.md` remains unverified.

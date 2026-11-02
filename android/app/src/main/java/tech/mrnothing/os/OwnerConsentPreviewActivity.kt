@@ -8,6 +8,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.WindowManager
 import android.util.TypedValue
 import android.widget.Button
 import android.widget.LinearLayout
@@ -28,6 +29,15 @@ class OwnerConsentPreviewActivity : Activity() {
             text = title
             contentDescription = hint
             isAllCaps = false
+            filterTouchesWhenObscured = true
+            setOnTouchListener { _, event ->
+                if (!OwnerConsentTouchGate.isUnobscured(event.flags)) {
+                    state.revoke()
+                    action = null
+                    status.text = "Obscured touch refused. Preview cleared; no device access granted."
+                    true
+                } else false
+            }
             minHeight = dp(56)
             setTextColor(Color.WHITE)
             backgroundTintList = ColorStateList.valueOf(Color.rgb(46, 43, 83))
@@ -38,6 +48,8 @@ class OwnerConsentPreviewActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // This is a sensitive credential-adjacent screen, even though it cannot grant consent.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(24))
