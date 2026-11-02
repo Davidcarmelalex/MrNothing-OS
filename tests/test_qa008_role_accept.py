@@ -90,6 +90,32 @@ class Qa008Tests(unittest.TestCase):
     def test_exclusive_grant(self):
         verify_granted("com.google.android.apps.nexuslauncher\n", "tech.mrnothing.os\n")
 
+    def test_exclusive_grant_from_unassigned_home_role(self):
+        # GitHub Actions 41407548448: role-before was exactly b"\n";
+        # role-after was b"tech.mrnothing.os\n". Android consent succeeded.
+        verify_granted("\n", "tech.mrnothing.os\n")
+        verify_granted("", "tech.mrnothing.os\n")
+
+    def test_reject_preexisting_our_home_role(self):
+        with self.assertRaises(ValueError):
+            verify_granted("tech.mrnothing.os\n", "tech.mrnothing.os\n")
+
+    def test_reject_nonexclusive_after_grant(self):
+        with self.assertRaises(ValueError):
+            verify_granted("\n", "tech.mrnothing.os\ncom.google.android.apps.nexuslauncher\n")
+
+    def test_cli_grant_accepts_empty_before_role_snapshot(self):
+        with TemporaryDirectory() as tmp:
+            before = Path(tmp) / "before.txt"
+            after = Path(tmp) / "after.txt"
+            before.write_text("\n")
+            after.write_text("tech.mrnothing.os\n")
+            subprocess.run(
+                [sys.executable, str(ROOT / "scripts/qa008_role_accept.py"),
+                 "granted", str(before), str(after)],
+                cwd=ROOT, capture_output=True, text=True, check=True,
+            )
+
     def test_reject_missing_grant(self):
         with self.assertRaises(ValueError):
             verify_granted("com.google.android.apps.nexuslauncher\n", "com.google.android.apps.nexuslauncher\n")

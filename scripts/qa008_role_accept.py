@@ -73,7 +73,11 @@ def approve_coordinates(path: Path) -> tuple[int, int]:
 def verify_granted(before: str, after: str) -> None:
     lines = lambda s: sorted(set(x.strip() for x in s.splitlines() if x.strip()))
     old, new = lines(before), lines(after)
-    if not old or PACKAGE in old or new != [PACKAGE]:
+    # Android's role service may legitimately report no HOME role holders
+    # before the user chooses a default launcher (a single blank line).
+    # The acceptance gate concerns the *after* snapshot: exactly our package
+    # must hold HOME, with no additional holders, and it must be a transition.
+    if PACKAGE in old or new != [PACKAGE]:
         raise ValueError("Exclusive HOME role was not granted by consent")
 
 def verify_home(path: Path) -> None:
