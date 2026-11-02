@@ -57,3 +57,12 @@ Python suite and source security gates are to be recorded in the corresponding
 engineering report. Keystore binding, permission checks, revocation of real
 sessions, real-device tests and independent security review remain OPEN.
 No milestone is independently approved. Upstream shared SKILL.md is unverified.
+
+## SEC-014D — device-lock preflight for credential preview (2026-11-02)
+
+The owner-facing **preview only** now checks actual Android lock/user/interactive
+state before the credential prompt and after its result. Pure Kotlin and source
+tests reject unsafe states; no consent issuance or device execution is enabled.
+See [SEC-014D](SEC-014D-DEVICE-LOCK-PREFLIGHT.md). GitHub CI and independent
+security review remain separate acceptance gates. SEC-014 and all milestones
+remain open. Upstream SKILL.md remains unverified.

@@ -82,6 +82,13 @@ class OwnerConsentPreviewActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun begin(scope: String) {
+        // Real local Android state, not an approval flag from an agent request.
+        if (!OwnerCredentialSafetyGate.isSafe(this)) {
+            state.revoke()
+            action = null
+            status.text = "Device must be unlocked, active and secured. Preview refused."
+            return
+        }
         val keyguard = getSystemService(KeyguardManager::class.java)
         if (keyguard == null || !keyguard.isDeviceSecure) {
             status.text = "Secure device lock is not configured. Preview refused."
@@ -119,7 +126,11 @@ class OwnerConsentPreviewActivity : Activity() {
         if (requestCode != credentialRequest) return
         val scope = action
         action = null
-        val verified = state.finish(resultCode == RESULT_OK)
+        // Re-check after returning from the system credential UI: lock state
+        // may have changed while the prompt was visible.
+        val verified = state.finish(
+            resultCode == RESULT_OK && OwnerCredentialSafetyGate.isSafe(this)
+        )
         status.text = if (verified && scope != null) {
             "Device credential verified for $scope preview only. No consent capability " +
                 "or Android permission issued. Screen and UI actions remain disabled."
