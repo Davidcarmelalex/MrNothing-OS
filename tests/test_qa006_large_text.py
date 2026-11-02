@@ -55,7 +55,7 @@ class Qa006LargeTextTests(unittest.TestCase):
         self.assertIn("settings delete system font_scale", SCRIPT)
 
     def test_runtime_job_includes_large_font_step_and_artifacts(self):
-        self.assertIn("QA-006: 200% font and recovery smoke", WORKFLOW)
+        self.assertIn('name: "QA-006: 200% font and recovery smoke"', WORKFLOW)
         self.assertIn("scripts/qa006_large_text_smoke.sh", WORKFLOW)
         self.assertIn("qa005-emulator-evidence-not-for-release", WORKFLOW)
         self.assertIn("QA006_OUTPUT:", WORKFLOW)
