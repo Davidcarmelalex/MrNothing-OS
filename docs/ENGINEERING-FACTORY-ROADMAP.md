@@ -28,3 +28,7 @@ For every PR: compare actual diff against task scope; verify tests independently
 
 ## Release blocks
 No root/firmware flash or production deployment from CI. No public command endpoint until identity enrollment, encryption, durable replay, revocation, rate limits, threat review and audit logging are tested. No physical-device or SIM audio claims without hardware logs.
+
+## AGENT-013 offline plan simulator (2026-11-02)
+
+Implemented a bounded M3 prototype at `core/agent_sandbox.py` with a strict 20-step limit, full preflight, explicit no-side-effect results, cancellation/deadline checks and 34 regression tests. See [AGENT-013 evidence](AGENT-013-OFFLINE-PLAN-SIMULATOR.md). Local tests passed; GitHub CI and independent review are separate gates. This does not replace AGENT-004 authenticated enrollment, nor imply a production agent. The upstream shared `SKILL.md` remains unverified.

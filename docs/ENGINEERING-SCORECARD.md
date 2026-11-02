@@ -26,3 +26,11 @@ GitHub Actions [QA-011 run 41437333057](https://github.com/Davidcarmelalex/MrNot
 QA-012 adds a bounded read-only emulator UI hierarchy audit for section order, labelled consent/recovery/settings actions and minimum system-action touch targets. Its 14 synthetic regression tests and the full 150-test Python suite passed on the VPS. The QA-012 parser also passed against the retained QA-011 emulator hierarchy with representative density 2.75, but that is replayed evidence, not a new emulator run. New QA-012 emulator CI must pass before claiming its runtime acceptance. It does not enable TalkBack and explicitly records spoken_navigation_verified=false and acceptance_passed=false.
 
 M1/M2/M6 remain IN PROGRESS; M3/M4/M5 have unmet gates; M7 is BLOCKED on physical Pixel 9 Pro; M8 is BLOCKED. All independent supervisor approvals remain PENDING. Upstream SKILL.md remains unverified; PROJECT-ADAPTER.md is local only.
+
+## Verified update — 2026-11-02, AGENT-013 offline plan simulator
+
+QA-012 Android 15 emulator [run 41446504887](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/41446504887) completed successfully at `2caa1b6`, including the read-only semantics step. It does **not** prove spoken TalkBack navigation; TalkBack remains disabled in the recorded QA-011 preflight.
+
+AGENT-013 adds a pure Python, no-device, no-network deterministic plan simulator for M3. On VPS: 34 targeted sandbox tests and 184 total Python tests passed; Python compileall, Android manifest security gate, launcher source accessibility gate and Git whitespace checks passed. No emulator or physical-device test was run for AGENT-013 locally. New GitHub CI for AGENT-013 must be inspected after push.
+
+This is only a partial M3 engineering slice: no real tool execution, no device enrollment, no verified remote authentication, no owner consent flow and no independent supervisor approval. **All M1–M8 completion gates remain unmet.**
