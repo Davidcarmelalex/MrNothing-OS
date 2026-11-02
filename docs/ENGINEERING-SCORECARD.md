@@ -34,3 +34,14 @@ QA-012 Android 15 emulator [run 41446504887](https://github.com/Davidcarmelalex/
 AGENT-013 adds a pure Python, no-device, no-network deterministic plan simulator for M3. On VPS: 34 targeted sandbox tests and 184 total Python tests passed; Python compileall, Android manifest security gate, launcher source accessibility gate and Git whitespace checks passed. No emulator or physical-device test was run for AGENT-013 locally. New GitHub CI for AGENT-013 must be inspected after push.
 
 This is only a partial M3 engineering slice: no real tool execution, no device enrollment, no verified remote authentication, no owner consent flow and no independent supervisor approval. **All M1–M8 completion gates remain unmet.**
+
+
+## SEC-014A — screen/UI default-deny policy boundary (2026-11-02)
+
+Python and Kotlin low-risk policies now exclude `read_screen`, `navigate`,
+and `scroll`. These return approval-required for authenticated requests
+and deny unauthenticated requests; contact approvals cannot be reused.
+No screen/UI execution is enabled. See [SEC-014 consent boundary](SEC-014-CONSENT-BOUNDARY.md).
+This is a partial remediation only: trusted per-session consent, Android
+permission enforcement, revocation, expiry, restricted-screen checks and
+independent security review remain **OPEN**. All M1–M8 gates remain open.

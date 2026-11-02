@@ -19,6 +19,21 @@ class AgentPolicyTest {
     @Test fun allowlistedRecipientIsAllowed() {
         assertEquals(Verdict.ALLOW, AgentPolicy.decide(AgentAction("place_call", true, true)))
     }
+    @Test fun screenActionsRequireApprovalEvenWhenAuthenticated() {
+        for (action in listOf("read_screen", "navigate", "scroll")) {
+            assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction(action, true)))
+        }
+    }
+    @Test fun screenActionsDenyUnauthenticated() {
+        for (action in listOf("read_screen", "navigate", "scroll")) {
+            assertEquals(Verdict.DENY, AgentPolicy.decide(AgentAction(action, false)))
+        }
+    }
+    @Test fun contactApprovalDoesNotGrantScreenAccess() {
+        for (action in listOf("read_screen", "navigate", "scroll")) {
+            assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction(action, true, true)))
+        }
+    }
     @Test fun paymentNeedsApproval() {
         assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction("transfer_money", true)))
     }
