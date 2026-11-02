@@ -2,7 +2,13 @@
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
-from scripts.qa007_role_consent import BOUNDS, PACKAGE, verify_consent_prompt, tap_coordinates
+# A direct script invocation puts scripts/ (not the repository root) on sys.path.
+# Package imports are used by unittest and `python -m`; direct CI invocations
+# require the sibling import. Avoid modifying sys.path or swallowing ImportError.
+if __package__:
+    from .qa007_role_consent import BOUNDS, PACKAGE, verify_consent_prompt, tap_coordinates
+else:
+    from qa007_role_consent import BOUNDS, PACKAGE, verify_consent_prompt, tap_coordinates
 
 APPROVE = frozenset({"allow", "set as default", "set as default app", "set default", "ok"})
 

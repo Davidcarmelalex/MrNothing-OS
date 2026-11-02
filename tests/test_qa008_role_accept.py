@@ -1,6 +1,8 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+import subprocess
+import sys
 from scripts.qa008_role_accept import approve_coordinates, verify_granted, verify_home, verify_settings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +21,23 @@ class Qa008Tests(unittest.TestCase):
         return self.xml(
             '<node package="com.google.android.permissioncontroller" text="Mr. Nothing OS"/>',
             button)
+
+    def test_direct_script_cli_import_and_coordinates(self):
+        """Regression: GitHub Actions invokes the file, not python -m."""
+        p = self.prompt('<node package="com.google.android.permissioncontroller" text="Set as default" clickable="true" enabled="true" bounds="[10,20][110,80]"/>')
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/qa008_role_accept.py"), "approve", str(p)],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(result.stdout.strip(), "60 50")
+
+    def test_module_cli_import_and_coordinates(self):
+        p = self.prompt('<node package="com.google.android.permissioncontroller" text="Set as default" clickable="true" enabled="true" bounds="[10,20][110,80]"/>')
+        result = subprocess.run(
+            [sys.executable, "-m", "scripts.qa008_role_accept", "approve", str(p)],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(result.stdout.strip(), "60 50")
 
     def test_approve_system_control(self):
         p = self.prompt('<node package="com.google.android.permissioncontroller" text="Set as default" clickable="true" enabled="true" bounds="[10,20][110,80]"/>')
