@@ -9,7 +9,7 @@ mkdir -p "$QA007_OUTPUT"
 adb -s "$ANDROID_SERIAL" get-state | grep -qx device
 adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d '\r' | grep -qx 1
 
-adb -s "$ANDROID_SERIAL" shell cmd role holders android.app.role.HOME > "$QA007_OUTPUT/role-before.txt"
+adb -s "$ANDROID_SERIAL" shell cmd role get-role-holders android.app.role.HOME > "$QA007_OUTPUT/role-before.txt"
 if grep -Fxq 'tech.mrnothing.os' "$QA007_OUTPUT/role-before.txt"; then
   echo "Unexpected pre-existing Mr. Nothing HOME role; cannot verify consent" >&2
   exit 1
@@ -31,6 +31,6 @@ python3 scripts/qa007_role_consent.py prompt "$QA007_OUTPUT/prompt.xml"
 # Negative-consent path: dismiss without approving, then require original HOME role.
 adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_BACK
 sleep 2
-adb -s "$ANDROID_SERIAL" shell cmd role holders android.app.role.HOME > "$QA007_OUTPUT/role-after.txt"
+adb -s "$ANDROID_SERIAL" shell cmd role get-role-holders android.app.role.HOME > "$QA007_OUTPUT/role-after.txt"
 python3 scripts/qa007_role_consent.py unchanged "$QA007_OUTPUT/role-before.txt" "$QA007_OUTPUT/role-after.txt"
 echo "QA-007 PASS: explicit HOME consent prompt and no role change after dismissal"
