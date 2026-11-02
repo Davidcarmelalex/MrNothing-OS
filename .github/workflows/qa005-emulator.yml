@@ -10,6 +10,8 @@ on:
       - 'tests/test_qa005_workflow_gate.py'
       - 'scripts/qa006_*'
       - 'tests/test_qa006_large_text.py'
+      - 'scripts/qa007_*'
+      - 'tests/test_qa007_role_consent.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -97,6 +99,10 @@ jobs:
         env:
           QA006_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa006
         run: bash scripts/qa006_large_text_smoke.sh
+      - name: "QA-007: HOME consent cancellation smoke"
+        env:
+          QA007_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa007
+        run: bash scripts/qa007_role_consent_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
