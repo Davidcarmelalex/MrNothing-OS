@@ -1,25 +1,23 @@
 name: QA-005 Android emulator smoke
+# Run once per PR rather than duplicating expensive emulators on push + PR.
 on:
-  push:
-    branches: [feat/phase1-agentic-phone]
-    paths:
-      - 'android/**'
-      - 'scripts/qa005_emulator_smoke.sh'
-      - '.github/workflows/qa005-emulator.yml'
   pull_request:
+    branches: [main]
     paths:
       - 'android/**'
       - 'scripts/qa005_emulator_smoke.sh'
       - '.github/workflows/qa005-emulator.yml'
+      - 'tests/test_qa005_workflow_gate.py'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: qa005-${{ github.ref }}
+  group: qa005-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   emulator-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 35
     env:
       ANDROID_SERIAL: emulator-5554
       QA005_OUTPUT: ${{ github.workspace }}/qa005-evidence
@@ -46,27 +44,47 @@ jobs:
           echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
           unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon :app:assembleDebug
-      - name: Start disposable x86_64 emulator
+      - name: Start disposable x86_64 emulator with bounded waits
         run: |
           set -euo pipefail
+          mkdir -p "$QA005_OUTPUT"
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM unavailable: emulator cannot meet accelerated runtime gate" >&2
+            exit 1
+          fi
           sudo chmod 666 /dev/kvm
           echo no | avdmanager create avd --force -n mrnothing_qa005 -k "system-images;android-35;google_apis;x86_64"
-          nohup emulator -avd mrnothing_qa005 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect -memory 2048 > "$RUNNER_TEMP/qa005-emulator.log" 2>&1 &
-          adb -s "$ANDROID_SERIAL" wait-for-device
+          nohup emulator -avd mrnothing_qa005 -accel on -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/qa005-emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          echo "$EMULATOR_PID" > "$QA005_OUTPUT/emulator-pid.txt"
+          if ! timeout 180s adb -s "$ANDROID_SERIAL" wait-for-device; then
+            echo "Emulator did not connect to ADB within 180 seconds" >&2
+            exit 1
+          fi
           for i in $(seq 1 120); do
-            if [ "$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then exit 0; fi
-            sleep 3
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "Emulator process exited before boot completed" >&2
+              exit 1
+            fi
+            if [ "$(timeout 12s adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = 1 ]; then
+              echo "Emulator boot completed"
+              exit 0
+            fi
+            sleep 2
           done
           echo "Emulator boot timed out" >&2
           exit 1
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
-      - name: Capture diagnostic log on failure
-        if: failure()
+      - name: Capture emulator diagnostics
+        if: always()
         run: |
           mkdir -p "$QA005_OUTPUT"
-          adb -s "$ANDROID_SERIAL" logcat -d -t 300 > "$QA005_OUTPUT/logcat-tail.txt" || true
-          cp "$RUNNER_TEMP/qa005-emulator.log" "$QA005_OUTPUT/emulator.log" || true
+          cp "$RUNNER_TEMP/qa005-emulator.log" "$QA005_OUTPUT/emulator.log" 2>/dev/null || true
+          timeout 15s adb devices -l > "$QA005_OUTPUT/adb-devices.txt" 2>&1 || true
+          timeout 15s adb -s "$ANDROID_SERIAL" logcat -d -t 300 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
+          df -h > "$QA005_OUTPUT/disk.txt" || true
+          free -h > "$QA005_OUTPUT/memory.txt" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
