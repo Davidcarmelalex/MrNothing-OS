@@ -53,7 +53,15 @@ jobs:
             exit 1
           fi
           sudo chmod 666 /dev/kvm
-          echo no | avdmanager create avd --force -n mrnothing_qa005 -k "system-images;android-35;google_apis;x86_64"
+          # Select a known device profile explicitly. Without -d, avdmanager
+          # can prompt for a hardware profile and leave no usable AVD.
+          printf 'no\\n' | avdmanager create avd --force -n mrnothing_qa005 -k "system-images;android-35;google_apis;x86_64" -d pixel
+          emulator -list-avds | tee "$QA005_OUTPUT/avd-list.txt"
+          if ! grep -Fxq mrnothing_qa005 "$QA005_OUTPUT/avd-list.txt"; then
+            echo "AVD creation failed: mrnothing_qa005 missing; refusing 180-second ADB wait" >&2
+            ls -la "$HOME/.android/avd" > "$QA005_OUTPUT/avd-directory.txt" 2>&1 || true
+            exit 1
+          fi
           nohup emulator -avd mrnothing_qa005 -accel on -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/qa005-emulator.log" 2>&1 &
           EMULATOR_PID=$!
           echo "$EMULATOR_PID" > "$QA005_OUTPUT/emulator-pid.txt"
