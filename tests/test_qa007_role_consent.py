@@ -57,6 +57,7 @@ class Qa007ConsentTests(unittest.TestCase):
         self.assertIn("Refusing non-emulator target", SCRIPT)
         self.assertIn("ro.kernel.qemu", SCRIPT)
         self.assertIn("KEYCODE_BACK", SCRIPT)
+        self.assertEqual(SCRIPT.count("cmd role get-role-holders android.app.role.HOME"), 2)
         self.assertNotIn("cmd role add-role-holder", "\n".join(line for line in SCRIPT.splitlines() if not line.lstrip().startswith("#")))
         self.assertIn("scripts/qa007_role_consent_smoke.sh", WORKFLOW)
 
