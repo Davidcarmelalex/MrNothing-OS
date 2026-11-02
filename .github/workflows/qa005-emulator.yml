@@ -20,6 +20,8 @@ on:
       - 'tests/test_qa010_accessibility.py'
       - 'scripts/qa011_*'
       - 'tests/test_qa011_talkback_preflight.py'
+      - 'scripts/qa012_*'
+      - 'tests/test_qa012_semantics.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -128,6 +130,10 @@ jobs:
         env:
           QA011_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa011
         run: bash scripts/qa011_talkback_preflight.sh
+      - name: "QA-012: read-only accessibility semantics (NOT TalkBack speech)"
+        env:
+          QA012_OUTPUT: qa005-evidence/qa012
+        run: bash scripts/qa012_semantics_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
