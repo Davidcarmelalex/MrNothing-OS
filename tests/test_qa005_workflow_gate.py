@@ -26,6 +26,17 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn('grep -Fxq mrnothing_qa005', self.workflow)
         self.assertIn('AVD creation failed', self.workflow)
 
+    def test_avd_home_is_shared_by_creation_and_emulator(self):
+        self.assertIn('ANDROID_AVD_HOME: ${{ runner.temp }}/mrnothing-avds', self.workflow)
+        self.assertIn('ANDROID_USER_HOME: ${{ runner.temp }}/mrnothing-android-user', self.workflow)
+        self.assertIn('mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"', self.workflow)
+        self.assertIn('-p "$ANDROID_AVD_HOME/mrnothing_qa005.avd"', self.workflow)
+
+    def test_avd_diagnostics_capture_both_sdk_tools(self):
+        self.assertIn('avd-create.txt', self.workflow)
+        self.assertIn('avd-manager-list.txt', self.workflow)
+        self.assertIn('avd-directory.txt', self.workflow)
+
     def test_emulator_never_starts_before_avd_gate(self):
         self.assertLess(self.workflow.index('grep -Fxq mrnothing_qa005'),
                         self.workflow.index('nohup emulator -avd mrnothing_qa005'))
