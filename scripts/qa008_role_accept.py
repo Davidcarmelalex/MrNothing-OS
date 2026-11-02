@@ -86,9 +86,29 @@ def verify_home(path: Path) -> None:
         raise ValueError("Mr. Nothing is not visible after HOME")
 
 def verify_settings(path: Path) -> None:
-    if not any(n.attrib.get("package", "").startswith("com.android.settings")
-               for n in ET.parse(path).getroot().iter("node")):
-        raise ValueError("Android stock HOME settings not visible")
+    """Require the real Android default-Home chooser, not just a Settings package.
+
+    On API 35 the Settings intent delegates this page to Google's Android
+    PermissionController; the page need not be hosted by com.android.settings.
+    Match the exact system host, page heading and both launcher options.
+    """
+    nodes = [n.attrib for n in ET.parse(path).getroot().iter("node")]
+    system_hosts = {
+        "com.android.settings",
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+    }
+    for host in system_hosts:
+        hosted = [a for a in nodes if a.get("package") == host]
+        headings = [
+            a for a in hosted
+            if (a.get("text") or a.get("content-desc") or "").strip() == "Default home app"
+        ]
+        mrnothing = [a for a in hosted if a.get("text") == "Mr. Nothing OS"]
+        stock = [a for a in hosted if a.get("text") == "Pixel Launcher"]
+        if len(headings) == len(mrnothing) == len(stock) == 1:
+            return
+    raise ValueError("Verified Android default HOME chooser with both launchers not visible")
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "select":

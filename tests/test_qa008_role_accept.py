@@ -127,8 +127,38 @@ class Qa008Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_home(self.xml('<node package="another.app" text="MR. NOTHING"/>'))
 
-    def test_stock_settings_visible(self):
-        verify_settings(self.xml('<node package="com.android.settings" text="Default home app"/>'))
+    def settings_page(self, package="com.google.android.permissioncontroller",
+                      heading=True, stock=True):
+        # Minimal regression fixture derived from the actual API 35
+        # qa008/settings.xml in GitHub Actions run 41413940072.
+        nodes = []
+        if heading:
+            nodes.append(f'<node package="{package}" class="android.widget.FrameLayout" content-desc="Default home app"/>')
+        nodes.append(f'<node package="{package}" class="android.widget.TextView" text="Mr. Nothing OS"/>')
+        if stock:
+            nodes.append(f'<node package="{package}" class="android.widget.TextView" text="Pixel Launcher"/>')
+        return self.xml(*nodes)
+
+    def test_real_api35_permissioncontroller_settings_visible(self):
+        verify_settings(self.settings_page())
+
+    def test_android_settings_host_supported(self):
+        verify_settings(self.settings_page(package="com.android.settings"))
+
+    def test_aosp_permissioncontroller_host_supported(self):
+        verify_settings(self.settings_page(package="com.android.permissioncontroller"))
+
+    def test_settings_missing_heading_rejected(self):
+        with self.assertRaises(ValueError):
+            verify_settings(self.settings_page(heading=False))
+
+    def test_settings_missing_stock_launcher_rejected(self):
+        with self.assertRaises(ValueError):
+            verify_settings(self.settings_page(stock=False))
+
+    def test_fake_settings_host_rejected_even_with_matching_labels(self):
+        with self.assertRaises(ValueError):
+            verify_settings(self.settings_page(package="tech.mrnothing.os"))
 
     def test_fake_settings_rejected(self):
         with self.assertRaises(ValueError):
