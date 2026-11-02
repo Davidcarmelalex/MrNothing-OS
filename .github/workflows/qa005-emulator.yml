@@ -22,9 +22,6 @@ jobs:
       ANDROID_SERIAL: emulator-5554
       QA005_OUTPUT: ${{ github.workspace }}/qa005-evidence
       QA005_APK: ${{ github.workspace }}/android/app/build/outputs/apk/debug/app-debug.apk
-      # AVD manager and emulator must resolve the same explicit, isolated home.
-      ANDROID_AVD_HOME: ${{ runner.temp }}/mrnothing-avds
-      ANDROID_USER_HOME: ${{ runner.temp }}/mrnothing-android-user
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -58,6 +55,9 @@ jobs:
           sudo chmod 666 /dev/kvm
           # Select a known device profile explicitly. Without -d, avdmanager
           # can prompt for a hardware profile and leave no usable AVD.
+          # Runner context is unavailable in job-level env; export here instead.
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/mrnothing-avds"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/mrnothing-android-user"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
           # Pin the AVD directory: the SDK manager and emulator must agree
           # on the location rather than relying on differing runner defaults.
