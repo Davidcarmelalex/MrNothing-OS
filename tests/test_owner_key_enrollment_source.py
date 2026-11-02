@@ -19,6 +19,7 @@ class OwnerKeyEnrollmentSourceTests(unittest.TestCase):
                       'ECGenParameterSpec("secp256r1")', '.setIsStrongBoxBacked(true)',
                       '.setUserAuthenticationRequired(true)',
                       '.setUserAuthenticationParameters(', 'AUTH_DEVICE_CREDENTIAL',
+                      'Build.VERSION_CODES.S',
                       'OwnerCredentialSafetyGate.isSafe(context)',
                       'store.containsAlias(OwnerKeystorePreflight.KEY_ALIAS)',
                       'OwnerKeystorePreflight.inspectExisting()'):

@@ -63,7 +63,7 @@ class OwnerKeyEnrollmentActivity : Activity() {
         })
         status = TextView(this).apply {
             text = "Optional: create a hardware-protected local key after device-credential " +
-                "confirmation. Requires Android 11+ and StrongBox. No agent access, " +
+                "confirmation. Requires Android 12+ and StrongBox. No agent access, " +
                 "screen permission or consent is granted. Existing keys are never replaced."
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)

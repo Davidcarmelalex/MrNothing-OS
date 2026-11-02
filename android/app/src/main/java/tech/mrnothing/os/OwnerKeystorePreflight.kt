@@ -1,6 +1,8 @@
 package tech.mrnothing.os
 
+import android.os.Build
 import android.security.keystore.KeyInfo
+import android.security.keystore.KeyProperties
 import java.io.IOException
 import java.math.BigInteger
 import java.security.GeneralSecurityException
@@ -18,6 +20,8 @@ internal data class OwnerKeySignals(
     val ecAlgorithm: Boolean,
     val p256PublicKey: Boolean,
     val hardwareBacked: Boolean,
+    val strongBoxBacked: Boolean = false,
+    val credentialAuthAllowed: Boolean = false,
     val ownerAuthenticationRequired: Boolean,
     val perUseAuthentication: Boolean
 )
@@ -38,6 +42,8 @@ internal object OwnerKeystorePreflight {
             signals.ecAlgorithm &&
             signals.p256PublicKey &&
             signals.hardwareBacked &&
+            signals.strongBoxBacked &&
+            signals.credentialAuthAllowed &&
             signals.ownerAuthenticationRequired &&
             signals.perUseAuthentication
         ) OwnerKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH
@@ -45,6 +51,8 @@ internal object OwnerKeystorePreflight {
 
     /** Positive readiness is NOT proof of owner authentication or consent. */
     fun inspectExisting(): OwnerKeyReadiness {
+        // API 30 and older cannot distinguish TEE from StrongBox using KeyInfo.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return OwnerKeyReadiness.BLOCKED
         return try {
         val store = KeyStore.getInstance("AndroidKeyStore")
         store.load(null)
@@ -62,6 +70,10 @@ internal object OwnerKeystorePreflight {
                 p256PublicKey = publicKey.params.curve.field.fieldSize == 256 &&
                     publicKey.params.order == p256Order,
                 hardwareBacked = info.isInsideSecureHardware,
+                // TEE is hardware-backed, but is not the required StrongBox boundary.
+                strongBoxBacked = info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX,
+                credentialAuthAllowed = (info.userAuthenticationType and
+                    KeyProperties.AUTH_DEVICE_CREDENTIAL) != 0,
                 ownerAuthenticationRequired = info.isUserAuthenticationRequired,
                 perUseAuthentication = info.userAuthenticationValidityDurationSeconds <= 0
             )

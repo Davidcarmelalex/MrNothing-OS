@@ -31,3 +31,7 @@ Next: device-backed test of StrongBox generation and Android credential
 prompt; attestation-chain validation and owner identity binding; protected
 per-action signing, revocation, replay controls and permission enforcement
 before any agent integration. No physical flashing or root escalation.
+
+SEC-014I follow-up: exact StrongBox security-level verification and device-credential
+authentication checks require API 31+; optional enrollment is blocked on older
+Android versions. See [SEC-014I](SEC-014I-STRONGBOX-IDENTITY-BOUNDARY.md).

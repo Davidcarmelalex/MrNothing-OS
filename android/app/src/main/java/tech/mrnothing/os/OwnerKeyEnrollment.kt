@@ -25,7 +25,7 @@ internal enum class OwnerEnrollmentResult {
 
 internal object OwnerKeyEnrollment {
     fun enrollAfterCredential(context: Context): OwnerEnrollmentResult {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return OwnerEnrollmentResult.BLOCKED_UNSUPPORTED_PLATFORM
         }
         if (!OwnerCredentialSafetyGate.isSafe(context)) {

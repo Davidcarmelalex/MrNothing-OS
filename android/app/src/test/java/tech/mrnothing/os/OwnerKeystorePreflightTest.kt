@@ -10,6 +10,8 @@ class OwnerKeystorePreflightTest {
         ecAlgorithm = true,
         p256PublicKey = true,
         hardwareBacked = true,
+        strongBoxBacked = true,
+        credentialAuthAllowed = true,
         ownerAuthenticationRequired = true,
         perUseAuthentication = true
     )
@@ -25,6 +27,10 @@ class OwnerKeystorePreflightTest {
     @Test fun wrongAlgorithmBlocks() = assertBlocked(valid().copy(ecAlgorithm = false))
     @Test fun wrongCurveBlocks() = assertBlocked(valid().copy(p256PublicKey = false))
     @Test fun softwareKeyBlocks() = assertBlocked(valid().copy(hardwareBacked = false))
+    @Test fun teeOnlyKeyBlocksEvenWhenHardwareBacked() =
+        assertBlocked(valid().copy(strongBoxBacked = false))
+    @Test fun biometricOnlyKeyBlocksWithoutDeviceCredential() =
+        assertBlocked(valid().copy(credentialAuthAllowed = false))
     @Test fun noOwnerAuthenticationBlocks() =
         assertBlocked(valid().copy(ownerAuthenticationRequired = false))
     @Test fun reusableAuthenticationBlocks() =
@@ -36,6 +42,8 @@ class OwnerKeystorePreflightTest {
             valid().copy(ecAlgorithm = false),
             valid().copy(p256PublicKey = false),
             valid().copy(hardwareBacked = false),
+            valid().copy(strongBoxBacked = false),
+            valid().copy(credentialAuthAllowed = false),
             valid().copy(ownerAuthenticationRequired = false),
             valid().copy(perUseAuthentication = false)
         ).forEach(::assertBlocked)

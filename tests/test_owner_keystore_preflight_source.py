@@ -16,10 +16,20 @@ class OwnerKeystorePreflightSourceTests(unittest.TestCase):
             'KEY_ALIAS = "mrnothing_owner_consent_p256_v1"',
             "KeyInfo::class.java",
             "info.isInsideSecureHardware",
+            "Build.VERSION_CODES.S",
+            "info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX",
+            "info.userAuthenticationType",
+            "KeyProperties.AUTH_DEVICE_CREDENTIAL",
             "info.isUserAuthenticationRequired",
             "userAuthenticationValidityDurationSeconds",
         ):
             self.assertIn(token, code)
+
+    def test_tee_or_unknown_level_never_meets_strongbox_gate(self):
+        code = FILE.read_text()
+        self.assertIn("signals.strongBoxBacked &&", code)
+        self.assertIn("signals.credentialAuthAllowed &&", code)
+        self.assertIn("SDK_INT < Build.VERSION_CODES.S", code)
 
     def test_no_key_creation_deletion_export_or_signing(self):
         code = FILE.read_text()
