@@ -93,9 +93,25 @@ class OwnerKeyEnrollmentActivity : Activity() {
             status.text = "Unlocked, active device with secure lock required. Refused."
             return
         }
-        if (OwnerKeystorePreflight.inspectExisting() != OwnerKeyReadiness.BLOCKED) {
-            status.text = "A verified local key already exists. No replacement attempted."
-            return
+        // A blocked readiness result can also mean a malformed/TEE-only existing
+        // alias. Distinguish absence from collision before prompting for credentials.
+        when (OwnerEnrollmentAliasGate.inspect()) {
+            OwnerEnrollmentAliasState.ABSENT -> Unit
+            OwnerEnrollmentAliasState.VERIFIED_EXISTING -> {
+                state.revoke()
+                status.text = "A verified local key already exists. No replacement attempted."
+                return
+            }
+            OwnerEnrollmentAliasState.UNTRUSTED_EXISTING -> {
+                state.revoke()
+                status.text = "Untrusted existing key alias. Enrollment refused; no replacement."
+                return
+            }
+            OwnerEnrollmentAliasState.INSPECTION_FAILED -> {
+                state.revoke()
+                status.text = "KeyStore inspection unavailable. Enrollment refused."
+                return
+            }
         }
         if (!state.begin()) {
             status.text = "Enrollment already pending. Cancel before retrying."
