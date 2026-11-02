@@ -83,3 +83,14 @@ owner keys. No key is created, no consent is issued, and no device executor
 is enabled. See SEC-014G-ANDROID-KEYSTORE-READINESS.md.
 CI, Android runtime, physical hardware and independent signoff are separate
 gates; M1–M8 remain incomplete. Upstream shared SKILL.md is unverified.
+
+## SEC-014H — opt-in local StrongBox enrollment (2026-11-03)
+
+Added a non-exported, owner-tapped credential-confirmed local key provisioning
+path and one-shot enrollment intent tests. The key is P-256, StrongBox-required,
+per-use-authenticated and not exportable by design; existing aliases are not
+overwritten. No signing, consent capability or device executor is enabled.
+See [SEC-014H](SEC-014H-LOCAL-OWNER-KEY-ENROLLMENT.md).
+Android runtime and physical Pixel tests, remote attestation, identity
+binding and independent review remain OPEN. M1–M8 remain incomplete.
+Upstream shared SKILL.md is unverified.

@@ -146,6 +146,11 @@ class MainActivity : Activity() {
             startActivity(Intent(this, OwnerConsentPreviewActivity::class.java))
         }
 
+        addAction(root, "Enroll local hardware security key",
+            "Optional local credential-confirmed StrongBox key enrollment; no agent access granted") {
+            startActivity(Intent(this, OwnerKeyEnrollmentActivity::class.java))
+        }
+
         root.addView(label("Installed apps", 22f, accentColor, heading = true))
         root.addView(label("Select an app to open it. No app is controlled without your action.",
             14f, secondaryTextColor))
