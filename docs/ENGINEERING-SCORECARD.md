@@ -45,3 +45,15 @@ No screen/UI execution is enabled. See [SEC-014 consent boundary](SEC-014-CONSEN
 This is a partial remediation only: trusted per-session consent, Android
 permission enforcement, revocation, expiry, restricted-screen checks and
 independent security review remain **OPEN**. All M1–M8 gates remain open.
+
+
+## SEC-014C — owner credential safety preview (2026-11-02)
+
+A non-exported Android Activity now provides an explicit local system-credential
+verification **preview** for read_screen, navigate and scroll. It does not
+issue consent, grant Android permissions or enable execution. Ten Kotlin
+state-machine tests are added, pending Android CI execution. The full local
+Python suite and source security gates are to be recorded in the corresponding
+engineering report. Keystore binding, permission checks, revocation of real
+sessions, real-device tests and independent security review remain OPEN.
+No milestone is independently approved. Upstream shared SKILL.md is unverified.

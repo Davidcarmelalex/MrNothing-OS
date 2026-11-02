@@ -141,6 +141,11 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
 
+        addAction(root, "Owner consent safety preview",
+            "Open local credential verification preview; no agent screen access is enabled") {
+            startActivity(Intent(this, OwnerConsentPreviewActivity::class.java))
+        }
+
         root.addView(label("Installed apps", 22f, accentColor, heading = true))
         root.addView(label("Select an app to open it. No app is controlled without your action.",
             14f, secondaryTextColor))
