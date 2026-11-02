@@ -8,6 +8,8 @@ on:
       - 'scripts/qa005_emulator_smoke.sh'
       - '.github/workflows/qa005-emulator.yml'
       - 'tests/test_qa005_workflow_gate.py'
+      - 'scripts/qa006_*'
+      - 'tests/test_qa006_large_text.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -91,6 +93,10 @@ jobs:
           exit 1
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
+      - name: QA-006: 200% font and recovery smoke
+        env:
+          QA006_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa006
+        run: bash scripts/qa006_large_text_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
