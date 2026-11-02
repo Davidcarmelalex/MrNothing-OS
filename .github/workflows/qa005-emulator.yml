@@ -1,0 +1,76 @@
+name: QA-005 Android emulator smoke
+on:
+  push:
+    branches: [feat/phase1-agentic-phone]
+    paths:
+      - 'android/**'
+      - 'scripts/qa005_emulator_smoke.sh'
+      - '.github/workflows/qa005-emulator.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'scripts/qa005_emulator_smoke.sh'
+      - '.github/workflows/qa005-emulator.yml'
+permissions:
+  contents: read
+concurrency:
+  group: qa005-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ANDROID_SERIAL: emulator-5554
+      QA005_OUTPUT: ${{ github.workspace }}/qa005-evidence
+      QA005_APK: ${{ github.workspace }}/android/app/build/outputs/apk/debug/app-debug.apk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install SDK and emulator system image
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+      - name: Build debug APK with checksum-verified Gradle
+        working-directory: android
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon :app:assembleDebug
+      - name: Start disposable x86_64 emulator
+        run: |
+          set -euo pipefail
+          sudo chmod 666 /dev/kvm
+          echo no | avdmanager create avd --force -n mrnothing_qa005 -k "system-images;android-35;google_apis;x86_64"
+          nohup emulator -avd mrnothing_qa005 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect -memory 2048 > "$RUNNER_TEMP/qa005-emulator.log" 2>&1 &
+          adb -s "$ANDROID_SERIAL" wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then exit 0; fi
+            sleep 3
+          done
+          echo "Emulator boot timed out" >&2
+          exit 1
+      - name: Verify launcher runtime and recovery route
+        run: bash scripts/qa005_emulator_smoke.sh
+      - name: Capture diagnostic log on failure
+        if: failure()
+        run: |
+          mkdir -p "$QA005_OUTPUT"
+          adb -s "$ANDROID_SERIAL" logcat -d -t 300 > "$QA005_OUTPUT/logcat-tail.txt" || true
+          cp "$RUNNER_TEMP/qa005-emulator.log" "$QA005_OUTPUT/emulator.log" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa005-emulator-evidence-not-for-release
+          path: qa005-evidence/
+          if-no-files-found: warn
+          retention-days: 7
