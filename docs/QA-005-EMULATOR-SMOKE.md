@@ -14,3 +14,11 @@ Emulator startup may fail from unavailable KVM, Android SDK downloads, resource 
 
 ## Security
 The smoke script refuses serials that do not begin with `emulator-` and checks `ro.kernel.qemu=1`. This is a testing-only guard, not a production authorization mechanism. Do not use this script to modify a real phone.
+
+## 2026-11-02 failure investigation and bounded correction
+
+The latest completed QA-005 job at `aadd18d7` **failed** before launcher execution. Its uploaded `emulator.log` explicitly reported `Unknown AVD name [mrnothing_qa005]` and a missing `$HOME/.android/avd/mrnothing_qa005.ini`; the 180-second ADB wait subsequently expired. The APK compilation itself passed. This is a confirmed AVD provisioning failure, not evidence of a launcher crash.
+
+The follow-up change specifies a noninteractive `pixel` AVD hardware profile and checks `emulator -list-avds` before launching the emulator. If creation fails, CI now fails immediately with an AVD inventory instead of waiting for ADB. The `pixel` emulator profile is not proof of Pixel 9 Pro hardware compatibility.
+
+**Acceptance remains open until a new QA-005 run is green and the hierarchy, screenshot, Home-settings and relaunch artifacts have been inspected.** Source-level regression tests do not substitute for runtime evidence.
