@@ -24,6 +24,10 @@ internal object OwnerAttestationChainGate {
         return try {
             val anchors = trustedRoots.map { TrustAnchor(it, null) }.toSet()
             // The root is a trust anchor, not an untrusted certificate in the path.
+            // Trust anchors may only appear as the terminal certificate.
+            // Reject a root injected as a leaf/intermediate instead of silently
+            // treating a partial or reordered path as a valid chain.
+            if (chain.dropLast(1).any { it in trustedRoots }) return false
             val pathCertificates = if (chain.last() in trustedRoots) chain.dropLast(1) else chain
             if (pathCertificates.isEmpty()) return false
             val path = CertificateFactory.getInstance("X.509").generateCertPath(pathCertificates)

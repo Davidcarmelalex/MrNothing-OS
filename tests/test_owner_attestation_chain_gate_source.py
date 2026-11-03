@@ -10,6 +10,11 @@ class AttestationChainGateSourceTests(unittest.TestCase):
         self.assertIn("chain.isEmpty()", code)
         self.assertIn("CertPathValidator.getInstance(\"PKIX\")", code)
 
+    def test_rejects_embedded_trust_anchor(self):
+        code = SOURCE.read_text()
+        self.assertIn("chain.dropLast(1).any { it in trustedRoots }", code)
+        self.assertIn("if (pathCertificates.isEmpty()) return false", code)
+
     def test_no_authorization_or_implicit_remote_trust(self):
         code = SOURCE.read_text()
         self.assertIn("parameters.isRevocationEnabled = false", code)
