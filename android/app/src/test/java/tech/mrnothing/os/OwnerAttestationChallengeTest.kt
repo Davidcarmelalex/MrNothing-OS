@@ -76,7 +76,7 @@ class OwnerAttestationChallengeTest {
                 valid.drop(2).toByteArray(), challenge))
     }
 
-    @Test fun noncanonicalAndNegativeAttestationVersionsAreDenied() {
+    @Test fun negativeAttestationVersionsAreDenied() {
         val valid = extension()
         val prefix = byteArrayOf(0x02, 0x01, 0x04)
         val index = valid.indices.firstOrNull { i ->
