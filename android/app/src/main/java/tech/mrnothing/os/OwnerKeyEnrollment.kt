@@ -9,6 +9,7 @@ import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.spec.ECGenParameterSpec
+import java.security.cert.X509Certificate
 
 /**
  * SEC-014H: local, opt-in enrollment of a non-exportable StrongBox P-256 key.
@@ -38,6 +39,9 @@ internal object OwnerKeyEnrollment {
             if (store.containsAlias(OwnerKeystorePreflight.KEY_ALIAS)) {
                 return OwnerEnrollmentResult.EXISTING_ALIAS_NOT_OVERWRITTEN
             }
+            // Bind this single local key-generation attempt to an unpredictable
+            // challenge. This is not remote attestation or owner identity proof.
+            val challenge = OwnerAttestationChallenge.create()
             val generator = KeyPairGenerator.getInstance(
                 KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
             )
@@ -54,9 +58,21 @@ internal object OwnerKeyEnrollment {
                 )
                 // No fallback to software-only or TEE-only keys if StrongBox is absent.
                 .setIsStrongBoxBacked(true)
+                .setAttestationChallenge(challenge)
                 .build()
             generator.initialize(spec)
             generator.generateKeyPair()
+            // A matching local extension is only a prerequisite. Certificate
+            // chain trust, verified boot, owner binding and revocation remain
+            // separate, unimplemented gates. Never issue consent from this.
+            val certificate = store.getCertificate(
+                OwnerKeystorePreflight.KEY_ALIAS
+            ) as? X509Certificate
+            if (!OwnerAttestationChallenge.matchesLocalEvidence(
+                    certificate?.getExtensionValue(OwnerAttestationChallenge.EXTENSION_OID),
+                    challenge
+                )
+            ) return OwnerEnrollmentResult.BLOCKED_KEYSTORE
             if (!OwnerCredentialSafetyGate.isSafe(context)) {
                 return OwnerEnrollmentResult.BLOCKED_UNSAFE_DEVICE
             }
