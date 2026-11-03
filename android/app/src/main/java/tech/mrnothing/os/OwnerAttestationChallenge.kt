@@ -77,7 +77,10 @@ internal object OwnerAttestationChallenge {
 
         fun integerPresent(): Boolean {
             val value = read(0x02) ?: return false
-            return value.isNotEmpty() && value.size <= 4 && value[0] >= 0
+            return value.isNotEmpty() && value.size <= 4 &&
+                (value[0].toInt() and 0x80) == 0 &&
+                !(value.size > 1 && value[0] == 0.toByte() &&
+                    (value[1].toInt() and 0x80) == 0)
         }
 
         fun securityLevel(): Int? {

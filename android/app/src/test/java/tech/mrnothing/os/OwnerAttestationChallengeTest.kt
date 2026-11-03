@@ -76,6 +76,17 @@ class OwnerAttestationChallengeTest {
                 valid.drop(2).toByteArray(), challenge))
     }
 
+    @Test fun noncanonicalAndNegativeAttestationVersionsAreDenied() {
+        val valid = extension()
+        val prefix = byteArrayOf(0x02, 0x01, 0x04)
+        val index = valid.indices.firstOrNull { i ->
+            i + prefix.size <= valid.size && valid.copyOfRange(i, i + prefix.size).contentEquals(prefix)
+        } ?: throw AssertionError("version field absent")
+        val negative = valid.clone()
+        negative[index + 2] = 0xff.toByte()
+        assertFalse(OwnerAttestationChallenge.matchesLocalEvidence(negative, challenge))
+    }
+
     @Test fun oversizedAndWrongTagAreDenied() {
         assertFalse(OwnerAttestationChallenge.matchesLocalEvidence(ByteArray(8193), challenge))
         val invalid = extension().clone()
