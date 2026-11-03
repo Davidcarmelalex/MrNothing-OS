@@ -35,10 +35,21 @@ class OwnerAttestationChainGateTest {
         assertFalse(OwnerAttestationChainGate.validatesPath(listOf(cert("leaf"), cert("leaf"), cert("root")), setOf(cert("root"))))
     }
 
-    @Test fun oversizedChainFailsClosed() {
-        val leaf = cert("leaf")
-        val root = cert("root")
-        assertFalse(OwnerAttestationChainGate.validatesPath(List(9) { leaf }, setOf(root)))
+    /** Distinct, correctly signed offline fixtures isolate the eight-certificate boundary. */
+    @Test fun eightDistinctCertificatesAtLimitValidate() {
+        val root = cert("boundary-root")
+        // Leaf is signed by intermediate 7; this eight-element path omits the root.
+        val chain = listOf(cert("boundary-leaf")) +
+            (7 downTo 1).map { cert("boundary-int$it") }
+        assertTrue(OwnerAttestationChainGate.validatesPath(chain, setOf(root)))
+    }
+
+    @Test fun nineDistinctCertificatesOverLimitFailClosed() {
+        val root = cert("boundary-root")
+        val chain = listOf(cert("boundary-leaf")) +
+            (7 downTo 1).map { cert("boundary-int$it") } + root
+        assertTrue("fixtures must be distinct", chain.distinct().size == 9)
+        assertFalse(OwnerAttestationChainGate.validatesPath(chain, setOf(root)))
     }
 
     @Test fun untrustedCertificateInsertedBeforeRootFailsClosed() {
