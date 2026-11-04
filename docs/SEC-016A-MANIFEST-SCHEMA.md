@@ -20,7 +20,7 @@ The top-level JSON object has exactly these fields:
 | roots | 1–8 unique root entries |
 | signature | exactly algorithm and value; Ed25519 and canonical Base64 of 64 bytes |
 
-Each root entry has exactly id, certificate_der and sha256. Certificate bytes are canonical Base64, 1–16 KiB each, 64 KiB aggregate maximum. The SHA-256 digest is recomputed over the decoded DER bytes. Root identifiers and fingerprints must be unique.
+Each root entry has exactly id, certificate_der and sha256. Certificate bytes are canonical Base64, 1–16 KiB each, 64 KiB aggregate DER maximum. The SHA-256 digest is recomputed over the decoded DER bytes. Root identifiers and fingerprints must be unique.
 
 ## Signature input
 
@@ -31,7 +31,7 @@ The update-signing key must be selected from an independently pinned key set, no
 ## Resource and ambiguity limits
 
 - Manifest input: 256 KiB maximum.
-- JSON nesting: 12 levels; JSON values: 1,024 nodes; aggregate text: 65,536 characters.
+- JSON nesting: 12 levels; JSON values: 1,024 nodes; aggregate text: 131,072 characters.
 - Duplicate JSON keys, unknown/missing fields, non-finite numbers, floating-point values, non-canonical Base64, malformed UTF-8/Unicode, oversized integers, and unsupported schema/signature versions are rejected.
 - Timestamps are parsed for format and ordering only. Current-time validity, revocation, root rotation, and rollback persistence are separate gates.
 

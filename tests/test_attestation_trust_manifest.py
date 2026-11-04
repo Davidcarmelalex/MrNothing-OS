@@ -185,6 +185,26 @@ class AttestationTrustManifestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parsed.is_newer_than(True)
 
+    def test_aggregate_certificate_budget_is_enforced(self):
+        document = sample_manifest()
+        document["roots"] = []
+        for index in range(5):
+            der = bytes([index + 1]) * MAX_CERTIFICATE_BYTES
+            document["roots"].append({
+                "id": f"root-{index}",
+                "certificate_der": base64.b64encode(der).decode("ascii"),
+                "sha256": hashlib.sha256(der).hexdigest(),
+            })
+        with self.assertRaises(ManifestError):
+            parse_trust_manifest(self.raw(document))
+
+    def test_json_depth_budget_is_enforced_before_schema(self):
+        nested = None
+        for _ in range(14):
+            nested = [nested]
+        with self.assertRaises(ManifestError):
+            parse_trust_manifest(json.dumps(nested).encode("utf-8"))
+
     def test_oversized_manifest_is_rejected(self):
         with self.assertRaises(ManifestError):
             parse_trust_manifest(b"x" * (MAX_MANIFEST_BYTES + 1))
