@@ -28,7 +28,7 @@ class AttestationTrustStoreTests(unittest.TestCase):
             serialization.Encoding.Raw, serialization.PublicFormat.Raw
         )
         self.keys = {"release-key-1": self.public}
-        self.store.initialize()
+        self.store.initialize(explicit_first_install=True)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -46,6 +46,16 @@ class AttestationTrustStoreTests(unittest.TestCase):
         self.assertEqual(first, second)
         if os.name == "posix":
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+
+    def test_missing_database_requires_explicit_first_install(self):
+        self.path.unlink()
+        with self.assertRaises(TrustStoreError):
+            SQLiteTrustVersionStore(self.path).initialize()
+        self.assertFalse(self.path.exists())
+        initialized = SQLiteTrustVersionStore(self.path).initialize(
+            explicit_first_install=True
+        )
+        self.assertEqual(initialized.bundle_version, 0)
 
     def test_success_advances_version_and_records_manifest_digest(self):
         raw = build_manifest(self.signer, bundle_version=8)
@@ -119,7 +129,7 @@ class AttestationTrustStoreTests(unittest.TestCase):
         self.path.write_bytes(b"corrupt-existing-state")
         before = self.path.read_bytes()
         with self.assertRaises(TrustStoreError):
-            SQLiteTrustVersionStore(self.path).initialize()
+            SQLiteTrustVersionStore(self.path).initialize(explicit_first_install=True)
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_writer_lock_timeout_fails_closed(self):

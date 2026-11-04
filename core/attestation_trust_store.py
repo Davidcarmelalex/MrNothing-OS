@@ -76,10 +76,12 @@ class SQLiteTrustVersionStore:
         self.path = Path(raw_path)
         self.timeout_seconds = float(timeout_seconds)
 
-    def initialize(self) -> TrustBundleState:
-        """Create a new empty ledger without overwriting an existing file."""
+    def initialize(self, *, explicit_first_install: bool = False) -> TrustBundleState:
+        """Create a ledger only during an explicitly authorized first install."""
         if self.path.exists() or self.path.is_symlink():
             return self.read_state()
+        if explicit_first_install is not True:
+            raise TrustStoreError("explicit first-install initialization is required")
         flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
