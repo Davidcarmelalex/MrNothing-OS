@@ -1,7 +1,7 @@
 name: Phase 1 checks
 on:
   push:
-    branches: [main, feat/phase1-agentic-phone]
+    branches: [main, feat/phase1-agentic-phone, 'feat/**']
   pull_request:
 permissions:
   contents: read
