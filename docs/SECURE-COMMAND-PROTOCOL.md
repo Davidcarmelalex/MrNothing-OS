@@ -10,10 +10,12 @@ This module adds canonical JSON HMAC-SHA256 request signatures, timestamps, cons
 The signed admission path accepts only exact JSON-native values: objects with
 string keys, arrays, strings, booleans, null, integers and finite floats.
 Python-only tuples, custom containers, non-string object keys, NaN/Infinity,
-more than 32 nested levels, or more than 4,096 total JSON nodes are rejected
-before signature verification. The canonical signed envelope is capped at
-8,192 bytes. These limits bound parser/canonicalization work and prevent
-different runtimes from interpreting Python-only values differently.
+more than 32 nested levels, more than 4,096 total JSON nodes, or more
+than 16,384 aggregate string/key code points are rejected before signature
+verification. Action names are limited to 128 characters. The canonical signed
+envelope is capped at 8,192 bytes. These limits bound structural and scalar
+preflight work and prevent different runtimes from interpreting Python-only
+values differently.
 
 This is still a transport-neutral admission prototype. The SQLite replay
 ledger is single-host, and the caller must supply an authenticated transport

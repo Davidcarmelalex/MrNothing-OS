@@ -88,6 +88,14 @@ class AdmissionTests(unittest.TestCase):
         cmd = self.command(args={"items": ["x"] * 4096})
         self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
 
+    def test_excessive_json_text_budget_rejected(self):
+        cmd = self.command(args={"padding": "x" * 16385})
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
+    def test_oversized_action_name_rejected(self):
+        cmd = self.command(action="x" * 129)
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
     def test_valid_nested_json_values_are_accepted(self):
         cmd = self.command(args={"items": ["one", {"enabled": True, "count": 2, "ratio": 1.5, "empty": None}]})
         self.assertTrue(self.check(cmd).admitted)

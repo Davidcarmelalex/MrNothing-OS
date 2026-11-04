@@ -24,12 +24,14 @@ class AdmissionResult:
 MAX_CANONICAL_PAYLOAD_BYTES = 8192
 MAX_JSON_DEPTH = 32
 MAX_JSON_NODES = 4096
+MAX_JSON_TEXT_CHARS = 16384
 
 
 def _is_strict_json_value(value: object) -> bool:
     """Accept only bounded JSON-native values, without invoking custom code."""
     pending: list[tuple[object, int]] = [(value, 0)]
     scheduled = 1
+    text_characters = 0
     while pending:
         current, depth = pending.pop()
         if depth > MAX_JSON_DEPTH:
@@ -42,6 +44,9 @@ def _is_strict_json_value(value: object) -> bool:
             for key, child in current.items():
                 if type(key) is not str:
                     return False
+                text_characters += len(key)
+                if text_characters > MAX_JSON_TEXT_CHARS:
+                    return False
                 children.append((child, depth + 1))
             scheduled += len(children)
             pending.extend(children)
@@ -53,7 +58,11 @@ def _is_strict_json_value(value: object) -> bool:
         elif current_type is float:
             if not math.isfinite(current):
                 return False
-        elif current is None or current_type in (str, bool, int):
+        elif current_type is str:
+            text_characters += len(current)
+            if text_characters > MAX_JSON_TEXT_CHARS:
+                return False
+        elif current is None or current_type in (bool, int):
             continue
         else:
             return False
@@ -136,7 +145,9 @@ def admit_signed_command(
         return AdmissionResult(False, "INVALID_COMMAND_ID")
     if type(command.issued_at) is not int or type(now) is not int:
         return AdmissionResult(False, "INVALID_TIMESTAMP")
-    if not isinstance(command.action, str) or type(command.arguments) is not dict:
+    if type(command.action) is not str or not (1 <= len(command.action) <= 128):
+        return AdmissionResult(False, "INVALID_PAYLOAD")
+    if type(command.arguments) is not dict:
         return AdmissionResult(False, "INVALID_PAYLOAD")
     if not isinstance(command.signature, str) or len(command.signature) != 64:
         return AdmissionResult(False, "INVALID_SIGNATURE")
