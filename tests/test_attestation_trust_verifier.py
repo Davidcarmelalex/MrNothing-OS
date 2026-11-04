@@ -139,7 +139,7 @@ class AttestationTrustVerifierTests(unittest.TestCase):
     def test_expired_manifest_is_rejected(self):
         raw = build_manifest(
             self.signer,
-            not_before="2025-01-01T00:00:00Z",
+            not_before="2026-11-01T00:00:00Z",
             not_after="2026-11-04T00:00:00Z",
         )
         with self.assertRaises(ManifestVerificationError):
