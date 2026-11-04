@@ -6,7 +6,7 @@ authenticated device. No command is executed by this module.
 """
 from dataclasses import dataclass
 import hmac
-import json
+import math
 import sqlite3
 import string
 from pathlib import Path
@@ -19,6 +19,45 @@ from core.hermes_gateway import CommandEnvelope, validate
 class AdmissionResult:
     admitted: bool
     reason: str
+
+
+MAX_CANONICAL_PAYLOAD_BYTES = 8192
+MAX_JSON_DEPTH = 32
+MAX_JSON_NODES = 4096
+
+
+def _is_strict_json_value(value: object) -> bool:
+    """Accept only bounded JSON-native values, without invoking custom code."""
+    pending: list[tuple[object, int]] = [(value, 0)]
+    scheduled = 1
+    while pending:
+        current, depth = pending.pop()
+        if depth > MAX_JSON_DEPTH:
+            return False
+        current_type = type(current)
+        if current_type is dict:
+            if scheduled + len(current) > MAX_JSON_NODES:
+                return False
+            children = []
+            for key, child in current.items():
+                if type(key) is not str:
+                    return False
+                children.append((child, depth + 1))
+            scheduled += len(children)
+            pending.extend(children)
+        elif current_type is list:
+            if scheduled + len(current) > MAX_JSON_NODES:
+                return False
+            scheduled += len(current)
+            pending.extend((child, depth + 1) for child in current)
+        elif current_type is float:
+            if not math.isfinite(current):
+                return False
+        elif current is None or current_type in (str, bool, int):
+            continue
+        else:
+            return False
+    return True
 
 
 class DurableReplayLedger:
@@ -97,7 +136,7 @@ def admit_signed_command(
         return AdmissionResult(False, "INVALID_COMMAND_ID")
     if type(command.issued_at) is not int or type(now) is not int:
         return AdmissionResult(False, "INVALID_TIMESTAMP")
-    if not isinstance(command.action, str) or not isinstance(command.arguments, dict):
+    if not isinstance(command.action, str) or type(command.arguments) is not dict:
         return AdmissionResult(False, "INVALID_PAYLOAD")
     if not isinstance(command.signature, str) or len(command.signature) != 64:
         return AdmissionResult(False, "INVALID_SIGNATURE")
@@ -106,9 +145,11 @@ def admit_signed_command(
     if command.issued_at > now + 5 or now - command.issued_at > ledger.ttl_seconds:
         return AdmissionResult(False, "EXPIRED_OR_FUTURE")
     try:
-        # Strict JSON forbids NaN/Infinity and non-JSON arguments.
-        json.dumps(command.arguments, allow_nan=False)
-        if len(canonical_payload(command)) > 8192:
+        # Python tuples, non-string object keys, custom containers and unbounded
+        # object graphs are not valid wire JSON and must fail before signing.
+        if not _is_strict_json_value(command.arguments):
+            return AdmissionResult(False, "INVALID_PAYLOAD")
+        if len(canonical_payload(command)) > MAX_CANONICAL_PAYLOAD_BYTES:
             return AdmissionResult(False, "PAYLOAD_TOO_LARGE")
         expected = sign(command, device_key)
     except (TypeError, ValueError, OverflowError, RecursionError):

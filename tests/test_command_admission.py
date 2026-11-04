@@ -69,6 +69,29 @@ class AdmissionTests(unittest.TestCase):
     def test_nan_payload_rejected(self):
         self.assertEqual(self.check(self.command(args={"bad": float("nan")})).reason, "INVALID_PAYLOAD")
 
+    def test_non_string_json_object_key_rejected(self):
+        cmd = self.command(args={"nested": {1: "not-a-json-object-key"}})
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
+    def test_python_tuple_rejected_as_non_json_container(self):
+        cmd = self.command(args={"items": ("one", "two")})
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
+    def test_excessive_json_depth_rejected(self):
+        nested = "leaf"
+        for _ in range(33):
+            nested = {"child": nested}
+        cmd = self.command(args={"nested": nested})
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
+    def test_excessive_json_node_count_rejected(self):
+        cmd = self.command(args={"items": ["x"] * 4096})
+        self.assertEqual(self.check(cmd).reason, "INVALID_PAYLOAD")
+
+    def test_valid_nested_json_values_are_accepted(self):
+        cmd = self.command(args={"items": ["one", {"enabled": True, "count": 2, "ratio": 1.5, "empty": None}]})
+        self.assertTrue(self.check(cmd).admitted)
+
     def test_large_payload_rejected(self):
         self.assertEqual(self.check(self.command(args={"padding": "x" * 9000})).reason, "PAYLOAD_TOO_LARGE")
 
