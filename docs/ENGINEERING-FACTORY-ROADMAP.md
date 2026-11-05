@@ -32,3 +32,9 @@ No root/firmware flash or production deployment from CI. No public command endpo
 ## AGENT-013 offline plan simulator (2026-11-02)
 
 Implemented a bounded M3 prototype at `core/agent_sandbox.py` with a strict 20-step limit, full preflight, explicit no-side-effect results, cancellation/deadline checks and 34 regression tests. See [AGENT-013 evidence](AGENT-013-OFFLINE-PLAN-SIMULATOR.md). Local tests passed; GitHub CI and independent review are separate gates. This does not replace AGENT-004 authenticated enrollment, nor imply a production agent. The upstream shared `SKILL.md` remains unverified.
+
+## AGENT-004A cross-platform consent protocol primitive (2026-11-05)
+
+Implemented a bounded P-256 ECDSA verification primitive and matching Kotlin/Python canonical payload encoders. Both platforms consume the same Java-Properties fixture at `android/app/src/test/resources/owner-consent-v1.properties`. The Python verifier requires an authenticated transport, a host-issued challenge, an enrolled P-256 public key supplied by a trusted registry, exact challenge-field matching, a 30-second maximum lifetime and atomic nonce consumption through the existing SQLite replay ledger.
+
+This is not yet Android signing, challenge issuance, key registry integration, permission granting or command execution. The existing HMAC consent verifier remains a separate offline prototype. See [AGENT-004A protocol contract](AGENT-004A-CONSENT-PROTOCOL.md). Keep M3 partial and M6 in progress until Android per-use signing, host challenge provenance, supervised integration and independent security review pass. The upstream shared `SKILL.md` remains unverified.
