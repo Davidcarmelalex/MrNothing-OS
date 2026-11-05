@@ -315,10 +315,9 @@ class OwnerAuthorityTrustActivity : Activity() {
         status.text = "Checking trust state before credential confirmation..."
         val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
-            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             if (!operationGate.isActive(token)) return@execute
             val current = try {
-                trustStore.inspect()
+                AndroidOwnerAuthorityTrustStore(appContext).inspect()
             } catch (_: RuntimeException) {
                 AuthorityTrustStoreState.Unavailable
             }
@@ -479,12 +478,12 @@ class OwnerAuthorityTrustActivity : Activity() {
         status.text = "Revalidating trust state before the authorized transaction..."
         val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
-            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             var committed: AuthorityTrustStoreCommit? = null
             var failureMessage: String? = null
             var refreshAfter = false
             try {
                 if (!operationGate.isActive(token)) return@execute
+                val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
                 val current = trustStore.inspect()
                 if (!operationGate.isActive(token)) return@execute
                 val snapshot = storeSnapshot(current)
@@ -637,10 +636,9 @@ class OwnerAuthorityTrustActivity : Activity() {
         val token = operationGate.begin() ?: return
         val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
-            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             if (!operationGate.isActive(token)) return@execute
             val current = try {
-                trustStore.inspect()
+                AndroidOwnerAuthorityTrustStore(appContext).inspect()
             } catch (_: RuntimeException) {
                 AuthorityTrustStoreState.Unavailable
             }

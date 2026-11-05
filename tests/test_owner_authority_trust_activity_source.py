@@ -66,7 +66,7 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
         coordinator = (SRC / "OwnerAuthorityIoCoordinator.kt").read_text()
         self.assertIn("Executors.newSingleThreadExecutor", coordinator)
-        self.assertEqual(code.count("val trustStore = AndroidOwnerAuthorityTrustStore(appContext)"), 3)
+        self.assertEqual(code.count("AndroidOwnerAuthorityTrustStore(appContext)"), 3)
         self.assertNotIn("private val store by lazy", code)
         self.assertIn("executor.execute { task() }", coordinator)
         self.assertIn("OwnerAuthorityIoCoordinator.execute", code)
