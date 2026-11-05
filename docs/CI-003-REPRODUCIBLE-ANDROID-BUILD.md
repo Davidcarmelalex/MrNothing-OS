@@ -64,3 +64,17 @@ Cross-runner evidence:
 - Verifier reported byte-identical APKs, identical normalized contents, runtime inventory, SBOM, toolchain and source commit.
 
 The verifier report explicitly retains release_ready=false and provenance_signed=false. This establishes reproducibility for this unsigned artifact and recorded runner/toolchain pair only. It does not establish a signed release, complete build-environment SBOM, immutable GitHub Action pinning, physical-device compatibility or production readiness.
+
+
+## Exact-head revalidation — 2026-11-05
+
+The later documentation-only source commit `d5eaf80e39571e0aeaef6013c0af049151e1f77b` was independently revalidated:
+- Phase 1 push run 42014876703 and PR run 42014883122 — success.
+- CI-003 push run 42014876770 and PR run 42014883313 — success; runner-a, runner-b and independent verifier jobs all succeeded.
+- QA-005 disposable x86_64 emulator PR run 42014883226 — success.
+
+For the PR CI-003 run, both independent builders produced the same unsigned APK SHA-256 `4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9` (2,118,361 bytes, 13 ZIP entries), normalized entry digest `ad274b70c474a120a7524b4c093e1b57af4cd353ba2ad00e57916f4baf04e8e8`, SPDX-2.3 runtime SBOM SHA-256 `bae5331ef29e8e6df321e85763b70c76d2d57f47be705b6da258b896b98913e2`, and runtime inventory SHA-256 `a8a1b16dd1cefb90d14426c477e924a3710c7a160def52a2ece3a6d55c266e44`. The verifier confirmed matching toolchain and source commit `d5eaf80...`.
+
+The Phase 1 Python job ran 370 tests successfully. QA-011 remained a read-only preflight and reported the TalkBack service disabled; QA-012 was structural semantics only and did not test spoken TalkBack. The emulator workflow success is not physical Pixel evidence.
+
+CI-003 acceptance is verified for this exact unsigned artifact and recorded GitHub-hosted runner/toolchain pair. It does not make the artifact installable, signed, release-ready or production-ready.

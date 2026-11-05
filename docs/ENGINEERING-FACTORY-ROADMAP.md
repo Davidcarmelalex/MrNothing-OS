@@ -138,3 +138,18 @@ Implemented a dedicated CI workflow with two isolated ubuntu-24.04 builder jobs 
 A deterministic SPDX-2.3 SBOM is generated from resolved releaseRuntimeClasspath artifacts and includes each dependency checksum and Maven purl. The SBOM explicitly excludes build plugins, Gradle internals and SDK packages; those top-level inputs are captured in unsigned build provenance. Whole APK bytes, normalized ZIP entry content, SBOM, runtime inventory, source commit and toolchain inputs must match across the independent runners.
 
 **Acceptance state:** PASSED on exact source commit 43e0e0f5f86718fd1c3265364c71bed8547b8a7c. Push run 42014136696 and PR run 42014145465 both passed the two-builder and independent-verifier jobs. The unsigned APK was byte-identical across runners (SHA-256 4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9); normalized APK entries, runtime inventory, SPDX-2.3 SBOM and recorded toolchain inputs matched. The SBOM contains the app plus two resolved runtime artifacts. Provenance explicitly says release_ready=false and provenance_signed=false. This validates this exact unsigned build pair only. It does not complete M1 or M8; independent supervisor approval, signed reproducible release, physical Pixel validation and remaining product gates are still outstanding.
+
+
+## CI-003 exact-head acceptance and CI-004 hardening — 2026-11-05
+
+The branch reached `d5eaf80e39571e0aeaef6013c0af049151e1f77b`. Exact-head Phase 1 push/PR checks passed (runs 42014876703 and 42014883122); the Python policy job executed 370 tests. CI-003 push/PR checks passed (42014876770 and 42014883313), including two independent unsigned builders and the verifier. QA-005 emulator run 42014883226 completed successfully. QA-011 only confirmed TalkBack availability and reported the service disabled; QA-012 was a structural audit, not spoken navigation.
+
+CI-003 verified byte-identical unsigned APKs across two independent GitHub-hosted runner jobs, matching normalized APK entries, runtime dependency inventory, SPDX-2.3 runtime SBOM, recorded toolchain and source commit. The unsigned artifact remains `release_ready=false`; the runtime SBOM is not a complete build-environment SBOM.
+
+**CI-004** pins all GitHub Actions used by the three repository workflows to full commit SHAs resolved from official action tag refs; checkout credential persistence is disabled; workflow permissions remain `contents: read`; runner labels are explicit `ubuntu-24.04`. A standard-library regression suite guards these invariants. See [CI-004](CI-004-ACTION-PINNING.md).
+
+**Milestone state:** M1 remains IN PROGRESS pending immutable workflow hardening CI, complete dependency verification, independent supervisor approval and reviewed release governance. M2 remains IN PROGRESS; spoken TalkBack and physical-device validation are open. M3 remains PARTIAL with no integrated executor. M4 and M5 remain NOT STARTED. M6 remains IN PROGRESS pending production trust provisioning and independent security review. M7 remains BLOCKED by Pixel 9 Pro access. M8 remains BLOCKED.
+
+## Next bounded engineering task — CI-005 dependency verification
+
+Add Gradle dependency verification metadata for the Android plugin, buildscript and runtime/test dependency graphs. Generate SHA-256 verification metadata in a controlled CI process, commit only reviewed checksums and trusted repository identities, enable strict verification in all Android workflows, and add a negative test proving a modified dependency artifact fails before compilation. Preserve the pinned Gradle distribution checksum and keep CI artifacts unsigned/non-release. Do not generate production signing keys or alter release status.

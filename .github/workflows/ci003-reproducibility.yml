@@ -23,14 +23,15 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: '17.0.13+11'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
       - name: Install pinned Android SDK platform and build tools
@@ -69,7 +70,7 @@ jobs:
           python3 ../scripts/ci003_artifacts.py sbom --inventory "$INVENTORY" --commit "$SOURCE_COMMIT" --app-version "0.1.0-dev" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/sbom.spdx.json"
           python3 ../scripts/ci003_artifacts.py provenance --apk "$APK" --sbom "$OUT/sbom.spdx.json" --commit "$SOURCE_COMMIT" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/provenance.json" --operating-system "ubuntu-24.04" --jdk-distribution "Temurin" --jdk-version "$JAVA_VERSION" --gradle-version "8.9" --gradle-sha256 "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab" --agp-version "8.7.3" --kotlin-version "2.0.21" --compile-sdk "35" --build-tools "35.0.0" --sdkmanager-version "$SDKMANAGER_VERSION"
           sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" > "$OUT/SHA256SUMS.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci003-unsigned-release-${{ matrix.builder }}
           path: |
@@ -87,17 +88,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci003-unsigned-release-runner-a
           path: runner-a
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci003-unsigned-release-runner-b
           path: runner-b
@@ -105,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci003_artifacts.py verify --first runner-a --second runner-b --expected-commit "$(git rev-parse HEAD)" --output ci003-verification.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ci003-independent-runner-verification

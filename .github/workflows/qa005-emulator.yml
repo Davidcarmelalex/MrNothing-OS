@@ -39,8 +39,10 @@ jobs:
       QA005_OUTPUT: ${{ github.workspace }}/qa005-evidence
       QA005_APK: ${{ github.workspace }}/android/app/build/outputs/apk/debug/app-debug.apk
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: '17'
@@ -149,7 +151,7 @@ jobs:
           timeout 15s adb -s "$ANDROID_SERIAL" logcat -d -t 300 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
           df -h > "$QA005_OUTPUT/disk.txt" || true
           free -h > "$QA005_OUTPUT/memory.txt" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: qa005-emulator-evidence-not-for-release
