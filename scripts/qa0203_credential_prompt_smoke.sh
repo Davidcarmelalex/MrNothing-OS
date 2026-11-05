@@ -75,13 +75,13 @@ tap_prompt_cancel_surface() {
   local name="$1"
   local coords x y
   dump_hierarchy "$name"
-  coords="$(python3 scripts/qa0203_credential_prompt.py cancel-target "$CURRENT_XML")"
+  coords="$(python3 scripts/qa0203_credential_prompt.py cancel-gutter-target "$CURRENT_XML")"
   read -r x y <<< "$coords"
-  printf 'Tapping SystemUI authentication-cancel surface below credential content at %s,%s\n' "$x" "$y"
-  adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$QA020B3_OUTPUT/cancel-prompt-before.png"
+  printf 'Tapping SystemUI cancel background in credential-input side gutter at %s,%s\\n' "$x" "$y"
   adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
   sleep 1
-  adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$QA020B3_OUTPUT/cancel-prompt-after.png"
+  dump_hierarchy "${name}-after-tap"
+  python3 scripts/qa0203_credential_prompt.py assert-no-credential-input "$CURRENT_XML"
 
 }
 
@@ -91,7 +91,7 @@ wait_for_prompt() {
     dump_hierarchy "$name-$attempt"
     if python3 scripts/qa0203_credential_prompt.py assert-prompt-visible "$CURRENT_XML" \
         > /dev/null 2>&1; then
-      python3 scripts/qa0203_credential_prompt.py cancel-target "$CURRENT_XML" > /dev/null
+      python3 scripts/qa0203_credential_prompt.py assert-no-credential-input "$CURRENT_XML"
       return 0
     fi
     sleep 1
@@ -127,8 +127,8 @@ python3 scripts/qa0203_credential_prompt.py assert-probe "$CURRENT_XML"
 
 tap_button "Authenticate with device credential" "cancel-start"
 wait_for_prompt "cancel-prompt"
-# The captured API 35 prompt has only a status-bar inset above its content.
-# Tap the larger bottom margin, outside both credential containers and nav guard.
+# The captured API 35 hierarchy exposes the actual lockPassword EditText.
+# Tap only the validated side gutter and assert that no credential character was entered.
 tap_prompt_cancel_surface "cancel-prompt-cancel-surface"
 wait_for_status "STATUS: PROMPT_ERROR:" "cancel-result"
 python3 scripts/qa0203_credential_prompt.py assert-status-prefix \
@@ -143,6 +143,6 @@ python3 scripts/qa0203_credential_prompt.py assert-status \
   "$CURRENT_XML" "STATUS: DEVICE_CREDENTIAL_ACCEPTED"
 
 printf '%s\n' \
-  "QA-020B3 PASS: credential-only system prompt appeared; user cancellation was denied; test-only emulator PIN returned DEVICE_CREDENTIAL; no trust store, permission grant or executor was connected." \
+  "QA-020B3 PASS: credential-only prompt appeared; cancellation callback was observed; test-only emulator PIN returned DEVICE_CREDENTIAL; no trust store, permission grant or executor was connected." \
   > "$QA020B3_OUTPUT/result.txt"
 cat "$QA020B3_OUTPUT/result.txt"

@@ -20,8 +20,8 @@ PROMPT_PANEL_RESOURCE_IDS = {
     "com.android.systemui:id/auth_credential_header",
     "com.android.systemui:id/auth_credential_input",
 }
-SYSTEM_EDGE_GUARD_MIN_PX = 96
-SYSTEM_EDGE_GUARD_DIVISOR = 20
+CREDENTIAL_INPUT_RESOURCE_ID = "com.android.systemui:id/lockPassword"
+SIDE_GUTTER_GUARD_PX = 48
 
 
 def parse_hierarchy(path):
@@ -69,16 +69,16 @@ def find_button(path, label):
     return _center(matches[0])
 
 
-def find_prompt_cancel_target(path):
-    """Return a SystemUI outside-panel point below the credential content.
+def find_prompt_cancel_gutter_target(path):
+    """Return a point in the side gutter beside the actual credential EditText.
 
-    The top gap in the captured API 35 hierarchy is only the status-bar inset;
-    tapping there does not cancel the credential prompt. Prefer a point below
-    both credential content containers and above the bottom system-UI guard.
-    If that safe region is absent, fail closed rather than tapping an edge.
+    The API 35 keyguard keypad occupies the lower screen even though its keys
+    are not represented in the captured UIAutomator hierarchy. Never tap the
+    bottom margin. Derive a side gutter from the unique lockPassword EditText,
+    then reject any point overlapping another visible clickable SystemUI node.
     """
     nodes = parse_hierarchy(path)
-    matches = [
+    backgrounds = [
         node for node in nodes
         if node.get("package") == CANCEL_SURFACE_PACKAGE
         and node.get("resource-id") == CANCEL_SURFACE_RESOURCE_ID
@@ -88,9 +88,10 @@ def find_prompt_cancel_target(path):
         and node.get("enabled") == "true"
         and node.get("visible-to-user", "true") == "true"
     ]
-    if len(matches) != 1:
+    if len(backgrounds) != 1:
         raise ValueError("Expected exactly one visible SystemUI authentication-cancel surface")
-    screen_left, screen_top, screen_right, screen_bottom = _bounds(matches[0])
+    background = backgrounds[0]
+    screen_left, screen_top, screen_right, screen_bottom = _bounds(background)
     if (screen_left, screen_top) != (0, 0):
         raise ValueError("Authentication-cancel surface must cover the screen origin")
 
@@ -104,27 +105,71 @@ def find_prompt_cancel_target(path):
     }
     if any(len(panel_nodes) != 1 for panel_nodes in panels_by_id.values()):
         raise ValueError("Credential header and input panels must each be uniquely present")
+    input_container = _bounds(panels_by_id["com.android.systemui:id/auth_credential_input"][0])
 
-    panel_bounds = [_bounds(panel_nodes[0]) for panel_nodes in panels_by_id.values()]
-    if any(
-        left < screen_left or top < screen_top
-        or right > screen_right or bottom > screen_bottom
-        for left, top, right, bottom in panel_bounds
+    fields = [
+        node for node in nodes
+        if node.get("package") == CANCEL_SURFACE_PACKAGE
+        and node.get("resource-id") == CREDENTIAL_INPUT_RESOURCE_ID
+        and node.get("class") == "android.widget.EditText"
+        and node.get("clickable") == "true"
+        and node.get("enabled") == "true"
+        and node.get("visible-to-user", "true") == "true"
+    ]
+    if len(fields) != 1:
+        raise ValueError("Expected exactly one visible SystemUI credential input")
+    field_left, field_top, field_right, field_bottom = _bounds(fields[0])
+    if not (
+        input_container[0] <= field_left < field_right <= input_container[2]
+        and input_container[1] <= field_top < field_bottom <= input_container[3]
     ):
-        raise ValueError("Credential panel bounds escape the cancel surface")
+        raise ValueError("Credential input bounds escape their SystemUI container")
+    if not (
+        screen_left <= field_left < field_right <= screen_right
+        and screen_top <= field_top < field_bottom <= screen_bottom
+    ):
+        raise ValueError("Credential input bounds escape the cancel surface")
 
-    panel_bottom = max(bounds[3] for bounds in panel_bounds)
-    screen_height = screen_bottom - screen_top
-    edge_guard = max(SYSTEM_EDGE_GUARD_MIN_PX, screen_height // SYSTEM_EDGE_GUARD_DIVISOR)
-    safe_bottom = screen_bottom - edge_guard
-    if panel_bottom >= safe_bottom:
-        raise ValueError("No safe outside-panel region exists above the bottom system-UI guard")
+    left_gutter = field_left - screen_left
+    right_gutter = screen_right - field_right
+    side, width = max((("left", left_gutter), ("right", right_gutter)), key=lambda item: item[1])
+    if width <= SIDE_GUTTER_GUARD_PX * 2:
+        raise ValueError("No sufficiently wide side gutter exists outside the credential input")
+    x = screen_left + width // 2 if side == "left" else field_right + width // 2
+    y = field_top + (field_bottom - field_top) // 2
+    if field_left <= x <= field_right or not (
+        screen_left < x < screen_right and screen_top < y < screen_bottom
+    ):
+        raise ValueError("Derived cancellation point overlaps credential input or screen edge")
 
-    safe_y = panel_bottom + (safe_bottom - panel_bottom) // 2
-    if not (panel_bottom < safe_y < safe_bottom):
-        raise ValueError("Unable to derive an outside-panel cancel point")
-    return (screen_left + screen_right) // 2, safe_y
+    for node in nodes:
+        if node is background or node.get("package") != CANCEL_SURFACE_PACKAGE:
+            continue
+        if (
+            node.get("clickable") != "true"
+            or node.get("enabled") != "true"
+            or node.get("visible-to-user", "true") != "true"
+        ):
+            continue
+        left, top, right, bottom = _bounds(node)
+        if left <= x <= right and top <= y <= bottom:
+            raise ValueError("Cancellation point overlaps another clickable SystemUI control")
+    return x, y
 
+
+def assert_no_credential_input(path):
+    """Pass only if the prompt is gone or its credential EditText is still empty."""
+    nodes = parse_hierarchy(path)
+    fields = [
+        node for node in nodes
+        if node.get("package") == CANCEL_SURFACE_PACKAGE
+        and node.get("resource-id") == CREDENTIAL_INPUT_RESOURCE_ID
+        and node.get("class") == "android.widget.EditText"
+    ]
+    if len(fields) > 1:
+        raise ValueError("Multiple SystemUI credential inputs are present")
+    if fields and fields[0].get("text", "").strip():
+        raise ValueError("Cancellation gesture changed the credential input")
 
 def status(path):
     nodes = parse_hierarchy(path)
@@ -180,8 +225,8 @@ def assert_prompt_visible(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=(
-        "button", "cancel-target", "status", "assert-probe", "assert-status",
-        "assert-status-prefix", "assert-prompt-visible"
+        "button", "cancel-gutter-target", "status", "assert-probe", "assert-status",
+        "assert-status-prefix", "assert-prompt-visible", "assert-no-credential-input"
     ))
     parser.add_argument("xml")
     parser.add_argument("expected", nargs="?")
@@ -191,8 +236,8 @@ def main():
             if args.expected is None:
                 raise ValueError("Button label is required")
             print(*find_button(args.xml, args.expected))
-        elif args.command == "cancel-target":
-            print(*find_prompt_cancel_target(args.xml))
+        elif args.command == "cancel-gutter-target":
+            print(*find_prompt_cancel_gutter_target(args.xml))
         elif args.command == "status":
             print(status(args.xml))
         elif args.command == "assert-probe":
@@ -207,6 +252,8 @@ def main():
             assert_status_prefix(args.xml, args.expected)
         elif args.command == "assert-prompt-visible":
             assert_prompt_visible(args.xml)
+        elif args.command == "assert-no-credential-input":
+            assert_no_credential_input(args.xml)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1

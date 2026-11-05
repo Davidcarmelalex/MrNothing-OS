@@ -82,3 +82,10 @@ The exact-head QA-005 run 42079017623 still failed at the cancellation assertion
 The corrected parser requires exactly one header and one input node, validates both against the full-screen background, and derives a tap point below the combined credential content and above a bottom system-UI guard of max(96 pixels, 5% of screen height). The captured hierarchy now yields (540,1494). If no safe bottom margin exists, the helper fails closed rather than tapping the status bar or navigation area. The smoke script captures before/after screenshots around the cancellation tap, requires a prompt-error callback, then repeats the prompt for the synthetic test-PIN success path.
 
 Local focused parser tests, shell syntax and Python compilation passed. These checks do not establish emulator interaction. The exact-head QA-005 rerun remains required; no QA-020B3 runtime pass is claimed until cancellation and the subsequent DEVICE_CREDENTIAL success callback both pass. No trust-store commit, permission grant, executor connection, physical Pixel test or production release is part of this probe.
+
+
+## QA-020B3 cancellation harness correction — 2026-11-06, runtime pending
+
+The exact-head emulator run 42084901826 failed after the harness tapped (540,1494). The captured UIAutomator hierarchy shows the SystemUI `lockPassword` EditText changed to a single bullet while the credential prompt remained visible; the tap reached the hidden keypad. The test-only PIN cleanup succeeded, and the PIN was not submitted for authentication. The prior bottom-margin safe-point assumption is withdrawn.
+
+The corrected harness derives a side-gutter coordinate from the actual `lockPassword` bounds (the captured fixture yields 133,1033), rejects overlapping clickable SystemUI controls, and immediately asserts that the prompt is gone or the input remains empty. The test no longer taps the bottom margin or stores secure black screenshots. Exact-head emulator rerun is required; no QA-020B3 cancellation or successful credential callback pass is claimed yet.

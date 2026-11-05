@@ -319,3 +319,10 @@ At source/test head d33b17ca5a35329889ed82f9dfde7bda402dd4b4, Phase 1 push/PR an
 The QA-020B3 helper and smoke script now use SystemUI's explicit accessible Tap to cancel authentication background surface. The parser derives a point above the credential panel and refuses ambiguous or unsafe hierarchies. Three regression tests cover safe-point selection and fail-closed cases. Local focused Python tests: 14 passed; shell syntax and Python compilation passed; the captured failure artifact resolves to 540 31. Exact-head GitHub emulator rerun is pending; no runtime pass is claimed.
 
 The earlier QA-020B3 success path did not execute because cancellation failed first. Successful DEVICE_CREDENTIAL callback validation remains unverified until the corrected emulator run passes. No StrongBox-backed trust commit or Pixel 9 Pro validation is established. Independent security review remains pending; no milestone is complete.
+
+
+## QA-020B3 cancellation-harness correction — 2026-11-06
+
+Audit head: `c92fad5dd8fea0fd5029cd01d14a36fd59924d6d`. Phase 1 push/PR and CI-003 push/PR passed. QA-005 run 42084901826 failed only in QA-020B3 cancellation after a bottom-margin tap at (540,1494) entered one character into the hidden SystemUI keypad; artifact 13442612292 records a bullet in `lockPassword`. The fixed test PIN was not submitted and cleanup succeeded. The old bottom-margin target is withdrawn.
+
+The corrected harness derives a side-gutter point from the actual `lockPassword` field bounds (captured fixture: 133,1033), rejects overlap with clickable SystemUI controls, and verifies that cancellation either dismisses the prompt or leaves the credential field empty. The bottom-margin tap and secure-screen screenshots are removed. Python/parser and shell checks are pending execution; exact-head QA-005 must pass cancellation and successful DEVICE_CREDENTIAL callback before runtime acceptance. M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED, M8 BLOCKED. No milestone is complete.
