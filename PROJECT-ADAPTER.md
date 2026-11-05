@@ -42,3 +42,6 @@ No unauthorized root escalation, credential extraction, covert recording, unrest
 The recursive tree of feat/phase1-agentic-phone contains this local PROJECT-ADAPTER.md and no SKILL.md. An authorized Library title-only search for SKILL.md returned no result, and no upstream shared package was supplied or verified. The upstream package remains unverified; this local adapter must not be represented as an installed copy.
 
 SEC-019B extends the consent boundary with exact live SSLSocket-object binding, adapter-retained issued challenges, monotonic session/challenge expiry and a three-argument verifier API. The executor remains disconnected. Independent security approval remains pending.
+
+
+SEC-020A adds a pure-JVM offline authority trust policy for first-install, signed rotation and explicit recovery. It returns a validated proposal only; it does not persist trust, mutate Android Keystore, display a ceremony UI or connect enrollment/execution. SEC-020B remains required for the StrongBox-backed generation watermark, encrypted active-anchor persistence and owner-visible credential-confirmed ceremony.
