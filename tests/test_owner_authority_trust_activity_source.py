@@ -50,7 +50,7 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
 
     def test_store_commit_follows_credential_and_state_revalidation(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
-        finish = code.index("confirmation.finish(expectedBinding, credentialApproved)")
+        finish = code.index("confirmation.finish(expectedBinding, credentialResultAccepted)")
         inspect = code.index("store.inspect()", finish)
         commit = code.index("store.commit(decision)", inspect)
         self.assertLess(finish, inspect)
