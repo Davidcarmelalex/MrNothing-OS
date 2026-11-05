@@ -47,7 +47,7 @@ class OwnerAuthorityOperationGateTest {
         assertTrue(gate.isDeliverable(token))
         gate.finish(token)
         assertFalse(gate.isCommitClaimed(token))
-        assertNull(gate.begin())
+        assertTrue(gate.begin() != null)
     }
 
     @Test fun destructionSuppressesCallbackButDoesNotPretendToRollbackClaimedCommit() {
