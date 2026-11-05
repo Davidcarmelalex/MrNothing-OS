@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -31,14 +33,13 @@ android {
     }
 }
 
-val releaseRuntimeClasspath = configurations.named("releaseRuntimeClasspath")
 tasks.register("writeReleaseRuntimeInventory") {
     val inventoryFile = layout.buildDirectory.file("reports/ci003/release-runtime-dependencies.tsv")
     outputs.file(inventoryFile)
     doLast {
-        val rows = releaseRuntimeClasspath.get().resolvedConfiguration.resolvedArtifacts.map { artifact ->
+        val rows = configurations.getByName("releaseRuntimeClasspath").resolvedConfiguration.resolvedArtifacts.map { artifact ->
             val id = artifact.moduleVersion.id
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = MessageDigest.getInstance("SHA-256")
             artifact.file.inputStream().use { input ->
                 val buffer = ByteArray(8192)
                 while (true) {
