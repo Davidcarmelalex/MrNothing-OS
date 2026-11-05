@@ -41,7 +41,6 @@ MAX_DEVICES = 5_000
 MAX_HISTORY_ROWS = 8_000
 MAX_DATABASE_BYTES = 4 * 1024 * 1024
 MAX_CONSENT_REPLAY_ROWS = 10_000
-CONSENT_REPLAY_TTL_MS = 60_000
 _SQLITE_TIMEOUT_SECONDS = 5.0
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -746,12 +745,9 @@ class SQLiteOwnerEnrollmentRegistry:
                 db.execute("ROLLBACK")
                 return "ENROLLMENT_KEY_MISMATCH"
 
-            cutoff = now_epoch_ms - CONSENT_REPLAY_TTL_MS
-            if cutoff >= 0:
-                db.execute(
-                    "DELETE FROM owner_consent_replay WHERE consumed_at_epoch_ms < ?",
-                    (cutoff,),
-                )
+            # Never evict replay records using wall-clock time. A forward clock
+            # jump followed by rollback could otherwise make a still-valid
+            # capability reusable. Capacity exhaustion fails closed.
             if db.execute(
                 "SELECT 1 FROM owner_consent_replay WHERE device_id=? AND nonce=?",
                 (device_id, nonce),

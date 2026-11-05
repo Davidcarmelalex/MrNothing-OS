@@ -17,9 +17,8 @@ The owner/device enrollment database moves to database schema version 2 and gain
 2. Require active state and exact owner/device identity.
 3. Require exact transport certificate SHA-256 fingerprint and credential generation.
 4. Compare the exact canonical P-256 SPKI bytes.
-5. Expire replay rows older than 60 seconds.
-6. Enforce a 10,000-row bound and reject an existing (device, nonce).
-7. Insert the nonce and commit.
+5. Enforce a 10,000-row bound and reject an existing (device, nonce).
+6. Insert the nonce and commit.
 
 Enrollment rotation/revocation already uses `BEGIN IMMEDIATE` against the same file. SQLite therefore serializes these writes: if rotation/revocation commits first, old credentials fail; if admission commits first, it is ordered before the later credential change. This is a local single-database guarantee, not a distributed or hardware-monotonic guarantee.
 
@@ -33,6 +32,7 @@ New databases are initialized directly at schema v2. Existing schema-v1 database
 - revocation committed before admission rejects;
 - rotation committed before admission rejects the old generation;
 - concurrent duplicate nonce submissions admit exactly once;
+- wall-clock advance followed by rollback does not evict a consumed nonce;
 - malformed nonce fails without consuming a valid nonce;
 - explicit v1 migration preserves enrollment/history and is idempotent.
 
@@ -47,3 +47,7 @@ The synthetic tests use ephemeral software keys and temporary databases.
 - Rate limiting, operational audit log, remote attestation and executor design.
 
 The only positive result remains `ADMITTED_NO_EXECUTION`. No Android action is executed.
+
+## Replay-retention decision
+
+The initial draft used wall-clock TTL deletion. Review identified that a forward clock jump followed by rollback could remove a replay record while a capability might again appear unexpired. Automatic wall-clock eviction has therefore been removed. Consumed nonces remain until a separately reviewed compaction/anti-rollback mechanism exists. The 10,000-row limit causes fail-closed capacity rejection rather than unsafe deletion.

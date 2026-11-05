@@ -345,6 +345,22 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(outcomes.count("ADMITTED"), 1)
         self.assertEqual(outcomes.count("REPLAY_OR_CAPACITY"), 11)
 
+
+    def test_wall_clock_advance_then_rollback_never_evicts_replay_nonce(self):
+        self.enroll()
+        args = self._admission_args()
+        self.assertEqual(self.registry.consume_consent_nonce(**args), "ADMITTED")
+        advanced = dict(args, now_epoch_ms=NOW + 120_000)
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**advanced),
+            "REPLAY_OR_CAPACITY",
+        )
+        rolled_back = dict(args, now_epoch_ms=NOW + 1_000)
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**rolled_back),
+            "REPLAY_OR_CAPACITY",
+        )
+
     def test_invalid_consent_admission_context_does_not_mutate_state(self):
         self.enroll()
         args = self._admission_args(nonce="not-a-canonical-nonce")
