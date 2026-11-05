@@ -82,7 +82,7 @@ def assert_authority_screen(xml):
     ]
     if len(edits) != 5:
         raise ValueError("Expected exactly five authority import fields")
-    _exact_text(nodes, INITIAL_STATUS, "android.widget.TextView")
+    # The status TextView is below the initial ScrollView viewport; later actions assert it.
     return trust_state(xml)
 
 

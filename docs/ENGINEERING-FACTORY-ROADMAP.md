@@ -245,3 +245,8 @@ The SEC-020B2 owner-facing Activity was already reachable from MainActivity, but
 The helper rejects malformed/duplicate/invisible hierarchy targets, unsupported trust states and changed post-cancel state. The script refuses non-emulator serials and requires ro.kernel.qemu=1. It never enters keys, fingerprints, signatures or credentials; never grants permissions or changes the HOME role; and never attempts a successful credential confirmation or trust-store commit.
 
 Exact-head CI/emulator evidence is pending. This is UI runtime coverage only, not StrongBox, Keyguard-success, Pixel 9 Pro, TalkBack speech or independent security acceptance. Keep M1/M2/M6 in progress and all other milestones at their existing verified states; no milestone is complete.
+
+
+### QA-020B2 runtime harness correction
+
+The first exact-head emulator run reached the owner trust Activity but failed its initial hierarchy assertion because the initial status TextView is below the ScrollView viewport. The captured hierarchy verified the title, trust-state label, all five labels and five edit fields. The helper no longer requires that below-fold status node at initial render; it continues to assert the status after the relevant button actions and checks unchanged trust state after cancellation. A fresh exact-head emulator run is pending.

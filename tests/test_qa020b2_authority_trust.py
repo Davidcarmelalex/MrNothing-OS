@@ -65,6 +65,11 @@ class Qa020B2HierarchyTests(unittest.TestCase):
             state="Trust state: empty. First install requires generation 1."
         )).startswith("Trust state: empty."))
 
+    def test_initial_status_may_be_below_scroll_view_viewport(self):
+        self.assertTrue(assert_authority_screen(authority_xml(status="")).startswith(
+            "Trust state: unavailable."
+        ))
+
     def test_corrupt_or_recovery_state_is_not_accepted_as_fresh(self):
         for state in (
             "Trust state: corrupt · INVALID_RECORD. All mutations are refused.",

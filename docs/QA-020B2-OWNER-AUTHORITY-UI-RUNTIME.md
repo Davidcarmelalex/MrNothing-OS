@@ -28,3 +28,8 @@ Exercise the newly added owner-facing authority trust Activity through its real 
 The CI workflow step is QA-020B2: owner authority trust UI runtime (emulator only). Its uploaded hierarchy snapshots and result record are diagnostics, not release artifacts. The Python helper tests validate strict hierarchy assertions and emulator-only script guards.
 
 **Limitations:** this does not prove real Keyguard success, StrongBox behavior, Android AtomicFile crash recovery, TalkBack spoken navigation or Pixel 9 Pro compatibility. Those remain separate hardware/accessibility/security gates. Exact-head CI is pending when this specification is first committed.
+
+
+## Runtime harness correction
+
+The first emulator attempt successfully launched the owner trust Activity. Its UIAutomator dump showed the initial status message is below the ScrollView viewport and is not included in the first hierarchy snapshot. The helper was corrected to validate the visible title, trust state, labels and fields without requiring that off-screen status. The action-specific status assertions remain. This is a test-harness correction; Android app behavior was not changed. Exact-head rerun is pending.
