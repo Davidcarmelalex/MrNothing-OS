@@ -12,7 +12,7 @@ internal object OwnerAuthorityIoCoordinator {
     }
 
     fun execute(task: () -> Unit) {
-        executor.execute(task)
+        executor.execute { task() }
     }
 }
 

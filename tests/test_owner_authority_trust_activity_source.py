@@ -66,6 +66,7 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
         coordinator = (SRC / "OwnerAuthorityIoCoordinator.kt").read_text()
         self.assertIn("Executors.newSingleThreadExecutor", coordinator)
+        self.assertIn("executor.execute { task() }", coordinator)
         self.assertIn("OwnerAuthorityIoCoordinator.execute", code)
         self.assertNotIn("store.inspect()", code)
         self.assertNotIn("store.commit(", code)
