@@ -89,3 +89,12 @@ Local focused parser tests, shell syntax and Python compilation passed. These ch
 The exact-head emulator run 42084901826 failed after the harness tapped (540,1494). The captured UIAutomator hierarchy shows the SystemUI `lockPassword` EditText changed to a single bullet while the credential prompt remained visible; the tap reached the hidden keypad. The test-only PIN cleanup succeeded, and the PIN was not submitted for authentication. The prior bottom-margin safe-point assumption is withdrawn.
 
 The corrected harness derives a side-gutter coordinate from the actual `lockPassword` bounds (the captured fixture yields 133,1033), rejects overlapping clickable SystemUI controls, and immediately asserts that the prompt is gone or the input remains empty. The test no longer taps the bottom margin or stores secure black screenshots. Exact-head emulator rerun is required; no QA-020B3 cancellation or successful credential callback pass is claimed yet.
+
+
+## SEC-020B3 exact-head runtime acceptance — 2026-11-06
+
+The corrected debug-only cancellation-signal harness passed on exact head 60a7a8162c71a04fb6cc90af7afc68ee33f3f46b in QA-005 PR run [42099903280](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42099903280). The job log confirms prompt visibility, a DUMP-protected cancellation signal producing the prompt-error callback, a subsequent synthetic test PIN returning DEVICE_CREDENTIAL_ACCEPTED, cleanup, and no trust-store/permission/executor connection. This is disposable API 35 x86_64 emulator evidence only. QA-011 remained service-disabled; QA-012 was structural only, not spoken TalkBack. It does not establish a StrongBox trust commit or Pixel 9 Pro behavior.
+
+## SEC-020B4 follow-on
+
+Trust-store inspect/commit operations are moved off the Activity main thread through a process-wide single-thread executor and lifecycle operation gate. Cancellation or Activity destruction before the synchronized commit claim suppresses the queued commit. Once the transaction is claimed after credential, binding, proposal and device-safety revalidation, it is allowed to finish atomically; Activity destruction suppresses UI delivery rather than pretending to roll back an already-started transaction. See docs/SEC-020B4-LIFECYCLE-SAFE-IO.md. Exact-head CI and emulator validation for B4 are pending.

@@ -1,4 +1,4 @@
-"""SEC-020B3 source gates; these are not physical-device or StrongBox tests."""
+"""SEC-020B3/B4 source gates; not physical-device or StrongBox tests."""
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -40,23 +40,37 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         self.assertNotIn("startActivityForResult(", code)
         self.assertNotIn("onActivityResult(", code)
         self.assertGreaterEqual(code.count("OwnerCredentialSafetyGate.isSafe(this)"), 2)
+        self.assertIn("OwnerCredentialSafetyGate.isSafe(applicationContext)", code)
         self.assertIn("confirmation.finish(expectedBinding, credentialResultAccepted)", code)
 
-    def test_prompt_cancellation_revokes_binding_before_callback(self):
+    def test_cancellation_invalidates_operation_before_signal_callback(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
-        revoke = code.index("private fun revokePendingCredential()")
-        clear_binding = code.index("pendingBinding = null", revoke)
-        cancel_signal = code.index("activeCancellation?.cancel()", revoke)
+        cancel = code.index("private fun cancelPending(clearImport: Boolean)")
+        clear_binding = code.index("pendingBinding = null", cancel)
+        cancel_signal = code.index("activeCancellation?.cancel()", cancel)
         self.assertLess(clear_binding, cancel_signal)
-        self.assertIn("revokePendingCredential()", code[code.index("override fun onDestroy()"):])
+        self.assertIn("operationGate.cancel(token)", code[cancel:])
+        self.assertIn("operationGate.destroy()", code[code.index("override fun onDestroy()"):])
 
     def test_store_commit_follows_credential_and_state_revalidation(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
         finish = code.index("confirmation.finish(expectedBinding, credentialResultAccepted)")
-        inspect = code.index("store.inspect()", finish)
-        commit = code.index("store.commit(decision)", inspect)
+        inspect = code.index("trustStore.inspect()", finish)
+        claim = code.index("operationGate.claimCommit(token)", inspect)
+        commit = code.index("trustStore.commit(decision)", claim)
         self.assertLess(finish, inspect)
-        self.assertLess(inspect, commit)
+        self.assertLess(inspect, claim)
+        self.assertLess(claim, commit)
+
+    def test_store_io_is_serialized_off_main_thread(self):
+        code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
+        coordinator = (SRC / "OwnerAuthorityIoCoordinator.kt").read_text()
+        self.assertIn("Executors.newSingleThreadExecutor", coordinator)
+        self.assertIn("OwnerAuthorityIoCoordinator.execute", code)
+        self.assertNotIn("store.inspect()", code)
+        self.assertNotIn("store.commit(", code)
+        self.assertIn("operationGate.isActive(token)", code)
+        self.assertIn("operationGate.claimCommit(token)", code)
 
     def test_out_of_band_fingerprint_attestation_is_required(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()

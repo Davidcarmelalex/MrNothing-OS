@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.util.TypedValue
@@ -31,6 +33,10 @@ class OwnerAuthorityTrustActivity : Activity() {
         SystemClock::elapsedRealtimeNanos
     )
     private var credentialCancellation: CancellationSignal? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val operationGate = OwnerAuthorityOperationGate()
+    private var activeOperationToken: Long? = null
+    private var trustStateLoaded = false
     private val store by lazy { AndroidOwnerAuthorityTrustStore(applicationContext) }
 
     private lateinit var keyIdField: EditText
@@ -80,8 +86,9 @@ class OwnerAuthorityTrustActivity : Activity() {
             filterTouchesWhenObscured = true
             setOnTouchListener { _, event ->
                 if (!OwnerConsentTouchGate.isUnobscured(event.flags)) {
-                    cancelPending(false)
-                    status.text = "Obscured touch refused. Authority confirmation canceled."
+                    if (cancelPending(false)) {
+                        status.text = "Obscured touch refused. Authority confirmation canceled."
+                    }
                     true
                 } else false
             }
@@ -116,8 +123,9 @@ class OwnerAuthorityTrustActivity : Activity() {
             filterTouchesWhenObscured = true
             setOnTouchListener { _, event ->
                 if (!OwnerConsentTouchGate.isUnobscured(event.flags)) {
-                    cancelPending(false)
-                    status.text = "Obscured touch refused. Authority confirmation canceled."
+                    if (cancelPending(false)) {
+                        status.text = "Obscured touch refused. Authority confirmation canceled."
+                    }
                     true
                 } else false
             }
@@ -198,8 +206,9 @@ class OwnerAuthorityTrustActivity : Activity() {
             filterTouchesWhenObscured = true
             setOnTouchListener { _, event ->
                 if (!OwnerConsentTouchGate.isUnobscured(event.flags)) {
-                    cancelPending(false)
-                    status.text = "Obscured touch refused. Authority confirmation canceled."
+                    if (cancelPending(false)) {
+                        status.text = "Obscured touch refused. Authority confirmation canceled."
+                    }
                     true
                 } else false
             }
@@ -227,12 +236,12 @@ class OwnerAuthorityTrustActivity : Activity() {
         addButton(
             root, "Cancel and clear",
             "Cancel any pending trust ceremony and clear imported public-key fields"
-        ) { cancelPending(true); status.text = "Canceled. No trust change was made." }
+        ) { if (cancelPending(true)) status.text = "Canceled. No trust change was made." }
 
         addButton(
             root, "Return to launcher",
             "Return to Mr. Nothing without changing authority trust"
-        ) { cancelPending(true); finish() }
+        ) { if (cancelPending(true)) finish() }
 
         setContentView(ScrollView(this).apply {
             isFillViewport = true
@@ -273,16 +282,18 @@ class OwnerAuthorityTrustActivity : Activity() {
     }
 
     private fun beginConfirmation() {
-        if (pendingBinding != null) {
-            status.text = "A trust confirmation is already pending."
+        if (pendingBinding != null || activeOperationToken != null) {
+            status.text = "A trust confirmation or store operation is already pending."
+            return
+        }
+        if (!trustStateLoaded) {
+            status.text = "Trust state is still being checked. Wait before confirming."
             return
         }
         if (!OwnerCredentialSafetyGate.isSafe(this)) {
             status.text = "Secure, unlocked and interactive device state required. Refused."
             return
         }
-        // API 30+ is required so the prompt can allow DEVICE_CREDENTIAL only.
-        // API 29 deliberately fails closed; there is no deprecated Keyguard or biometric fallback.
         if (!OwnerCredentialAuthenticationPolicy.supportsCredentialOnlyPrompt(
                 Build.VERSION.SDK_INT
             )
@@ -295,15 +306,48 @@ class OwnerAuthorityTrustActivity : Activity() {
             return
         }
         val parsed = parseInput() ?: return
-        val current = try {
-            store.inspect()
-        } catch (_: RuntimeException) {
-            status.text = "Trust store unavailable. No change made."
+        val token = operationGate.begin()
+        if (token == null) {
+            status.text = "Another trust-store operation is active. Refused."
+            return
+        }
+        activeOperationToken = token
+        setFormEnabled(false)
+        status.text = "Checking trust state before credential confirmation..."
+        val trustStore = store
+        OwnerAuthorityIoCoordinator.execute {
+            if (!operationGate.isActive(token)) return@execute
+            val current = try {
+                trustStore.inspect()
+            } catch (_: RuntimeException) {
+                AuthorityTrustStoreState.Unavailable
+            }
+            mainHandler.post {
+                if (!operationGate.isActive(token) || isFinishing || isDestroyed) {
+                    operationGate.finish(token)
+                    return@post
+                }
+                continueConfirmation(token, parsed, current)
+            }
+        }
+    }
+
+    private fun continueConfirmation(
+        token: Long,
+        parsed: ParsedAuthorityTrustImport,
+        current: AuthorityTrustStoreState
+    ) {
+        if (!OwnerCredentialSafetyGate.isSafe(this)) {
+            finishOperation(token)
+            setFormEnabled(true)
+            status.text = "Device became unsafe while checking trust state. Refused."
             return
         }
         val snapshot = storeSnapshot(current)
         val mode = modeForState(current)
         if (snapshot == null || mode == null) {
+            finishOperation(token)
+            setFormEnabled(true)
             status.text = "Trust state is unavailable or corrupt. Refused."
             refreshTrustState()
             return
@@ -312,6 +356,8 @@ class OwnerAuthorityTrustActivity : Activity() {
         if (preview !is AuthorityTrustDecision.Blocked ||
             preview.reason != AuthorityTrustBlockReason.OWNER_CONFIRMATION_REQUIRED
         ) {
+            finishOperation(token)
+            setFormEnabled(true)
             status.text = "Proposal refused: " + decisionDescription(preview)
             return
         }
@@ -319,6 +365,8 @@ class OwnerAuthorityTrustActivity : Activity() {
             mode, snapshot, parsed.inputBinding
         )
         if (!confirmation.begin(binding)) {
+            finishOperation(token)
+            setFormEnabled(true)
             status.text = "Confirmation state unavailable or already pending. Refused."
             return
         }
@@ -356,7 +404,6 @@ class OwnerAuthorityTrustActivity : Activity() {
 
         val cancellation = CancellationSignal()
         credentialCancellation = cancellation
-        setFormEnabled(false)
         try {
             prompt.authenticate(
                 cancellation,
@@ -382,7 +429,10 @@ class OwnerAuthorityTrustActivity : Activity() {
                     }
 
                     override fun onAuthenticationFailed() {
-                        if (pendingBinding == binding) {
+                        if (pendingBinding == binding &&
+                            activeOperationToken == token &&
+                            operationGate.isActive(token)
+                        ) {
                             status.text =
                                 "Device credential was not accepted. No trust change made."
                         }
@@ -402,8 +452,8 @@ class OwnerAuthorityTrustActivity : Activity() {
         expectedBinding: String,
         credentialApproved: Boolean
     ) {
-        // Late callbacks after cancellation, Activity destruction or a consumed request are inert.
-        if (pendingBinding != expectedBinding) return
+        val token = activeOperationToken ?: return
+        if (!operationGate.isActive(token) || pendingBinding != expectedBinding) return
         credentialCancellation = null
         pendingBinding = null
 
@@ -411,6 +461,7 @@ class OwnerAuthorityTrustActivity : Activity() {
             independentFingerprintConfirmed.isChecked &&
             OwnerCredentialSafetyGate.isSafe(this)
         if (!confirmation.finish(expectedBinding, credentialResultAccepted)) {
+            finishOperation(token)
             setFormEnabled(true)
             status.text =
                 "Device credential canceled, expired, mismatched or unsafe. No trust change made."
@@ -419,61 +470,88 @@ class OwnerAuthorityTrustActivity : Activity() {
 
         val parsed = parseInput()
         if (parsed == null) {
+            finishOperation(token)
             setFormEnabled(true)
-            return
-        }
-        val current = try {
-            store.inspect()
-        } catch (_: RuntimeException) {
-            setFormEnabled(true)
-            status.text = "Trust store unavailable after credential confirmation. No change made."
-            return
-        }
-        val snapshot = storeSnapshot(current)
-        val mode = modeForState(current)
-        if (snapshot == null || mode == null) {
-            setFormEnabled(true)
-            status.text = "Trust state changed or became unavailable. No change made."
-            refreshTrustState()
-            return
-        }
-        val actualBinding = AuthorityTrustImportParser.confirmationBinding(
-            mode, snapshot, parsed.inputBinding
-        )
-        if (actualBinding != expectedBinding) {
-            setFormEnabled(true)
-            status.text = "Trust state or imported material changed during credential prompt. Refused."
-            return
-        }
-        val decision = prepareDecision(current, parsed, ownerConfirmation = true)
-        if (decision !is AuthorityTrustDecision.Ready) {
-            setFormEnabled(true)
-            status.text = "Trust transition refused after credential confirmation: " +
-                decisionDescription(decision)
             return
         }
 
-        val committed = try {
-            store.commit(decision)
-        } catch (_: RuntimeException) {
-            setFormEnabled(true)
-            status.text = "Trust-store commit failed. No success reported."
-            refreshTrustState()
-            return
+        setFormEnabled(false)
+        status.text = "Revalidating trust state before the authorized transaction..."
+        val trustStore = store
+        OwnerAuthorityIoCoordinator.execute {
+            var committed: AuthorityTrustStoreCommit? = null
+            var failureMessage: String? = null
+            var refreshAfter = false
+            try {
+                if (!operationGate.isActive(token)) return@execute
+                val current = trustStore.inspect()
+                if (!operationGate.isActive(token)) return@execute
+                val snapshot = storeSnapshot(current)
+                val mode = modeForState(current)
+                if (snapshot == null || mode == null) {
+                    failureMessage = "Trust state changed or became unavailable. No change made."
+                    refreshAfter = true
+                } else {
+                    val actualBinding = AuthorityTrustImportParser.confirmationBinding(
+                        mode, snapshot, parsed.inputBinding
+                    )
+                    if (actualBinding != expectedBinding) {
+                        failureMessage =
+                            "Trust state or imported material changed during credential prompt. Refused."
+                        refreshAfter = true
+                    } else {
+                        val decision = prepareDecision(current, parsed, ownerConfirmation = true)
+                        if (decision !is AuthorityTrustDecision.Ready) {
+                            failureMessage =
+                                "Trust transition refused after credential confirmation: " +
+                                    decisionDescription(decision)
+                        } else if (!OwnerCredentialSafetyGate.isSafe(applicationContext)) {
+                            failureMessage =
+                                "Device became unsafe before the trust transaction. No change made."
+                        } else if (!operationGate.claimCommit(token)) {
+                            failureMessage =
+                                "Trust transaction canceled before its commit boundary. No change made."
+                        } else {
+                            // Claiming this boundary means the already-authorized atomic transaction
+                            // has started. Cancellation/destruction before the claim suppresses commit.
+                            committed = trustStore.commit(decision)
+                            refreshAfter = true
+                        }
+                    }
+                }
+            } catch (_: RuntimeException) {
+                failureMessage = "Trust-store operation failed. No success reported."
+                refreshAfter = true
+            }
+
+            mainHandler.post {
+                if (!operationGate.isDeliverable(token) || isFinishing || isDestroyed) {
+                    finishOperation(token)
+                    return@post
+                }
+                finishOperation(token)
+                setFormEnabled(true)
+                independentFingerprintConfirmed.isChecked = false
+                status.text = when (val result = committed) {
+                    is AuthorityTrustStoreCommit.Committed ->
+                        "Authority trust committed at generation " +
+                            result.record.generation +
+                            ". No enrollment or agent access was enabled."
+                    is AuthorityTrustStoreCommit.Refused ->
+                        "Trust-store transition refused: " + result.reason.name
+                    is AuthorityTrustStoreCommit.Failed ->
+                        "Trust-store transaction failed: " + result.reason.name +
+                            ". Inspect recovery state before retrying."
+                    null -> failureMessage ?: "Trust transaction did not complete. No success reported."
+                }
+                if (refreshAfter) refreshTrustState()
+            }
         }
-        setFormEnabled(true)
-        independentFingerprintConfirmed.isChecked = false
-        status.text = when (committed) {
-            is AuthorityTrustStoreCommit.Committed ->
-                "Authority trust committed at generation " +
-                    committed.record.generation + ". No enrollment or agent access was enabled."
-            is AuthorityTrustStoreCommit.Refused ->
-                "Trust-store transition refused: " + committed.reason.name
-            is AuthorityTrustStoreCommit.Failed ->
-                "Trust-store transaction failed: " + committed.reason.name +
-                    ". Inspect recovery state before retrying."
-        }
-        refreshTrustState()
+    }
+
+    private fun finishOperation(token: Long) {
+        operationGate.finish(token)
+        if (activeOperationToken == token) activeOperationToken = null
     }
 
     private fun prepareDecision(
@@ -551,11 +629,35 @@ class OwnerAuthorityTrustActivity : Activity() {
         }
 
     private fun refreshTrustState() {
-        val current = try {
-            store.inspect()
-        } catch (_: RuntimeException) {
-            AuthorityTrustStoreState.Unavailable
+        if (!::trustState.isInitialized || isFinishing || isDestroyed) return
+        trustStateLoaded = false
+        confirmButton.isEnabled = false
+        trustState.text = "Trust state: checking..."
+        val token = operationGate.begin() ?: return
+        val trustStore = store
+        OwnerAuthorityIoCoordinator.execute {
+            if (!operationGate.isActive(token)) return@execute
+            val current = try {
+                trustStore.inspect()
+            } catch (_: RuntimeException) {
+                AuthorityTrustStoreState.Unavailable
+            }
+            mainHandler.post {
+                if (!operationGate.isActive(token) || isFinishing || isDestroyed) {
+                    operationGate.finish(token)
+                    return@post
+                }
+                renderTrustState(current)
+                trustStateLoaded = true
+                operationGate.finish(token)
+                confirmButton.isEnabled =
+                    current !== AuthorityTrustStoreState.Unavailable &&
+                    current !is AuthorityTrustStoreState.Corrupt
+            }
         }
+    }
+
+    private fun renderTrustState(current: AuthorityTrustStoreState) {
         trustState.text = when (current) {
             AuthorityTrustStoreState.Empty ->
                 "Trust state: empty. First install requires generation 1."
@@ -586,17 +688,23 @@ class OwnerAuthorityTrustActivity : Activity() {
         confirmButton.isEnabled = enabled
     }
 
-    private fun revokePendingCredential() {
+    private fun cancelPending(clearImport: Boolean): Boolean {
+        val token = activeOperationToken
+        if (token != null && operationGate.isCommitClaimed(token)) {
+            status.text =
+                "The authorized trust transaction has started and cannot be canceled safely. Wait for completion."
+            return false
+        }
+        if (token != null) {
+            operationGate.cancel(token)
+            activeOperationToken = null
+        }
         val activeCancellation = credentialCancellation
         credentialCancellation = null
         confirmation.revoke()
         pendingBinding = null
-        // Revoke the one-shot binding before cancel(), because cancellation may dispatch a callback.
+        // Revoke the operation and one-shot binding before cancel(), which may dispatch a callback.
         activeCancellation?.cancel()
-    }
-
-    private fun cancelPending(clearImport: Boolean) {
-        revokePendingCredential()
         if (::keyIdField.isInitialized) setFormEnabled(true)
         if (clearImport && ::keyIdField.isInitialized) {
             keyIdField.text.clear()
@@ -607,10 +715,20 @@ class OwnerAuthorityTrustActivity : Activity() {
             independentFingerprintConfirmed.isChecked = false
             fingerprintStatus.text = ""
         }
+        return true
     }
 
     override fun onDestroy() {
-        revokePendingCredential()
+        // Pending/queued operations are invalidated. A transaction already claimed
+        // after credential and safety revalidation is allowed to finish atomically;
+        // its UI callback is suppressed after destruction.
+        operationGate.destroy()
+        activeOperationToken = null
+        val activeCancellation = credentialCancellation
+        credentialCancellation = null
+        confirmation.revoke()
+        pendingBinding = null
+        activeCancellation?.cancel()
         super.onDestroy()
     }
 }

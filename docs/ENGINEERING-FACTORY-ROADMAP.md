@@ -333,3 +333,20 @@ The corrected harness derives a side-gutter point from the actual `lockPassword`
 At audited branch head 8b875fd23d86df525f17d942b74d684682064de2, Phase 1 push/PR and CI-003 push/PR passed; QA-005 failed only in QA-020B3 cancellation. The credential prompt was visible, but the geometry-derived side-gutter tap did not trigger the prompt-error callback. The post-tap field remained empty and the disposable test PIN cleanup succeeded.
 
 The harness now uses a debug-only DUMP-protected receiver to cancel the probe's active CancellationSignal, then verifies the prompt-error callback, prompt disappearance and subsequent successful test-only DEVICE_CREDENTIAL result. This does not claim a user SystemUI outside-tap interaction test. The receiver is excluded from the main/release manifest and has no trust-store, permission-grant or executor capability. Exact-head emulator rerun remains required. No milestone is complete; M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED and M8 BLOCKED.
+
+
+## 2026-11-06 — QA-020B3 exact-head acceptance
+
+At branch head 60a7a8162c71a04fb6cc90af7afc68ee33f3f46b, Phase 1 push/PR and CI-003 push/PR all passed. Phase 1 Python policy jobs reported 433 tests passed on each event; Android manifest security, Gradle unit tests, debug assembly, repeat-build comparison, strict dependency verification and modified-artifact negative control passed. CI-003 independent builders and cross-runner verifier passed with reproducible=true and release_ready=false.
+
+QA-005 PR run [42099903280](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42099903280) passed the complete disposable API 35 x86_64 emulator workflow, including QA-020B2 and QA-020B3. The log confirms the debug-only DUMP-protected CancellationSignal receiver produced a prompt-error callback, the subsequent synthetic test PIN returned DEVICE_CREDENTIAL_ACCEPTED, and cleanup completed. QA-011 was blocked_service_disabled; QA-012 was structural only, not spoken TalkBack. This is emulator prompt-runtime evidence, not a trust-store commit, StrongBox test or Pixel 9 Pro validation.
+
+## SEC-020B4 — lifecycle-safe serialized trust-store I/O
+
+OwnerAuthorityTrustActivity now submits all Android Keystore/AtomicFile inspect and commit operations to a process-wide single-thread executor. The main thread captures immutable import material, performs the credential callback and one-shot confirmation check, then posts state updates through a main Handler. The worker reinspects the store, recomputes the snapshot binding and Ready proposal, performs a final application-context device-safety check, and claims a synchronized commit boundary immediately before commit.
+
+The operation gate allows one active transaction, invalidates queued work on cancel or Activity destruction, and rejects a commit claim after invalidation. An already-claimed atomic transaction is allowed to finish; Activity destruction suppresses its UI callback but cannot promise rollback of a transaction that has started. The Cancel/Clear and Return controls do not falsely claim cancellation after this boundary. The executor remains disconnected from permissions and agent execution.
+
+JVM gate tests cover one-operation admission, cancellation-before-commit, destruction-before-commit, claimed-commit semantics, callback suppression and concurrent admission. Python source gates assert off-main serialized I/O and commit-boundary ordering. Exact-head Phase 1/CI-003/QA-005 results are pending for this SEC-020B4 commit.
+
+Milestones remain: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Independent security review, Pixel 9 Pro StrongBox/Keyguard validation, physical AtomicFile interruption/recovery, spoken TalkBack, permission-bound agent execution, signed OTA and production release evidence remain outstanding.
