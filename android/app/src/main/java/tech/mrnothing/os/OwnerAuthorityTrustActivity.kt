@@ -37,7 +37,6 @@ class OwnerAuthorityTrustActivity : Activity() {
     private val operationGate = OwnerAuthorityOperationGate()
     private var activeOperationToken: Long? = null
     private var trustStateLoaded = false
-    private val store by lazy { AndroidOwnerAuthorityTrustStore(applicationContext) }
 
     private lateinit var keyIdField: EditText
     private lateinit var generationField: EditText
@@ -314,8 +313,9 @@ class OwnerAuthorityTrustActivity : Activity() {
         activeOperationToken = token
         setFormEnabled(false)
         status.text = "Checking trust state before credential confirmation..."
-        val trustStore = store
+        val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
+            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             if (!operationGate.isActive(token)) return@execute
             val current = try {
                 trustStore.inspect()
@@ -477,8 +477,9 @@ class OwnerAuthorityTrustActivity : Activity() {
 
         setFormEnabled(false)
         status.text = "Revalidating trust state before the authorized transaction..."
-        val trustStore = store
+        val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
+            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             var committed: AuthorityTrustStoreCommit? = null
             var failureMessage: String? = null
             var refreshAfter = false
@@ -505,7 +506,7 @@ class OwnerAuthorityTrustActivity : Activity() {
                             failureMessage =
                                 "Trust transition refused after credential confirmation: " +
                                     decisionDescription(decision)
-                        } else if (!OwnerCredentialSafetyGate.isSafe(applicationContext)) {
+                        } else if (!OwnerCredentialSafetyGate.isSafe(appContext)) {
                             failureMessage =
                                 "Device became unsafe before the trust transaction. No change made."
                         } else if (!operationGate.claimCommit(token)) {
@@ -634,8 +635,9 @@ class OwnerAuthorityTrustActivity : Activity() {
         confirmButton.isEnabled = false
         trustState.text = "Trust state: checking..."
         val token = operationGate.begin() ?: return
-        val trustStore = store
+        val appContext = applicationContext
         OwnerAuthorityIoCoordinator.execute {
+            val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
             if (!operationGate.isActive(token)) return@execute
             val current = try {
                 trustStore.inspect()
