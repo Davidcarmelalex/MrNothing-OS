@@ -1,6 +1,6 @@
 # MrNothing OS — verified engineering milestones
 
-**Audit baseline:** 2026-11-05, branch feat/phase1-agentic-phone at 45a8ad2c38816d3c4c299d902d1b2d17e0575087. GitHub push/PR Phase 1 checks and QA-005 emulator workflow passed on this exact head; see the associated Actions runs. No physical Pixel 9 Pro, live authenticated transport, connected command executor, custom firmware, OTA or release signing has been demonstrated. No physical Pixel 9 Pro, live command channel, custom firmware, OTA or release signing has been demonstrated.
+**Audit baseline:** 2026-11-05, branch feat/phase1-agentic-phone at 45a8ad2c38816d3c4c299d902d1b2d17e0575087. GitHub push/PR Phase 1 checks and QA-005 emulator workflow passed on this exact head; see the associated Actions runs. No physical Pixel 9 Pro, live authenticated transport, connected command executor, custom firmware, OTA or release signing has been demonstrated.
 
 | Gate | Owner(s) | Objective acceptance evidence | Baseline |
 | --- | --- | --- | --- |
