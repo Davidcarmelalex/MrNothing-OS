@@ -68,6 +68,7 @@ class CredentialPromptProbeTests(unittest.TestCase):
         self.assertIn('uid=2000(shell)', code)
         self.assertIn('cancel-target', code)
         self.assertIn('tap_prompt_cancel_surface', code)
+        self.assertIn('cancel-prompt-before.png', code)
         self.assertNotIn('input keyevent KEYCODE_BACK', code)
 
     def test_smoke_never_escalates_or_targets_a_physical_device(self):
@@ -142,12 +143,34 @@ class CredentialPromptProbeTests(unittest.TestCase):
 
 
 
-    def test_helper_derives_safe_outside_panel_cancel_point(self):
+    def test_helper_uses_bottom_safe_margin_from_captured_api35_hierarchy(self):
         xml = """<hierarchy>
         <node package="com.android.systemui" class="android.widget.ImageView"
               resource-id="com.android.systemui:id/background"
               content-desc="Tap to cancel authentication" clickable="true"
-              visible-to-user="true" bounds="[0,0][1080,1920]"/>
+              enabled="true" visible-to-user="true" bounds="[0,0][1080,1920]"/>
+        <node package="com.android.systemui" class="android.widget.RelativeLayout"
+              resource-id="com.android.systemui:id/auth_credential_header"
+              bounds="[0,63][1080,903]"/>
+        <node package="com.android.systemui" class="android.widget.FrameLayout"
+              resource-id="com.android.systemui:id/auth_credential_input"
+              bounds="[0,903][1080,1164]"/>
+        </hierarchy>"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "prompt.xml"
+            path.write_text(xml)
+            point = helper.find_prompt_cancel_target(path)
+            self.assertEqual(point, (540, 1494))
+            self.assertGreater(point[1], 1164)
+            self.assertLess(point[1], 1920 - 96)
+
+    def test_helper_rejects_status_bar_only_margin(self):
+        xml = """<hierarchy>
+        <node package="com.android.systemui" class="android.widget.ImageView"
+              resource-id="com.android.systemui:id/background"
+              content-desc="Tap to cancel authentication" clickable="true"
+              enabled="true" visible-to-user="true" bounds="[0,0][1080,1920]"/>
         <node package="com.android.systemui" class="android.widget.RelativeLayout"
               resource-id="com.android.systemui:id/auth_credential_header"
               bounds="[0,63][1080,903]"/>
@@ -159,44 +182,51 @@ class CredentialPromptProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "prompt.xml"
             path.write_text(xml)
-            self.assertEqual(helper.find_prompt_cancel_target(path), (540, 31))
+            with self.assertRaisesRegex(ValueError, "No safe outside-panel"):
+                helper.find_prompt_cancel_target(path)
 
     def test_helper_rejects_missing_or_ambiguous_cancel_surface(self):
-        base = """<node package="com.android.systemui" class="android.widget.ImageView"
+        background = """<node package="com.android.systemui" class="android.widget.ImageView"
         resource-id="com.android.systemui:id/background"
-        content-desc="Tap to cancel authentication" clickable="true"
+        content-desc="Tap to cancel authentication" clickable="true" enabled="true"
         visible-to-user="true" bounds="[0,0][1080,1920]"/>"""
-        panel = """<node package="com.android.systemui" class="android.widget.RelativeLayout"
+        header = """<node package="com.android.systemui" class="android.widget.RelativeLayout"
         resource-id="com.android.systemui:id/auth_credential_header"
         bounds="[0,63][1080,903]"/>"""
+        input_node = """<node package="com.android.systemui" class="android.widget.FrameLayout"
+        resource-id="com.android.systemui:id/auth_credential_input"
+        bounds="[0,903][1080,1164]"/>"""
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "prompt.xml"
-            path.write_text(f"<hierarchy>{panel}</hierarchy>")
+            path.write_text(f"<hierarchy>{header}{input_node}</hierarchy>")
             with self.assertRaises(ValueError):
                 helper.find_prompt_cancel_target(path)
-            path.write_text(f"<hierarchy>{base}{base}{panel}</hierarchy>")
+            path.write_text(f"<hierarchy>{background}{background}{header}{input_node}</hierarchy>")
             with self.assertRaises(ValueError):
                 helper.find_prompt_cancel_target(path)
 
-    def test_helper_rejects_nonclickable_or_no_safe_margin_cancel_surface(self):
-        base = """<node package="com.android.systemui" class="android.widget.ImageView"
+    def test_helper_rejects_nonclickable_or_incomplete_panel(self):
+        background = """<node package="com.android.systemui" class="android.widget.ImageView"
         resource-id="com.android.systemui:id/background"
-        content-desc="Tap to cancel authentication" clickable="{clickable}"
+        content-desc="Tap to cancel authentication" clickable="{clickable}" enabled="true"
         visible-to-user="true" bounds="[0,0][1080,1920]"/>"""
+        header = """<node package="com.android.systemui" class="android.widget.RelativeLayout"
+        resource-id="com.android.systemui:id/auth_credential_header"
+        bounds="[0,63][1080,903]"/>"""
+        input_node = """<node package="com.android.systemui" class="android.widget.FrameLayout"
+        resource-id="com.android.systemui:id/auth_credential_input"
+        bounds="[0,903][1080,1164]"/>"""
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "prompt.xml"
-            panel = """<node package="com.android.systemui" class="android.widget.RelativeLayout"
-            resource-id="com.android.systemui:id/auth_credential_header"
-            bounds="[0,63][1080,903]"/>"""
-            path.write_text(f"<hierarchy>{base.format(clickable='false')}{panel}</hierarchy>")
+            path.write_text(f"<hierarchy>{background.format(clickable='false')}{header}{input_node}</hierarchy>")
             with self.assertRaises(ValueError):
                 helper.find_prompt_cancel_target(path)
-            tight_panel = panel.replace("[0,63]", "[0,1]")
-            path.write_text(f"<hierarchy>{base.format(clickable='true')}{tight_panel}</hierarchy>")
-            with self.assertRaises(ValueError):
+            path.write_text(f"<hierarchy>{background.format(clickable='true')}{header}</hierarchy>")
+            with self.assertRaisesRegex(ValueError, "uniquely present"):
                 helper.find_prompt_cancel_target(path)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,8 +77,12 @@ tap_prompt_cancel_surface() {
   dump_hierarchy "$name"
   coords="$(python3 scripts/qa0203_credential_prompt.py cancel-target "$CURRENT_XML")"
   read -r x y <<< "$coords"
-  printf 'Tapping SystemUI authentication-cancel surface at %s,%s\\n' "$x" "$y"
+  printf 'Tapping SystemUI authentication-cancel surface below credential content at %s,%s\n' "$x" "$y"
+  adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$QA020B3_OUTPUT/cancel-prompt-before.png"
   adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
+  sleep 1
+  adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$QA020B3_OUTPUT/cancel-prompt-after.png"
+
 }
 
 wait_for_prompt() {
@@ -123,8 +127,8 @@ python3 scripts/qa0203_credential_prompt.py assert-probe "$CURRENT_XML"
 
 tap_button "Authenticate with device credential" "cancel-start"
 wait_for_prompt "cancel-prompt"
-# Back did not dismiss this SystemUI credential screen on the API 35 AVD.
-# Use its explicit accessible outside-tap cancel surface, above the credential panel.
+# The captured API 35 prompt has only a status-bar inset above its content.
+# Tap the larger bottom margin, outside both credential containers and nav guard.
 tap_prompt_cancel_surface "cancel-prompt-cancel-surface"
 wait_for_status "STATUS: PROMPT_ERROR:" "cancel-result"
 python3 scripts/qa0203_credential_prompt.py assert-status-prefix \

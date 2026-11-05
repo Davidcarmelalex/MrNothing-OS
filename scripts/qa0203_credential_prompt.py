@@ -20,6 +20,8 @@ PROMPT_PANEL_RESOURCE_IDS = {
     "com.android.systemui:id/auth_credential_header",
     "com.android.systemui:id/auth_credential_input",
 }
+SYSTEM_EDGE_GUARD_MIN_PX = 96
+SYSTEM_EDGE_GUARD_DIVISOR = 20
 
 
 def parse_hierarchy(path):
@@ -68,7 +70,13 @@ def find_button(path, label):
 
 
 def find_prompt_cancel_target(path):
-    """Return a safe point on SystemUI's explicit outside-tap cancel surface."""
+    """Return a SystemUI outside-panel point below the credential content.
+
+    The top gap in the captured API 35 hierarchy is only the status-bar inset;
+    tapping there does not cancel the credential prompt. Prefer a point below
+    both credential content containers and above the bottom system-UI guard.
+    If that safe region is absent, fail closed rather than tapping an edge.
+    """
     nodes = parse_hierarchy(path)
     matches = [
         node for node in nodes
@@ -77,29 +85,45 @@ def find_prompt_cancel_target(path):
         and node.get("class") == "android.widget.ImageView"
         and node.get("content-desc") == CANCEL_SURFACE_DESCRIPTION
         and node.get("clickable") == "true"
+        and node.get("enabled") == "true"
         and node.get("visible-to-user", "true") == "true"
     ]
     if len(matches) != 1:
         raise ValueError("Expected exactly one visible SystemUI authentication-cancel surface")
-    x1, y1, x2, y2 = _bounds(matches[0])
-    if (x1, y1) != (0, 0):
-        raise ValueError("Authentication-cancel surface is not full-screen")
-    panels = [
-        node for node in nodes
-        if node.get("package") == CANCEL_SURFACE_PACKAGE
-        and node.get("resource-id") in PROMPT_PANEL_RESOURCE_IDS
-    ]
-    if not panels:
-        raise ValueError("Credential prompt panel bounds are missing")
-    panel_top = min(_bounds(node)[1] for node in panels)
-    if panel_top <= y1 + 1:
-        raise ValueError("No safe outside-panel cancel point is available")
-    # SystemUI explicitly labels this background "Tap to cancel authentication".
-    # Choose the midpoint of the top margin, strictly above the credential panel.
-    safe_y = y1 + (panel_top - y1) // 2
-    if not (y1 < safe_y < panel_top):
+    screen_left, screen_top, screen_right, screen_bottom = _bounds(matches[0])
+    if (screen_left, screen_top) != (0, 0):
+        raise ValueError("Authentication-cancel surface must cover the screen origin")
+
+    panels_by_id = {
+        resource_id: [
+            node for node in nodes
+            if node.get("package") == CANCEL_SURFACE_PACKAGE
+            and node.get("resource-id") == resource_id
+        ]
+        for resource_id in PROMPT_PANEL_RESOURCE_IDS
+    }
+    if any(len(panel_nodes) != 1 for panel_nodes in panels_by_id.values()):
+        raise ValueError("Credential header and input panels must each be uniquely present")
+
+    panel_bounds = [_bounds(panel_nodes[0]) for panel_nodes in panels_by_id.values()]
+    if any(
+        left < screen_left or top < screen_top
+        or right > screen_right or bottom > screen_bottom
+        for left, top, right, bottom in panel_bounds
+    ):
+        raise ValueError("Credential panel bounds escape the cancel surface")
+
+    panel_bottom = max(bounds[3] for bounds in panel_bounds)
+    screen_height = screen_bottom - screen_top
+    edge_guard = max(SYSTEM_EDGE_GUARD_MIN_PX, screen_height // SYSTEM_EDGE_GUARD_DIVISOR)
+    safe_bottom = screen_bottom - edge_guard
+    if panel_bottom >= safe_bottom:
+        raise ValueError("No safe outside-panel region exists above the bottom system-UI guard")
+
+    safe_y = panel_bottom + (safe_bottom - panel_bottom) // 2
+    if not (panel_bottom < safe_y < safe_bottom):
         raise ValueError("Unable to derive an outside-panel cancel point")
-    return (x1 + x2) // 2, safe_y
+    return (screen_left + screen_right) // 2, safe_y
 
 
 def status(path):

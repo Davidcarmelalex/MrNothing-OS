@@ -73,3 +73,12 @@ The first exact-head emulator run at d33b17ca5a35329889ed82f9dfde7bda402dd4b4 (Q
 The captured hierarchy exposes the clickable SystemUI background node with resource ID com.android.systemui:id/background and content description Tap to cancel authentication. The corrected helper validates that exact node and derives a safe coordinate above the credential panel (540,31 on the captured API 35 AVD). The smoke harness taps that explicit cancellation surface, requires the prompt-error callback, and only then repeats the prompt for successful test-PIN authentication. Three parser regression tests cover the coordinate and fail-closed hierarchy cases.
 
 The correction is committed at 1e05358ca56f08c99f5e4549a0e887f500f2e5ac. Exact-head GitHub emulator rerun is pending; no QA-020B3 runtime pass is claimed yet.
+
+
+## QA-020B3 cancellation-harness correction — 2026-11-05, pending runtime rerun
+
+The exact-head QA-005 run 42079017623 still failed at the cancellation assertion after the previous correction. The captured API 35 hierarchy is 1080×1920: SystemUI's cancel background is [0,0][1080,1920], the credential header is [0,63][1080,903], and the credential input is [0,903][1080,1164]. The previous helper selected (540,31), which lies in the status-bar inset rather than a reliable outside-content region. The prompt therefore remained visible through all 25 polls; the EXIT cleanup again confirmed that the disposable test PIN was cleared. This is a test-harness geometry defect, not evidence of a production authentication callback defect.
+
+The corrected parser requires exactly one header and one input node, validates both against the full-screen background, and derives a tap point below the combined credential content and above a bottom system-UI guard of max(96 pixels, 5% of screen height). The captured hierarchy now yields (540,1494). If no safe bottom margin exists, the helper fails closed rather than tapping the status bar or navigation area. The smoke script captures before/after screenshots around the cancellation tap, requires a prompt-error callback, then repeats the prompt for the synthetic test-PIN success path.
+
+Local focused parser tests, shell syntax and Python compilation passed. These checks do not establish emulator interaction. The exact-head QA-005 rerun remains required; no QA-020B3 runtime pass is claimed until cancellation and the subsequent DEVICE_CREDENTIAL success callback both pass. No trust-store commit, permission grant, executor connection, physical Pixel test or production release is part of this probe.
