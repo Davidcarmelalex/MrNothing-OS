@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from core.command_admission import DurableReplayLedger
+from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import (
     ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload, verify_and_consume,
 )
@@ -18,6 +19,27 @@ FIXTURE = os.path.join(
     os.path.dirname(__file__), "..", "android", "app", "src", "test",
     "resources", "owner-consent-v1.properties",
 )
+
+
+class _Registry:
+    def __init__(self, record=None, *, fail=False, sequence=None):
+        self.record = record
+        self.fail = fail
+        self.sequence = sequence
+        self.calls = 0
+
+    def lookup_active_device(self, device_id):
+        if self.fail:
+            raise OSError("synthetic enrollment registry failure")
+        if self.sequence is not None:
+            index = min(self.calls, len(self.sequence) - 1)
+            self.calls += 1
+            record = self.sequence[index]
+        else:
+            record = self.record
+        if record is None or record.device_id != device_id:
+            return None
+        return record
 
 
 class OwnerConsentProtocolTests(unittest.TestCase):
@@ -40,6 +62,14 @@ class OwnerConsentProtocolTests(unittest.TestCase):
             expires_at_epoch_ms=1_700_000_030_000,
         )
         self.now = self.challenge.issued_at_epoch_ms + 1_000
+        self.transport_fingerprint = "a" * 64
+        self.enrollment = EnrolledOwnerDevice(
+            owner_id="owner-1", device_id="pixel9pro-1",
+            public_key_spki_der=self.public_der, active=True,
+            transport_certificate_sha256=self.transport_fingerprint,
+            credential_generation=1,
+        )
+        self.registry = _Registry(self.enrollment)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -69,6 +99,9 @@ class OwnerConsentProtocolTests(unittest.TestCase):
             "challenge": self.challenge,
             "trusted_public_key_spki_der": self.public_der,
             "transport_authenticated": True,
+            "enrollment_registry": self.registry,
+            "transport_certificate_sha256": self.transport_fingerprint,
+            "credential_generation": 1,
             "ledger": self.ledger,
             "now_epoch_ms": self.now,
         }
@@ -122,6 +155,46 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         altered = replace(self.challenge, session_id="session-other")
         result = self.verify(self.envelope(challenge=altered))
         self.assertEqual(result.reason, "CHALLENGE_MISMATCH")
+
+    def test_revoked_enrollment_is_rejected_without_consuming_nonce(self):
+        self.registry.record = replace(self.enrollment, active=False)
+        rejected = self.verify()
+        self.assertEqual(rejected.reason, "ENROLLMENT_NOT_ACTIVE")
+        self.registry.record = self.enrollment
+        self.assertEqual(self.verify().reason, "ADMITTED_NO_EXECUTION")
+
+    def test_rotated_transport_generation_is_rejected_without_consuming_nonce(self):
+        self.registry.record = replace(
+            self.enrollment,
+            transport_certificate_sha256="b" * 64,
+            credential_generation=2,
+        )
+        rejected = self.verify()
+        self.assertEqual(rejected.reason, "ENROLLMENT_CREDENTIAL_MISMATCH")
+        self.registry.record = self.enrollment
+        self.assertEqual(self.verify().reason, "ADMITTED_NO_EXECUTION")
+
+    def test_rotated_consent_key_is_rejected_without_consuming_nonce(self):
+        other = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        self.registry.record = replace(self.enrollment, public_key_spki_der=other)
+        rejected = self.verify()
+        self.assertEqual(rejected.reason, "ENROLLMENT_KEY_MISMATCH")
+        self.registry.record = self.enrollment
+        self.assertEqual(self.verify().reason, "ADMITTED_NO_EXECUTION")
+
+    def test_registry_failure_fails_closed_without_consuming_nonce(self):
+        rejected = self.verify(enrollment_registry=_Registry(fail=True))
+        self.assertEqual(rejected.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+        self.assertEqual(self.verify().reason, "ADMITTED_NO_EXECUTION")
+
+    def test_revocation_observed_after_nonce_reservation_fails_closed(self):
+        revoked = replace(self.enrollment, active=False)
+        racing = _Registry(sequence=[self.enrollment, revoked])
+        rejected = self.verify(enrollment_registry=racing)
+        self.assertEqual(rejected.reason, "ENROLLMENT_CHANGED_DURING_VERIFICATION")
+        self.assertEqual(self.verify().reason, "REPLAY_OR_CAPACITY")
 
     def test_expired_and_not_yet_valid_challenges_are_rejected(self):
         self.assertEqual(

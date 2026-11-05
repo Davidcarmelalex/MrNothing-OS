@@ -50,6 +50,8 @@ class OwnerConsentFlowTests(unittest.TestCase):
             owner_id="owner-1",
             device_id="pixel9pro-1",
             public_key_spki_der=self.public_der,
+            transport_certificate_sha256="a" * 64,
+            credential_generation=1,
         )
         self.session = AuthenticatedOwnerSession(
             owner_id="owner-1",
@@ -57,6 +59,8 @@ class OwnerConsentFlowTests(unittest.TestCase):
             session_id="session-1",
             authenticated_at_epoch_ms=NOW - 1_000,
             expires_at_epoch_ms=NOW + 60_000,
+            transport_certificate_sha256="a" * 64,
+            credential_generation=1,
         )
         self.issued = self.issue()
 
@@ -93,13 +97,17 @@ class OwnerConsentFlowTests(unittest.TestCase):
             ensure_ascii=True,
         ).encode("ascii")
 
-    def verify(self, envelope, *, issued=None, ledger=None, now=NOW + 1, authenticated=True):
+    def verify(self, envelope, *, issued=None, ledger=None, now=NOW + 1,
+               authenticated=True, registry=None):
         capability = self.issued if issued is None else issued
         return verify_and_consume(
             envelope,
             challenge=capability.capability.challenge,
             trusted_public_key_spki_der=capability.capability.trusted_public_key_spki_der,
             transport_authenticated=authenticated,
+            enrollment_registry=_Registry(self.record) if registry is None else registry,
+            transport_certificate_sha256=self.session.transport_certificate_sha256,
+            credential_generation=self.session.credential_generation,
             ledger=self.ledger if ledger is None else ledger,
             now_epoch_ms=now,
         )
@@ -155,6 +163,26 @@ class OwnerConsentFlowTests(unittest.TestCase):
         self.assertFalse(rejected.admitted)
         self.assertEqual(rejected.reason, "UNAUTHENTICATED")
         self.assertTrue(self.verify(signed).admitted)
+
+    def test_revocation_after_challenge_issuance_blocks_verification(self):
+        signed = self.envelope(self.issued.capability.challenge)
+        self.record = replace(self.record, active=False)
+        rejected = self.verify(signed)
+        self.assertFalse(rejected.admitted)
+        self.assertEqual(rejected.reason, "ENROLLMENT_NOT_ACTIVE")
+        self.record = replace(self.record, active=True)
+        self.assertTrue(self.verify(signed).admitted)
+
+    def test_credential_rotation_after_issuance_blocks_old_session(self):
+        signed = self.envelope(self.issued.capability.challenge)
+        self.record = replace(
+            self.record,
+            transport_certificate_sha256="b" * 64,
+            credential_generation=2,
+        )
+        rejected = self.verify(signed)
+        self.assertFalse(rejected.admitted)
+        self.assertEqual(rejected.reason, "ENROLLMENT_CREDENTIAL_MISMATCH")
 
     def test_session_expiry_caps_challenge_and_verifier_window(self):
         short_session = replace(

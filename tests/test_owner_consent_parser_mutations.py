@@ -13,12 +13,23 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from core.command_admission import DurableReplayLedger
+from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import (
     ConsentChallenge,
     MAX_ENVELOPE_BYTES,
     canonical_payload,
     verify_and_consume,
 )
+
+
+class _Registry:
+    def __init__(self, record):
+        self.record = record
+
+    def lookup_active_device(self, device_id):
+        if self.record is None or self.record.device_id != device_id:
+            return None
+        return self.record
 
 
 class OwnerConsentParserMutationTests(unittest.TestCase):
@@ -40,6 +51,13 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
             expires_at_epoch_ms=1_700_000_030_000,
         )
         self.now = self.challenge.issued_at_epoch_ms + 1_000
+        self.transport_fingerprint = "a" * 64
+        self.registry = _Registry(EnrolledOwnerDevice(
+            owner_id="owner-1", device_id="pixel9pro-1",
+            public_key_spki_der=self.public_der, active=True,
+            transport_certificate_sha256=self.transport_fingerprint,
+            credential_generation=1,
+        ))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -80,6 +98,9 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
             challenge=self.challenge,
             trusted_public_key_spki_der=self.public_der,
             transport_authenticated=True,
+            enrollment_registry=self.registry,
+            transport_certificate_sha256=self.transport_fingerprint,
+            credential_generation=1,
             ledger=self.ledger if ledger is None else ledger,
             now_epoch_ms=self.now,
         )
