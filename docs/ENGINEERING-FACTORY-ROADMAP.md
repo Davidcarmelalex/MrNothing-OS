@@ -171,3 +171,31 @@ The candidate metadata was independently generated and compared from two bootstr
 **Next bounded security task — SEC-020:** define and implement the offline enrollment-authority public-key provisioning and first-install trust ceremony, including owner-visible fingerprint confirmation, anti-rollback generation handling, rotation/recovery, synthetic failure-injection tests and explicit no-network/no-execution boundaries. Keep the executor disconnected until the independent security gate passes.
 
 **Milestone state remains unchanged:** M1 IN PROGRESS, M2 IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M6 IN PROGRESS, M7 BLOCKED by physical Pixel access, M8 BLOCKED. No milestone is COMPLETE; independent supervisor/security approval remains pending.
+
+
+## SEC-020A exact-head verification — 2026-11-05
+
+SEC-020A policy implementation source commit: b4b6dad184d48055753bda2087e28292a1a2a008.
+
+All five final exact-head GitHub Actions workflows passed:
+
+| Workflow | Event | Run | Result |
+| --- | --- | --- | --- |
+| Phase 1 checks | push | [42024219462](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024219462) | success |
+| Phase 1 checks | pull request | [42024226415](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024226415) | success |
+| CI-003 unsigned reproducibility | push | [42024219429](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024219429) | success |
+| CI-003 unsigned reproducibility | pull request | [42024226462](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024226462) | success |
+| QA-005 disposable emulator | pull request | [42024226407](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024226407) | success |
+
+Evidence:
+- Phase 1 push and PR each ran 380 Python tests; both passed Python compilation, Android source/manifest gates, Gradle debug unit tests, debug assembly, strict dependency verification and the modified-artifact negative control.
+- The new OwnerAuthorityTrustCeremonyTest JVM cases were included in the successful Gradle testDebugUnitTest task on both push and PR.
+- CI-003 push and PR each passed both independent builders and the independent verifier. Release unit tests, unsigned release assembly, strict dependency verification, tampered-artifact negative control, runtime inventory, SPDX-2.3 runtime SBOM and provenance generation passed.
+- Both independent runners produced byte-identical unsigned APKs: 2,133,809 bytes, 13 ZIP entries, SHA-256 972cc506d948a34321351785f51129022be0eb0d7b54ed4ae18b9d53bd8f7993. Normalized APK-entry digest: 60cc97ce7e864018ef273ab5180f81328e4edf77565adade460a7eda020ca41c.
+- Runtime inventory SHA-256: a8a1b16dd1cefb90d14426c477e924a3710c7a160def52a2ece3a6d55c266e44. SPDX runtime SBOM SHA-256: 330c5e77bb72bbf5283b2370d1bd39c63a1d645860439b488484ac068fbe6610.
+- Recorded toolchain: ubuntu-24.04, Temurin/OpenJDK 17.0.13, Gradle 8.9 with the committed distribution checksum, AGP 8.7.3, Kotlin 2.0.21, Android platform 35, build-tools 35.0.0 and sdkmanager 12.0.
+- QA-005 booted a disposable x86_64 emulator. Launcher/recovery, 200% font, HOME cancellation/acceptance, stock-launcher restore, keyboard accessibility and insecure-enrollment denial passed. QA-011 reported blocked_service_disabled; QA-012 was structural semantics only, not spoken TalkBack acceptance. Emulator evidence artifact: [13413117195](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42024226407/artifacts/13413117195).
+
+SEC-020A is accepted as a policy slice only. It does not provision or persist an authority key, implement a user interface, create Android Keystore markers, perform StrongBox runtime validation or connect an enrollment service. No agent executor is connected. The independent security/supervisor gate remains PENDING. M1–M8 milestone states remain unchanged.
+
+**Next bounded task — SEC-020B:** implement the Android Keystore-backed generation watermark and encrypted active-anchor store, then an owner-visible offline import/first-install/rotation/recovery ceremony. The store must fail closed on missing or mismatched markers, survive interrupted commits safely, and be covered by failure-injection tests. Keep all enrollment and execution paths disconnected until independent security approval.

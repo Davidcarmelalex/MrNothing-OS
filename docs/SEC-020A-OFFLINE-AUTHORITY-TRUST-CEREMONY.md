@@ -48,3 +48,10 @@ This policy code does not implement that backend. It also does not implement a u
 OwnerAuthorityTrustCeremonyTest uses generated ephemeral JDK Ed25519 keys. It covers fingerprint formatting and mismatch, explicit confirmation, first-install generation, invalid SPKI and key IDs, signed rotation, wrong/tampered signatures, rollback/skipped generations, watermark mismatch, key reuse, invalid current records, recovery eligibility, recovery fingerprint/confirmation, generation exhaustion and deterministic rotation payloads.
 
 These are JVM policy tests, not Android Keystore, StrongBox, physical-device, UI or recovery-drill tests. SEC-020 remains incomplete until SEC-020B supplies the persistent rollback-resistant backend and owner-visible first-install/rotation/recovery UI, and independent security review approves the complete flow.
+
+
+## Exact-head CI acceptance — 2026-11-05
+
+Source commit: b4b6dad184d48055753bda2087e28292a1a2a008. Phase 1 push/PR, CI-003 push/PR and QA-005 PR workflows all passed: runs 42024219462, 42024226415, 42024219429, 42024226462 and 42024226407. The Phase 1 jobs each ran 380 Python tests and passed Gradle debug unit tests/assembly with strict dependency verification. The CI-003 independent verifier confirmed byte-identical unsigned APKs (SHA-256 972cc506d948a34321351785f51129022be0eb0d7b54ed4ae18b9d53bd8f7993; 2,133,809 bytes; 13 entries), matching normalized APK contents, runtime inventory and SPDX runtime SBOM. QA-005 disposable emulator workflow passed; TalkBack remained disabled and spoken navigation remains unverified.
+
+This acceptance is limited to the SEC-020A pure-JVM policy code. No persistent trust store, UI, Android Keystore marker, StrongBox runtime, physical Pixel, production enrollment or executor was tested. SEC-020 remains incomplete; SEC-020B is the next implementation task.
