@@ -116,3 +116,16 @@ Synthetic local mTLS tests cover same-socket admission and replay, cross-socket 
 The current recursive feature-branch tree contains 203 entries and no SKILL.md. PROJECT-ADAPTER.md is present at repository root. An authorized Library title-only search for SKILL.md returned no result; no upstream shared package was supplied or verified. The local adapter remains project-specific and is not an upstream installation.
 
 The branch still has open draft PRs #1, #3, #4, #5, #6 and #7. PR #1 is the only PR whose head is the authorized working branch; the others are separate workstreams and were not modified. The independent supervisor/security review remains pending. All M1–M8 gates remain incomplete or blocked as defined above.
+
+
+## SEC-019B exact-head evidence — 2026-11-05
+
+Implementation head `02ac61a00f2f49f4ca0c9ff779ad8fa5fbf14e7a` passed push Phase 1 run 42004622475 and PR Phase 1 run 42004630428. Both runs executed 358 Python tests (all passed), Python compile/static gates, Android manifest policy, Gradle unit tests, debug APK assembly and same-run repeat APK comparison. Debug APK provenance and a not-for-release artifact were uploaded.
+
+The independent x86_64 emulator workflow [42004630445](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004630445) passed QA-005 through QA-010 and QA-013. QA-011 reported `blocked_service_disabled`; QA-012 was structural semantics only, not spoken TalkBack acceptance. No Pixel 9 Pro was used.
+
+Two independent GitHub runners generated different debug APK SHA-256 values for the same source commit: push runner `94cc1d20431c95689b4c4bd459d3f09c226472cdd01f1a9add14262e3d19a1f7`, PR runner `5b9e3d16c3f6fd5bc005afca12e92c46e74bddead840ff535dc9aecd0b39b9ae`. This is a confirmed cross-run hash mismatch. The default debug-signing setup may explain it, but the cause has not been isolated. Cross-host reproducibility remains unverified and is a production-readiness blocker.
+
+## Next bounded release-engineering task — CI-003
+
+Produce a deterministic unsigned Android build artifact (or a separately controlled, explicitly non-production CI signing profile), compare normalized APK contents and provenance across independent runners, record SDK/build-tools/action versions, and add an SBOM. Keep debug keys non-production and never introduce a production signing key into CI. Acceptance requires independent-runner equivalence and documented signature treatment; same-run repeat builds alone are insufficient.

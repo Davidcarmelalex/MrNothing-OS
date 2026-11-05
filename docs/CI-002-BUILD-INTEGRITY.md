@@ -17,3 +17,15 @@ This task hardens the existing experimental Android CI without claiming a releas
 
 ## Residual risks
 GitHub Actions currently use major-version action tags, not immutable commit SHAs; Android SDK components are version-selected but not independently checksum-pinned; Maven plugin/dependency checksums are not locked. The debug keystore is not suitable for production releases. These remain release blockers.
+
+
+## Cross-run reproducibility finding — 2026-11-05
+
+For SEC-019B commit `02ac61a00f2f49f4ca0c9ff779ad8fa5fbf14e7a`, push and PR GitHub Actions runs both built the same source revision and each produced byte-identical repeat debug APKs within its own runner. However, the APK hashes differed between runners:
+
+- Push run 42004622475: `94cc1d20431c95689b4c4bd459d3f09c226472cdd01f1a9add14262e3d19a1f7`.
+- PR run 42004630428: `5b9e3d16c3f6fd5bc005afca12e92c46e74bddead840ff535dc9aecd0b39b9ae`.
+
+The app module has no explicit signing configuration, so the default per-run debug keystore is a plausible cause; this has not been experimentally isolated. The result does **not** prove source/build nondeterminism, but it does prove that cross-run APK byte identity has not been established. Do not claim cross-host reproducibility or release readiness.
+
+Next: build a deterministic unsigned artifact or controlled non-production CI signing profile, compare normalized contents across independent runners, record all toolchain inputs, and generate an SBOM. Do not commit or create production signing keys.

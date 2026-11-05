@@ -50,3 +50,22 @@ The existing Python security suite, Android Gradle/JUnit build, repeat debug-APK
 - Independent security review remains **PENDING**.
 
 No milestone is complete by this change. M3 remains partial and M6 remains in progress.
+
+
+
+## Exact-head verification — 2026-11-05
+
+Implementation commit: `02ac61a00f2f49f4ca0c9ff779ad8fa5fbf14e7a`.
+
+- Push Phase 1 checks: [run 42004622475](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004622475) — success.
+- PR Phase 1 checks: [run 42004630428](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004630428) — success.
+- Both runs executed **358 Python tests**, all passed; Python compilation, launcher source accessibility/recovery gate and Android manifest security gate passed.
+- Both Android jobs passed `:app:testDebugUnitTest` and `:app:assembleDebug`; a second debug build was byte-identical within each individual runner. Provenance was generated and the uploaded artifact is explicitly labelled not for release.
+- Push-runner debug APK SHA-256: `94cc1d20431c95689b4c4bd459d3f09c226472cdd01f1a9add14262e3d19a1f7`.
+- PR-runner debug APK SHA-256: `5b9e3d16c3f6fd5bc005afca12e92c46e74bddead840ff535dc9aecd0b39b9ae`.
+- The two separate runners produced different debug APK hashes for the same source commit. Cross-run reproducibility is therefore **not established**. The default debug signing setup is a plausible source of variance, but the cause has not been isolated. Do not call the current debug artifact reproducible across hosts.
+- Disposable x86_64 emulator: [QA-005 run 42004630445](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004630445) — success. Emulator boot and QA-005 through QA-010 plus QA-013 passed. QA-011 reported `blocked_service_disabled` and is a preflight only. QA-012 passed structural semantics only; spoken TalkBack was not tested.
+- QA evidence artifact: [not-for-release evidence](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004630445/artifacts/13403942570).
+- Debug APK artifact: [not-for-release APK and provenance](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42004622475/artifacts/13404017202).
+
+These results do not establish physical Pixel 9 Pro compatibility, spoken TalkBack acceptance, release signing, cross-host reproducibility or production readiness.
