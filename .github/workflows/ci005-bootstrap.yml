@@ -1,0 +1,58 @@
+name: CI-005 dependency verification bootstrap
+on:
+  push:
+    branches: [feat/phase1-agentic-phone]
+    paths:
+      - 'android/**'
+      - '.github/workflows/ci005-bootstrap.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/ci005-bootstrap.yml'
+permissions:
+  contents: read
+jobs:
+  generate-candidate:
+    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17.0.13+11'
+      - name: Install pinned Android SDK packages
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Download and verify Gradle 8.9
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+      - name: Generate candidate SHA-256 dependency verification metadata
+        working-directory: android
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --no-build-cache --write-verification-metadata sha256 :app:testDebugUnitTest :app:assembleDebug :app:testReleaseUnitTest :app:assembleRelease :app:writeReleaseRuntimeInventory
+          test -s gradle/verification-metadata.xml
+          echo "CI005_METADATA_BEGIN"
+          cat gradle/verification-metadata.xml
+          echo "CI005_METADATA_END"
+          sha256sum gradle/verification-metadata.xml
+          wc -c gradle/verification-metadata.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci005-candidate-verification-metadata-not-yet-trusted
+          path: android/gradle/verification-metadata.xml
+          if-no-files-found: error
+          retention-days: 3
