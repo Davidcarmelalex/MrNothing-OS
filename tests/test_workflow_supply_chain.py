@@ -12,7 +12,7 @@ EXPECTED_ACTIONS = {
     "actions/upload-artifact": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",  # v7.0.2
     "actions/download-artifact": "9000827ccba6bdab643e8b6fd33ac0654aef8333",  # v8.0.2
 }
-USE_RE = re.compile(r"^\\s*-\\s*uses:\\s*([^\\s#]+)", re.MULTILINE)
+USE_RE = re.compile(r"^\s*-\s*uses:\s*([^\s#]+)", re.MULTILINE)
 
 
 class WorkflowSupplyChainTests(unittest.TestCase):
@@ -36,21 +36,21 @@ class WorkflowSupplyChainTests(unittest.TestCase):
     def test_checkout_never_persists_repository_credentials(self):
         for path in self.workflows():
             content = path.read_text(encoding="utf-8")
-            checkouts = len(re.findall(r"^\\s*-\\s*uses:\\s*actions/checkout@", content, re.MULTILINE))
-            disabled = len(re.findall(r"^\\s+persist-credentials:\\s*false\\s*$", content, re.MULTILINE))
+            checkouts = len(re.findall(r"^\s*-\s*uses:\s*actions/checkout@", content, re.MULTILINE))
+            disabled = len(re.findall(r"^\s+persist-credentials:\s*false\s*$", content, re.MULTILINE))
             self.assertEqual(disabled, checkouts, f"{path}: every checkout must disable credential persistence")
-            self.assertNotRegex(content, r"(?m)^\\s+persist-credentials:\\s*true\\s*$")
+            self.assertNotRegex(content, r"(?m)^\s+persist-credentials:\s*true\s*$")
 
     def test_workflows_use_read_only_contents_permission(self):
         for path in self.workflows():
             content = path.read_text(encoding="utf-8")
-            self.assertRegex(content, r"(?m)^permissions:\\n\\s+contents:\\s+read\\s*$")
-            self.assertNotRegex(content, r"(?m)^permissions:\\s+write-all\\s*$")
+            self.assertRegex(content, r"(?m)^permissions:\n\s+contents:\s+read\s*$")
+            self.assertNotRegex(content, r"(?m)^permissions:\s+write-all\s*$")
 
     def test_runner_image_label_is_explicit(self):
         for path in self.workflows():
             content = path.read_text(encoding="utf-8")
-            labels = re.findall(r"(?m)^\\s+runs-on:\\s*(\\S+)\\s*$", content)
+            labels = re.findall(r"(?m)^\s+runs-on:\s*(\S+)\s*$", content)
             self.assertTrue(labels, f"{path}: no runner labels found")
             self.assertEqual(set(labels), {"ubuntu-24.04"}, f"{path}: runner label must be explicit")
             self.assertNotIn("ubuntu-latest", labels)
