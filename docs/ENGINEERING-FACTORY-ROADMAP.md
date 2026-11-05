@@ -1,6 +1,6 @@
 # MrNothing OS — verified engineering milestones
 
-**Audit baseline:** 2026-11-05, branch feat/phase1-agentic-phone at 4ef47ea5292efc7901cfb809a94ea873d49eb036. GitHub push/PR checks and QA-005 emulator workflow passed at this baseline. No physical Pixel 9 Pro, live command channel, custom firmware, OTA or release signing has been demonstrated.
+**Audit baseline:** 2026-11-05, branch feat/phase1-agentic-phone at 45a8ad2c38816d3c4c299d902d1b2d17e0575087. GitHub push/PR Phase 1 checks and QA-005 emulator workflow passed on this exact head; see the associated Actions runs. No physical Pixel 9 Pro, live authenticated transport, connected command executor, custom firmware, OTA or release signing has been demonstrated. No physical Pixel 9 Pro, live command channel, custom firmware, OTA or release signing has been demonstrated.
 
 | Gate | Owner(s) | Objective acceptance evidence | Baseline |
 | --- | --- | --- | --- |
@@ -55,3 +55,10 @@ Added core/owner_consent_issuer.py as a bounded library primitive. It creates a 
 Eleven focused tests cover successful issuance, nonce format, session expiry capping, signed-64-bit boundary behavior, invalid/future/expired sessions, invalid clock and action, nonce-source failure, unknown/inactive/mismatched device records, registry failure and RSA/P-384/malformed public keys.
 
 The session object is not cryptographically unforgeable; its provenance depends on a trusted transport adapter. The registry is an interface, not a persistent enrollment implementation. No authenticated network endpoint, attestation-chain validation, rate limiter, audit log, Android caller integration, permission grant or command execution was added. The issuer is stateless; the existing SQLite replay ledger remains responsible for atomic one-use consumption. Keep M3 partial and M6 in progress pending integration and independent security review. The upstream shared SKILL.md remains unverified.
+
+
+## AGENT-004E synthetic end-to-end consent-flow harness (2026-11-05)
+
+Added `tests/test_owner_consent_flow.py` to exercise the existing AGENT-004C issuer, AGENT-004A P-256 verifier and SQLite `DurableReplayLedger` in one test-only path. The harness uses an in-memory fake registry, a synthetic transport-authenticated session assertion and ephemeral software P-256 keys generated inside tests. It covers no-execution admission, persistent replay rejection after ledger reopen, concurrent duplicate submission, signature tampering, wrong signing key, unauthenticated transport, session-expiry capping, owner/device mismatch, registry failure and ledger failure.
+
+The only positive verifier result is `ADMITTED_NO_EXECUTION`. This does not establish authenticated-session provenance, Android StrongBox operation, real attestation, a persistent enrollment registry, rate limiting, production transport or any device-action execution. AGENT-004D remains required before production session assertions can be created. Keep M3 partial and M6 in progress; no milestone is complete. The upstream shared SKILL.md remains unverified.
