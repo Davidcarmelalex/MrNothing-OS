@@ -21,3 +21,12 @@
 ## Transaction boundary clarification
 
 The commit claim is the point after fresh credential success, one-shot confirmation consumption, trust-store snapshot revalidation, proposal reconstruction and a final device-safety check. Before that point, cancellation/destruction invalidates the operation and the worker must not commit. Once claimed, the storage transaction has started and is allowed to complete atomically; an Activity destruction after that point suppresses UI delivery but cannot safely promise rollback of an already-started AtomicFile/Keystore operation.
+
+
+## SEC-020B4A — serialized-worker and commit-race regression tests
+
+The follow-up test slice adds a direct JVM test of the process-wide coordinator. It holds the first submitted task behind a latch, queues a second task, proves the second task cannot overlap or complete early, then releases the worker and verifies both tasks used the dedicated `mrnothing-owner-authority-io` thread.
+
+The operation-gate suite now also races `cancel(token)` against `claimCommit(token)` from two synchronized workers. Exactly one operation must win the synchronized boundary. A stale completion/cancellation token is also tested against a newer active operation so late callbacks cannot cancel or finish the newer transaction.
+
+These tests exercise the JVM executor and pure synchronization gate only. They do not invoke Android Keystore, StrongBox, AtomicFile, Activity lifecycle callbacks or a physical device. Exact-head Phase 1 and CI-003 workflows are the acceptance gate; QA-005 remains a separate launcher/credential-probe emulator suite.

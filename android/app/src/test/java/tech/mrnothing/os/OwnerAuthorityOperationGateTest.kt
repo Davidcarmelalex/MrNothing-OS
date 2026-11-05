@@ -83,4 +83,59 @@ class OwnerAuthorityOperationGateTest {
             pool.shutdownNow()
         }
     }
+
+    @Test fun cancellationAndCommitClaimHaveExactlyOneWinner() {
+        val gate = OwnerAuthorityOperationGate()
+        val token = gate.begin() ?: throw AssertionError("operation was not granted")
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val cancel = pool.submit<Boolean> {
+                ready.countDown()
+                if (!start.await(5, TimeUnit.SECONDS)) {
+                    throw AssertionError("cancel worker did not start")
+                }
+                gate.cancel(token)
+            }
+            val claim = pool.submit<Boolean> {
+                ready.countDown()
+                if (!start.await(5, TimeUnit.SECONDS)) {
+                    throw AssertionError("commit worker did not start")
+                }
+                gate.claimCommit(token)
+            }
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            val canceled = cancel.get(5, TimeUnit.SECONDS)
+            val claimed = claim.get(5, TimeUnit.SECONDS)
+
+            // The synchronized gate must linearize the race: exactly one side wins.
+            assertTrue("cancel and claim must have one winner", canceled != claimed)
+            assertEquals(claimed, gate.isCommitClaimed(token))
+            assertFalse(gate.isActive(token))
+
+            val next = gate.begin()
+            assertEquals(!claimed, next != null)
+            if (next != null) gate.finish(next)
+            if (claimed) gate.finish(token)
+        } finally {
+            start.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test fun staleCompletionCannotAffectNewOperation() {
+        val gate = OwnerAuthorityOperationGate()
+        val stale = gate.begin() ?: throw AssertionError("first operation was not granted")
+        assertTrue(gate.cancel(stale))
+
+        val current = gate.begin() ?: throw AssertionError("second operation was not granted")
+        assertFalse(gate.cancel(stale))
+        gate.finish(stale)
+        assertTrue(gate.isActive(current))
+        assertFalse(gate.claimCommit(stale))
+        assertTrue(gate.claimCommit(current))
+        gate.finish(current)
+    }
 }
