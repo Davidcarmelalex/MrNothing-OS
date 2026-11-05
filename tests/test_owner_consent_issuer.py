@@ -207,6 +207,40 @@ class OwnerConsentIssuerTests(unittest.TestCase):
             )
             self.assertEqual(result.reason, "INVALID_TRUSTED_KEY")
 
+    def test_credential_generation_snapshot_must_match_both_registry_lookups(self):
+        session = replace(
+            self.session,
+            transport_certificate_sha256="a" * 64,
+            credential_generation=4,
+        )
+        changed_record = replace(
+            self.record,
+            transport_certificate_sha256="b" * 64,
+            credential_generation=4,
+        )
+        result = issue_owner_consent_challenge(
+            session, action="read_screen", registry=FakeRegistry(changed_record),
+            now_epoch_ms=NOW, nonce_factory=lambda n: NONCE,
+        )
+        self.assertEqual(result.reason, "CREDENTIAL_GENERATION_CHANGED")
+
+    def test_matching_credential_generation_snapshot_is_accepted(self):
+        session = replace(
+            self.session,
+            transport_certificate_sha256="a" * 64,
+            credential_generation=4,
+        )
+        matching_record = replace(
+            self.record,
+            transport_certificate_sha256="a" * 64,
+            credential_generation=4,
+        )
+        result = issue_owner_consent_challenge(
+            session, action="read_screen", registry=FakeRegistry(matching_record),
+            now_epoch_ms=NOW, nonce_factory=lambda n: NONCE,
+        )
+        self.assertTrue(result.issued, result.reason)
+
     def test_registry_failure_fails_closed(self):
         result = issue_owner_consent_challenge(
             self.session, action="read_screen", registry=FakeRegistry(error=True),

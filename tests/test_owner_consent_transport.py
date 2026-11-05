@@ -69,11 +69,14 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             owner_id="owner-1",
             device_id="pixel9pro-1",
             public_key_spki_der=self.consent_public_der,
+            transport_certificate_sha256=self.fingerprint,
+            credential_generation=1,
         )
         self.transport_record = EnrolledTransportCertificate(
             owner_id="owner-1",
             device_id="pixel9pro-1",
             certificate_sha256=self.fingerprint,
+            credential_generation=1,
         )
         self.transport_registry = _TransportRegistry(self.transport_record)
         self.consent_registry = _ConsentRegistry(self.consent_record)
@@ -321,7 +324,8 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
                 "TRANSPORT_CERT_NOT_ENROLLED",
             )
             self.transport_registry.record = EnrolledTransportCertificate(
-                "owner-1", "pixel9pro-1", self.fingerprint, active=False
+                "owner-1", "pixel9pro-1", self.fingerprint, active=False,
+                credential_generation=1,
             )
             self.assertEqual(
                 self.adapter.issue_challenge(server, action="read_screen").reason,

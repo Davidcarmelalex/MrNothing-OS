@@ -27,6 +27,7 @@ MAX_EPOCH_MS = (1 << 63) - 1
 NONCE_BYTES = 16
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _NONCE_RE = re.compile(r"^[0-9a-f]{32}$")
+_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,9 @@ class AuthenticatedOwnerSession:
     session_id: str
     authenticated_at_epoch_ms: int
     expires_at_epoch_ms: int
+    # Present when the session came from AGENT-004D's durable paired registry.
+    transport_certificate_sha256: str | None = None
+    credential_generation: int | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,15 @@ def issue_owner_consent_challenge(
         session.owner_id, session.device_id, session.session_id
     )):
         return ChallengeIssueResult(False, "INVALID_SESSION")
+    if (session.transport_certificate_sha256 is None) != (session.credential_generation is None):
+        return ChallengeIssueResult(False, "INVALID_SESSION_CREDENTIAL_BINDING")
+    if session.transport_certificate_sha256 is not None and (
+        type(session.transport_certificate_sha256) is not str
+        or _FINGERPRINT_RE.fullmatch(session.transport_certificate_sha256) is None
+        or type(session.credential_generation) is not int
+        or session.credential_generation < 1
+    ):
+        return ChallengeIssueResult(False, "INVALID_SESSION_CREDENTIAL_BINDING")
     if (
         type(session.authenticated_at_epoch_ms) is not int
         or type(session.expires_at_epoch_ms) is not int
@@ -148,6 +161,11 @@ def issue_owner_consent_challenge(
         return ChallengeIssueResult(False, "DEVICE_NOT_ENROLLED")
     if record.device_id != session.device_id or record.owner_id != session.owner_id:
         return ChallengeIssueResult(False, "OWNER_DEVICE_MISMATCH")
+    if session.transport_certificate_sha256 is not None and (
+        record.transport_certificate_sha256 != session.transport_certificate_sha256
+        or record.credential_generation != session.credential_generation
+    ):
+        return ChallengeIssueResult(False, "CREDENTIAL_GENERATION_CHANGED")
     if record.active is not True:
         return ChallengeIssueResult(False, "DEVICE_NOT_ACTIVE")
     trusted_key = _trusted_p256_spki(record.public_key_spki_der)

@@ -214,6 +214,8 @@ class OwnerConsentTlsAdapter:
             return ChallengeIssueResult(False, "TRANSPORT_REGISTRY_INVALID")
         if enrolled.active is not True:
             return ChallengeIssueResult(False, "TRANSPORT_CERT_REVOKED")
+        if type(enrolled.credential_generation) is not int or enrolled.credential_generation < 1:
+            return ChallengeIssueResult(False, "TRANSPORT_REGISTRY_INVALID")
 
         try:
             session_id = self._session_id_factory(16)
@@ -232,6 +234,8 @@ class OwnerConsentTlsAdapter:
                 now_epoch_ms + MAX_TRANSPORT_SESSION_TTL_MS,
                 certificate_expiry_ms,
             ),
+            transport_certificate_sha256=fingerprint,
+            credential_generation=enrolled.credential_generation,
         )
         return issue_owner_consent_challenge(
             session,
