@@ -86,7 +86,7 @@ class OwnerAuthorityTrustStoreTest {
         }
     }
 
-    private class FakeCrypto(private val events: MutableList<String>) : AuthorityTrustCrypto {
+    private class FakeCrypto(val events: MutableList<String>) : AuthorityTrustCrypto {
         val markers = linkedMapOf<Long, ByteArray>()
         private val random = SecureRandom()
         private val aesKey = ByteArray(32).also(random::nextBytes)
@@ -191,11 +191,7 @@ class OwnerAuthorityTrustStoreTest {
         assertTrue(result is AuthorityTrustStoreCommit.Committed)
         val active = store.inspect() as AuthorityTrustStoreState.Active
         assertEquals(1L, active.record.generation)
-        assertEquals(listOf("marker", "encrypt", "write"),
-            (crypto.markers.keys.toList().map { "marker" } + emptyList<String>()).let {
-                // The event order is checked by the persistence/crypto shared list below.
-                it.take(1) + listOf("encrypt", "write")
-            })
+        assertEquals(listOf("marker", "encrypt", "write"), crypto.events.take(3))
         assertTrue(persistence.bytes != null)
     }
 

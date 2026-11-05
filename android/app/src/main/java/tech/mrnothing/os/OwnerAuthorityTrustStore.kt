@@ -242,7 +242,9 @@ internal class OwnerAuthorityTrustStore(
         AuthorityTrustMode.ROTATION ->
             state is AuthorityTrustStoreState.Active &&
                 state.record.generation < Long.MAX_VALUE &&
-                candidate.generation == state.record.generation + 1L
+                candidate.generation == state.record.generation + 1L &&
+                candidate.keyId != state.record.keyId &&
+                !MessageDigest.isEqual(candidate.publicKeySpkiDer, state.record.publicKeySpkiDer)
         AuthorityTrustMode.RECOVERY ->
             state is AuthorityTrustStoreState.RecoveryRequired &&
                 state.highestObservedGeneration in 1 until Long.MAX_VALUE &&
@@ -405,7 +407,9 @@ private object AuthorityTrustStoreCodec {
     private fun readField(input: DataInputStream, maximum: Int): ByteArray? {
         val length = input.readInt()
         if (length !in 1..maximum || length > input.available()) return null
-        return ByteArray(length).also(input::readFully)
+        val value = ByteArray(length)
+        input.readFully(value)
+        return value
     }
 
     private fun strictAscii(bytes: ByteArray): String? {
