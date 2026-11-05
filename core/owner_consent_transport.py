@@ -18,6 +18,8 @@ import re
 import secrets
 import ssl
 import time
+from threading import RLock
+from weakref import WeakKeyDictionary
 from typing import Callable, Protocol
 
 from cryptography import x509
@@ -28,15 +30,38 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 from core.owner_consent_issuer import (
     AuthenticatedOwnerSession,
     ChallengeIssueResult,
+    EnrolledOwnerDevice,
     MAX_EPOCH_MS,
     OwnerConsentRegistry,
     issue_owner_consent_challenge,
+)
+from core.owner_consent_protocol import (
+    ConsentAdmissionResult,
+    ConsentChallenge,
+    _verify_and_consume_bound,
 )
 
 OWNER_CONSENT_ALPN = "mrnothing-owner-consent/1"
 MAX_PEER_CERT_DER_BYTES = 8_192
 MAX_TRANSPORT_SESSION_TTL_MS = 30_000
+MAX_OUTSTANDING_CHALLENGES_PER_SESSION = 64
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+@dataclass(frozen=True)
+class _IssuedChallenge:
+    challenge: ConsentChallenge
+    expires_monotonic_ns: int
+
+
+@dataclass
+class _PeerSessionState:
+    session: AuthenticatedOwnerSession
+    certificate_sha256: str
+    credential_generation: int
+    expires_monotonic_ns: int
+    challenges: dict[str, _IssuedChallenge]
 
 
 @dataclass(frozen=True)
@@ -103,6 +128,7 @@ class OwnerConsentTlsAdapter:
         clock_ms: Callable[[], int] | None = None,
         session_id_factory: Callable[[int], str] = secrets.token_hex,
         nonce_factory: Callable[[int], str] = secrets.token_hex,
+        monotonic_ns: Callable[[], int] | None = None,
     ) -> None:
         self._server_context = server_context
         self._transport_registry = transport_registry
@@ -110,19 +136,20 @@ class OwnerConsentTlsAdapter:
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
         self._session_id_factory = session_id_factory
         self._nonce_factory = nonce_factory
+        self._monotonic_ns = monotonic_ns or time.monotonic_ns
+        self._sessions: WeakKeyDictionary[ssl.SSLSocket, _PeerSessionState] = WeakKeyDictionary()
+        self._lock = RLock()
 
-    def issue_challenge(
-        self, peer: ssl.SSLSocket, *, action: str
-    ) -> ChallengeIssueResult:
-        """Authenticate the live TLS peer, then issue one bounded challenge."""
+    def _current_peer_binding(self, peer: ssl.SSLSocket, now_epoch_ms: int):
+        """Re-derive the current peer identity from this live TLS socket."""
         if type(peer) is not ssl.SSLSocket:
-            return ChallengeIssueResult(False, "INVALID_TLS_SOCKET")
+            return None, "INVALID_TLS_SOCKET"
         try:
             if peer.fileno() < 0:
-                return ChallengeIssueResult(False, "TLS_SOCKET_CLOSED")
+                return None, "TLS_SOCKET_CLOSED"
             peer.getpeername()
         except OSError:
-            return ChallengeIssueResult(False, "TLS_SOCKET_CLOSED")
+            return None, "TLS_SOCKET_CLOSED"
 
         context = peer.context
         if (
@@ -131,42 +158,31 @@ class OwnerConsentTlsAdapter:
             or context.verify_mode != ssl.CERT_REQUIRED
             or context.minimum_version < ssl.TLSVersion.TLSv1_2
         ):
-            return ChallengeIssueResult(False, "TLS_CONTEXT_NOT_STRICT")
+            return None, "TLS_CONTEXT_NOT_STRICT"
         if peer.version() not in {"TLSv1.2", "TLSv1.3"}:
-            return ChallengeIssueResult(False, "TLS_VERSION_UNSUPPORTED")
+            return None, "TLS_VERSION_UNSUPPORTED"
         if peer.selected_alpn_protocol() != OWNER_CONSENT_ALPN:
-            return ChallengeIssueResult(False, "ALPN_MISMATCH")
+            return None, "ALPN_MISMATCH"
 
         try:
             certificate_der = peer.getpeercert(binary_form=True)
         except (OSError, ssl.SSLError):
-            return ChallengeIssueResult(False, "PEER_CERT_UNAVAILABLE")
+            return None, "PEER_CERT_UNAVAILABLE"
         if (
             type(certificate_der) is not bytes
             or not 1 <= len(certificate_der) <= MAX_PEER_CERT_DER_BYTES
         ):
-            return ChallengeIssueResult(False, "PEER_CERT_UNAVAILABLE")
+            return None, "PEER_CERT_UNAVAILABLE"
 
         try:
-            now_epoch_ms = self._clock_ms()
-        except Exception:
-            return ChallengeIssueResult(False, "INVALID_CLOCK")
-        if (
-            type(now_epoch_ms) is not int
-            or not 0 <= now_epoch_ms <= MAX_EPOCH_MS
-        ):
-            return ChallengeIssueResult(False, "INVALID_CLOCK")
-        try:
-            now = datetime.fromtimestamp(
-                now_epoch_ms / 1000, tz=timezone.utc
-            )
+            now = datetime.fromtimestamp(now_epoch_ms / 1000, tz=timezone.utc)
             certificate = x509.load_der_x509_certificate(certificate_der)
             not_before = certificate.not_valid_before_utc
             not_after = certificate.not_valid_after_utc
         except (ValueError, OverflowError, TypeError, UnsupportedAlgorithm):
-            return ChallengeIssueResult(False, "PEER_CERT_INVALID")
+            return None, "PEER_CERT_INVALID"
         if not not_before <= now < not_after:
-            return ChallengeIssueResult(False, "PEER_CERT_NOT_CURRENT")
+            return None, "PEER_CERT_NOT_CURRENT"
 
         try:
             constraints = certificate.extensions.get_extension_for_class(
@@ -179,69 +195,252 @@ class OwnerConsentTlsAdapter:
                 x509.ExtendedKeyUsage
             ).value
         except x509.ExtensionNotFound:
-            return ChallengeIssueResult(False, "PEER_CERT_PROFILE_INVALID")
+            return None, "PEER_CERT_PROFILE_INVALID"
         if constraints.ca:
-            return ChallengeIssueResult(False, "PEER_CERT_CA_NOT_ALLOWED")
+            return None, "PEER_CERT_CA_NOT_ALLOWED"
         if not key_usage.digital_signature:
-            return ChallengeIssueResult(False, "PEER_CERT_PROFILE_INVALID")
+            return None, "PEER_CERT_PROFILE_INVALID"
         if ExtendedKeyUsageOID.CLIENT_AUTH not in extended_usage:
-            return ChallengeIssueResult(False, "PEER_CERT_PROFILE_INVALID")
+            return None, "PEER_CERT_PROFILE_INVALID"
 
         try:
             public_key = certificate.public_key()
         except (ValueError, TypeError, UnsupportedAlgorithm):
-            return ChallengeIssueResult(False, "PEER_CERT_INVALID")
+            return None, "PEER_CERT_INVALID"
         if (
             not isinstance(public_key, ec.EllipticCurvePublicKey)
             or public_key.curve.name != "secp256r1"
         ):
-            return ChallengeIssueResult(False, "PEER_CERT_KEY_UNSUPPORTED")
+            return None, "PEER_CERT_KEY_UNSUPPORTED"
 
         fingerprint = hashlib.sha256(certificate_der).hexdigest()
         if _FINGERPRINT_RE.fullmatch(fingerprint) is None:
-            return ChallengeIssueResult(False, "PEER_CERT_INVALID")
+            return None, "PEER_CERT_INVALID"
         try:
             enrolled = self._transport_registry.lookup_active_certificate(
                 fingerprint
             )
         except Exception:
-            return ChallengeIssueResult(False, "TRANSPORT_REGISTRY_UNAVAILABLE")
+            return None, "TRANSPORT_REGISTRY_UNAVAILABLE"
         if type(enrolled) is not EnrolledTransportCertificate:
-            return ChallengeIssueResult(False, "TRANSPORT_CERT_NOT_ENROLLED")
+            return None, "TRANSPORT_CERT_NOT_ENROLLED"
         if (
             enrolled.certificate_sha256 != fingerprint
             or type(enrolled.active) is not bool
         ):
-            return ChallengeIssueResult(False, "TRANSPORT_REGISTRY_INVALID")
+            return None, "TRANSPORT_REGISTRY_INVALID"
         if enrolled.active is not True:
-            return ChallengeIssueResult(False, "TRANSPORT_CERT_REVOKED")
-        if type(enrolled.credential_generation) is not int or enrolled.credential_generation < 1:
-            return ChallengeIssueResult(False, "TRANSPORT_REGISTRY_INVALID")
-
-        try:
-            session_id = self._session_id_factory(16)
-        except Exception:
-            return ChallengeIssueResult(False, "SESSION_ID_SOURCE_FAILED")
-        if type(session_id) is not str or not session_id:
-            return ChallengeIssueResult(False, "SESSION_ID_INVALID")
+            return None, "TRANSPORT_CERT_REVOKED"
+        if (
+            type(enrolled.owner_id) is not str
+            or _IDENTIFIER_RE.fullmatch(enrolled.owner_id) is None
+            or type(enrolled.device_id) is not str
+            or _IDENTIFIER_RE.fullmatch(enrolled.device_id) is None
+            or type(enrolled.credential_generation) is not int
+            or enrolled.credential_generation < 1
+        ):
+            return None, "TRANSPORT_REGISTRY_INVALID"
 
         certificate_expiry_ms = int(not_after.timestamp() * 1000)
-        session = AuthenticatedOwnerSession(
-            owner_id=enrolled.owner_id,
-            device_id=enrolled.device_id,
-            session_id=session_id,
-            authenticated_at_epoch_ms=now_epoch_ms,
-            expires_at_epoch_ms=min(
-                now_epoch_ms + MAX_TRANSPORT_SESSION_TTL_MS,
-                certificate_expiry_ms,
-            ),
-            transport_certificate_sha256=fingerprint,
-            credential_generation=enrolled.credential_generation,
-        )
-        return issue_owner_consent_challenge(
-            session,
-            action=action,
-            registry=self._consent_registry,
-            now_epoch_ms=now_epoch_ms,
-            nonce_factory=self._nonce_factory,
-        )
+        return (enrolled, fingerprint, certificate_expiry_ms), None
+
+    def _read_clocks(self):
+        try:
+            now_epoch_ms = self._clock_ms()
+            now_monotonic_ns = self._monotonic_ns()
+        except Exception:
+            return None, "INVALID_CLOCK"
+        if (
+            type(now_epoch_ms) is not int
+            or not 0 <= now_epoch_ms <= MAX_EPOCH_MS
+            or type(now_monotonic_ns) is not int
+            or now_monotonic_ns < 0
+        ):
+            return None, "INVALID_CLOCK"
+        return (now_epoch_ms, now_monotonic_ns), None
+
+    def issue_challenge(
+        self, peer: ssl.SSLSocket, *, action: str
+    ) -> ChallengeIssueResult:
+        """Issue a challenge and retain it against this exact socket object.
+
+        The per-connection session identifier is generated by this adapter.
+        It is not accepted from request data and is not reused on a new
+        SSLSocket, including a resumed TLS connection.
+        """
+        clocks, clock_error = self._read_clocks()
+        if clock_error is not None:
+            return ChallengeIssueResult(False, clock_error)
+        now_epoch_ms, now_monotonic_ns = clocks
+        with self._lock:
+            binding, binding_error = self._current_peer_binding(peer, now_epoch_ms)
+            if binding_error is not None:
+                return ChallengeIssueResult(False, binding_error)
+            enrolled, fingerprint, certificate_expiry_ms = binding
+
+            state = self._sessions.get(peer)
+            if state is None:
+                try:
+                    session_id = self._session_id_factory(16)
+                except Exception:
+                    return ChallengeIssueResult(False, "SESSION_ID_SOURCE_FAILED")
+                if (
+                    type(session_id) is not str
+                    or _IDENTIFIER_RE.fullmatch(session_id) is None
+                ):
+                    return ChallengeIssueResult(False, "SESSION_ID_INVALID")
+                session_expiry_ms = min(
+                    now_epoch_ms + MAX_TRANSPORT_SESSION_TTL_MS,
+                    certificate_expiry_ms,
+                )
+                if session_expiry_ms <= now_epoch_ms:
+                    return ChallengeIssueResult(False, "SESSION_EXPIRED")
+                session = AuthenticatedOwnerSession(
+                    owner_id=enrolled.owner_id,
+                    device_id=enrolled.device_id,
+                    session_id=session_id,
+                    authenticated_at_epoch_ms=now_epoch_ms,
+                    expires_at_epoch_ms=session_expiry_ms,
+                    transport_certificate_sha256=fingerprint,
+                    credential_generation=enrolled.credential_generation,
+                )
+                state = _PeerSessionState(
+                    session=session,
+                    certificate_sha256=fingerprint,
+                    credential_generation=enrolled.credential_generation,
+                    expires_monotonic_ns=(
+                        now_monotonic_ns
+                        + (session_expiry_ms - now_epoch_ms) * 1_000_000
+                    ),
+                    challenges={},
+                )
+            else:
+                if now_monotonic_ns >= state.expires_monotonic_ns:
+                    return ChallengeIssueResult(False, "TRANSPORT_SESSION_EXPIRED")
+                if (
+                    state.session.owner_id != enrolled.owner_id
+                    or state.session.device_id != enrolled.device_id
+                    or state.certificate_sha256 != fingerprint
+                    or state.credential_generation != enrolled.credential_generation
+                ):
+                    return ChallengeIssueResult(False, "TRANSPORT_CREDENTIAL_CHANGED")
+                if now_epoch_ms >= state.session.expires_at_epoch_ms:
+                    return ChallengeIssueResult(False, "TRANSPORT_SESSION_EXPIRED")
+
+            for nonce, issued in tuple(state.challenges.items()):
+                if now_monotonic_ns >= issued.expires_monotonic_ns:
+                    del state.challenges[nonce]
+            if len(state.challenges) >= MAX_OUTSTANDING_CHALLENGES_PER_SESSION:
+                return ChallengeIssueResult(False, "SESSION_CHALLENGE_CAPACITY")
+
+            result = issue_owner_consent_challenge(
+                state.session,
+                action=action,
+                registry=self._consent_registry,
+                now_epoch_ms=now_epoch_ms,
+                nonce_factory=self._nonce_factory,
+            )
+            if not result.issued:
+                return result
+            challenge = result.capability.challenge
+            if challenge.nonce in state.challenges:
+                return ChallengeIssueResult(False, "DUPLICATE_CHALLENGE_NONCE")
+            remaining_ms = challenge.expires_at_epoch_ms - now_epoch_ms
+            if remaining_ms <= 0:
+                return ChallengeIssueResult(False, "CHALLENGE_EXPIRED")
+            state.challenges[challenge.nonce] = _IssuedChallenge(
+                challenge=challenge,
+                expires_monotonic_ns=now_monotonic_ns + remaining_ms * 1_000_000,
+            )
+            self._sessions[peer] = state
+            return result
+
+    def verify_and_consume(
+        self,
+        peer: ssl.SSLSocket,
+        envelope: bytes,
+        challenge: ConsentChallenge,
+    ) -> ConsentAdmissionResult:
+        """Verify only a challenge issued on this exact live TLS socket.
+
+        Callers cannot provide an authenticated boolean, certificate digest,
+        credential generation, session identifier or verification key. All
+        transport and enrollment context is re-derived from trusted adapter
+        state and registries. A new or resumed TLS connection has a different
+        SSLSocket object and cannot inherit a previous connection's challenges.
+        """
+        clocks, clock_error = self._read_clocks()
+        if clock_error is not None:
+            return ConsentAdmissionResult(False, clock_error)
+        now_epoch_ms, now_monotonic_ns = clocks
+        with self._lock:
+            binding, binding_error = self._current_peer_binding(peer, now_epoch_ms)
+            if binding_error is not None:
+                return ConsentAdmissionResult(False, binding_error)
+            enrolled, fingerprint, _certificate_expiry_ms = binding
+
+            state = self._sessions.get(peer)
+            if state is None:
+                return ConsentAdmissionResult(False, "TRANSPORT_SESSION_NOT_ISSUED")
+            if (
+                now_monotonic_ns >= state.expires_monotonic_ns
+                or now_epoch_ms >= state.session.expires_at_epoch_ms
+            ):
+                return ConsentAdmissionResult(False, "TRANSPORT_SESSION_EXPIRED")
+            if (
+                state.session.owner_id != enrolled.owner_id
+                or state.session.device_id != enrolled.device_id
+                or state.certificate_sha256 != fingerprint
+                or state.credential_generation != enrolled.credential_generation
+            ):
+                return ConsentAdmissionResult(False, "TRANSPORT_CREDENTIAL_CHANGED")
+            if type(challenge) is not ConsentChallenge or type(challenge.nonce) is not str:
+                return ConsentAdmissionResult(False, "CHALLENGE_NOT_ISSUED_ON_SESSION")
+            issued = state.challenges.get(challenge.nonce)
+            if issued is None or issued.challenge != challenge:
+                return ConsentAdmissionResult(False, "CHALLENGE_NOT_ISSUED_ON_SESSION")
+            if now_monotonic_ns >= issued.expires_monotonic_ns:
+                return ConsentAdmissionResult(False, "CHALLENGE_EXPIRED")
+            if (
+                challenge.owner_id != state.session.owner_id
+                or challenge.device_id != state.session.device_id
+                or challenge.session_id != state.session.session_id
+                or challenge.issued_at_epoch_ms < state.session.authenticated_at_epoch_ms
+                or challenge.expires_at_epoch_ms > state.session.expires_at_epoch_ms
+            ):
+                return ConsentAdmissionResult(False, "TRANSPORT_SESSION_MISMATCH")
+
+            try:
+                owner_record = self._consent_registry.lookup_active_device(
+                    challenge.device_id
+                )
+            except Exception:
+                return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+            if type(owner_record) is not EnrolledOwnerDevice:
+                return ConsentAdmissionResult(False, "DEVICE_NOT_ENROLLED")
+            if type(owner_record.active) is not bool:
+                return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_INVALID")
+            if owner_record.active is not True:
+                return ConsentAdmissionResult(False, "DEVICE_NOT_ACTIVE")
+            if (
+                owner_record.owner_id != state.session.owner_id
+                or owner_record.device_id != state.session.device_id
+            ):
+                return ConsentAdmissionResult(False, "OWNER_DEVICE_MISMATCH")
+            if (
+                owner_record.transport_certificate_sha256 != fingerprint
+                or owner_record.credential_generation != enrolled.credential_generation
+            ):
+                return ConsentAdmissionResult(False, "ENROLLMENT_CREDENTIAL_MISMATCH")
+            if type(owner_record.public_key_spki_der) is not bytes:
+                return ConsentAdmissionResult(False, "INVALID_TRUSTED_KEY")
+
+            return _verify_and_consume_bound(
+                envelope,
+                challenge=challenge,
+                trusted_public_key_spki_der=owner_record.public_key_spki_der,
+                enrollment_registry=self._consent_registry,
+                transport_certificate_sha256=fingerprint,
+                credential_generation=enrolled.credential_generation,
+                now_epoch_ms=now_epoch_ms,
+            )

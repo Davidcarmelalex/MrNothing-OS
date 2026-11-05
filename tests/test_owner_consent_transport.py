@@ -1,12 +1,16 @@
 """AGENT-004D: real local mTLS socket tests; no public listener or device actions."""
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import base64
 import hashlib
+import json
 import os
 import socket
 import ssl
 import tempfile
 import time
+import threading
 import unittest
 
 from cryptography import x509
@@ -15,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from core.owner_consent_issuer import EnrolledOwnerDevice
+from core.owner_consent_protocol import canonical_payload
 from core.owner_consent_transport import (
     EnrolledTransportCertificate,
     OWNER_CONSENT_ALPN,
@@ -39,6 +44,8 @@ class _ConsentRegistry:
     def __init__(self, record=None, *, fail=False):
         self.record = record
         self.fail = fail
+        self.seen = set()
+        self.lock = threading.Lock()
 
     def lookup_active_device(self, device_id):
         if self.fail:
@@ -47,12 +54,36 @@ class _ConsentRegistry:
             return None
         return self.record
 
+    def consume_consent_nonce(self, *, owner_id, device_id, nonce,
+                              transport_certificate_sha256, credential_generation,
+                              consent_public_key_spki_der, now_epoch_ms):
+        if self.fail:
+            raise OSError("registry unavailable")
+        record = self.record
+        if record is None or record.active is not True:
+            return "ENROLLMENT_NOT_ACTIVE"
+        if record.owner_id != owner_id or record.device_id != device_id:
+            return "ENROLLMENT_IDENTITY_MISMATCH"
+        if (record.transport_certificate_sha256 != transport_certificate_sha256
+                or record.credential_generation != credential_generation):
+            return "ENROLLMENT_CREDENTIAL_MISMATCH"
+        if record.public_key_spki_der != consent_public_key_spki_der:
+            return "ENROLLMENT_KEY_MISMATCH"
+        with self.lock:
+            marker = (device_id, nonce)
+            if marker in self.seen:
+                return "REPLAY_OR_CAPACITY"
+            self.seen.add(marker)
+        return "ADMITTED"
+
 
 class OwnerConsentTlsAdapterTests(unittest.TestCase):
     NOW = int(time.time() * 1000)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.now = [self.NOW]
+        self.monotonic_now = [time.monotonic_ns()]
         self.paths = self._make_certificates()
         self.server_context = self._server_context()
         self.client_context = self._client_context()
@@ -84,7 +115,8 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             server_context=self.server_context,
             transport_registry=self.transport_registry,
             consent_registry=self.consent_registry,
-            clock_ms=lambda: self.NOW,
+            clock_ms=lambda: self.now[0],
+            monotonic_ns=lambda: self.monotonic_now[0],
             session_id_factory=lambda size: "a" * (size * 2),
             nonce_factory=lambda size: "b" * (size * 2),
         )
@@ -448,6 +480,159 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
         finally:
             server.close()
             client.close()
+
+
+    def _signed_envelope(self, challenge):
+        signature = self.consent_private.sign(
+            canonical_payload(challenge), ec.ECDSA(hashes.SHA256())
+        )
+        encoded = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+        payload = json.loads(canonical_payload(challenge).decode("ascii"))
+        return json.dumps(
+            {"payload": payload, "signature": encoded},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        ).encode("ascii")
+
+    def test_live_tls_socket_admits_once_without_caller_authentication_flag(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            envelope = self._signed_envelope(challenge)
+            result = self.adapter.verify_and_consume(server, envelope, challenge)
+            self.assertTrue(result.admitted, result.reason)
+            self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
+            replay = self.adapter.verify_and_consume(server, envelope, challenge)
+            self.assertFalse(replay.admitted)
+            self.assertEqual(replay.reason, "REPLAY_OR_CAPACITY")
+        finally:
+            server.close()
+            client.close()
+
+    def test_challenge_cannot_be_transferred_to_another_tls_socket(self):
+        server1, client1 = self._pair()
+        server2, client2 = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server1, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            result = self.adapter.verify_and_consume(
+                server2,
+                self._signed_envelope(issued.capability.challenge),
+                issued.capability.challenge,
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "TRANSPORT_SESSION_NOT_ISSUED")
+        finally:
+            server1.close()
+            client1.close()
+            server2.close()
+            client2.close()
+
+    def test_modified_session_id_and_unissued_challenge_are_rejected(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            altered = replace(issued.capability.challenge, session_id="other-session")
+            result = self.adapter.verify_and_consume(
+                server, self._signed_envelope(altered), altered
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "CHALLENGE_NOT_ISSUED_ON_SESSION")
+        finally:
+            server.close()
+            client.close()
+
+    def test_expired_monotonic_session_is_not_revived_by_wall_clock_rollback(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            envelope = self._signed_envelope(issued.capability.challenge)
+            self.monotonic_now[0] += 31_000_000_000
+            self.now[0] -= 1_000
+            result = self.adapter.verify_and_consume(
+                server, envelope, issued.capability.challenge
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "TRANSPORT_SESSION_EXPIRED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_transport_certificate_revocation_after_issuance_blocks_verification(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            self.transport_registry.record = replace(
+                self.transport_record, active=False
+            )
+            result = self.adapter.verify_and_consume(
+                server,
+                self._signed_envelope(issued.capability.challenge),
+                issued.capability.challenge,
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "TRANSPORT_CERT_REVOKED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_transport_generation_change_invalidates_existing_tls_session(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            self.transport_registry.record = replace(
+                self.transport_record, credential_generation=2
+            )
+            result = self.adapter.verify_and_consume(
+                server,
+                self._signed_envelope(issued.capability.challenge),
+                issued.capability.challenge,
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "TRANSPORT_CREDENTIAL_CHANGED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_closed_socket_after_challenge_issuance_is_rejected(self):
+        server, client = self._pair()
+        issued = self.adapter.issue_challenge(server, action="read_screen")
+        self.assertTrue(issued.issued, issued.reason)
+        envelope = self._signed_envelope(issued.capability.challenge)
+        server.close()
+        client.close()
+        result = self.adapter.verify_and_consume(
+            server, envelope, issued.capability.challenge
+        )
+        self.assertFalse(result.admitted)
+        self.assertEqual(result.reason, "TLS_SOCKET_CLOSED")
+
+    def test_consent_registry_outage_during_verification_fails_closed(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            self.consent_registry.fail = True
+            result = self.adapter.verify_and_consume(
+                server,
+                self._signed_envelope(issued.capability.challenge),
+                issued.capability.challenge,
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+        finally:
+            server.close()
+            client.close()
+
+    def test_adapter_verifier_signature_has_no_authentication_boolean_or_snapshots(self):
+        import inspect
+        parameters = tuple(inspect.signature(self.adapter.verify_and_consume).parameters)
+        self.assertEqual(parameters, ("peer", "envelope", "challenge"))
 
 
 if __name__ == "__main__":

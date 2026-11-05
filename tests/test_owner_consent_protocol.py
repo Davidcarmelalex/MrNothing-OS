@@ -11,7 +11,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import (
-    ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload, verify_and_consume,
+    ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload,
+    _verify_and_consume_bound,
 )
 
 FIXTURE = os.path.join(
@@ -107,14 +108,13 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         args = {
             "challenge": self.challenge,
             "trusted_public_key_spki_der": self.public_der,
-            "transport_authenticated": True,
             "enrollment_registry": self.registry,
             "transport_certificate_sha256": self.transport_fingerprint,
             "credential_generation": 1,
             "now_epoch_ms": self.now,
         }
         args.update(changes)
-        return verify_and_consume(
+        return _verify_and_consume_bound(
             self.envelope() if envelope is None else envelope, **args
         )
 
@@ -146,9 +146,9 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         self.assertFalse(result.admitted)
         self.assertEqual(result.reason, "REPLAY_OR_CAPACITY")
 
-    def test_unauthenticated_transport_is_rejected(self):
-        result = self.verify(transport_authenticated=False)
-        self.assertEqual(result.reason, "UNAUTHENTICATED")
+    def test_invalid_transport_binding_is_rejected(self):
+        result = self.verify(transport_certificate_sha256="not-a-fingerprint")
+        self.assertEqual(result.reason, "INVALID_TRANSPORT_BINDING")
 
     def test_host_challenge_fields_must_match_signed_payload(self):
         altered = replace(self.challenge, session_id="session-other")

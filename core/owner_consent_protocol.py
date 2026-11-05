@@ -196,27 +196,26 @@ def _decode_signature(signature: str) -> bytes | None:
     return raw
 
 
-def verify_and_consume(
+def _verify_and_consume_bound(
     envelope: bytes,
     *,
     challenge: ConsentChallenge,
     trusted_public_key_spki_der: bytes,
-    transport_authenticated: bool,
     enrollment_registry: OwnerConsentEnrollmentRegistry,
     transport_certificate_sha256: str,
     credential_generation: int,
     now_epoch_ms: int,
 ) -> ConsentAdmissionResult:
-    """Verify a signed capability and atomically bind enrollment to nonce use.
+    """Internal verifier called only by the live mTLS adapter.
 
     The paired enrollment comparison and nonce insertion occur under the
     enrollment database's single BEGIN IMMEDIATE transaction. Rotation or
-    revocation therefore serializes before or after admission; there is no
-    separate-database check/consume/check window. This function never executes
-    a command. Transport-session object binding remains a separate gate.
+    revocation therefore serializes before or after admission. This private
+    primitive does not authenticate a socket and must not be exposed as a
+    request-facing API; OwnerConsentTlsAdapter.verify_and_consume supplies the
+    binding derived from the exact live server-side SSLSocket. It never
+    executes a command.
     """
-    if transport_authenticated is not True:
-        return ConsentAdmissionResult(False, "UNAUTHENTICATED")
     if (
         type(transport_certificate_sha256) is not str
         or _FINGERPRINT_RE.fullmatch(transport_certificate_sha256) is None

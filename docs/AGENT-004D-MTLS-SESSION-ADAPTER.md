@@ -15,8 +15,10 @@ AGENT-004C accepts an `AuthenticatedOwnerSession` value from its caller. That da
 4. The adapter requires the exact ALPN protocol and a peer leaf certificate.
 5. It validates the leaf certificate's current validity, non-CA status, digital-signature key usage, client-auth EKU and P-256 public-key curve.
 6. It computes the SHA-256 leaf-certificate fingerprint and resolves that exact fingerprint through a trusted transport-enrollment registry. Inactive, unknown, mismatched or unavailable registry records fail closed.
-7. It creates a fresh random session identifier internally, caps the session at 30 seconds and the certificate expiry, and passes the session to the existing AGENT-004C issuer.
-8. AGENT-004C independently checks the owner/device record and obtains the separate enrolled P-256 owner-consent verification key.
+7. It creates a fresh random session identifier internally and stores the resulting session against the exact server-side SSLSocket object in a weak-key map. A new or resumed TLS connection is a different socket object and cannot inherit that session.
+8. It caps the session at 30 seconds and certificate expiry, and records every issued challenge against that socket with a monotonic expiry deadline and a bounded outstanding-challenge count.
+9. Verification is exposed only as OwnerConsentTlsAdapter.verify_and_consume(peer, envelope, challenge). The caller cannot supply an authentication boolean, session identifier, certificate fingerprint, credential generation or public verification key.
+10. At verification, the adapter rechecks the live socket, TLS context, ALPN, certificate profile, current transport enrollment and generation; it requires the exact challenge previously issued on that socket; then it loads the current consent key and invokes the atomic enrollment/replay transaction.
 
 The transport-certificate registry is queried for every challenge issuance, so revocation blocks subsequent issuances. The existing consent challenge remains valid only for its bounded lifetime; the verifier does not yet perform an online revocation lookup at consumption time.
 
@@ -56,3 +58,10 @@ The adapter is a host-side library boundary. The server must call it only with a
 6. Rate limiting, audit logging, CA rotation and verifier-time revocation checks are implemented before any production endpoint is considered.
 
 Keep M3 partial and M6 in progress. No milestone is complete by this adapter or its synthetic tests. The upstream shared `SKILL.md` remains unverified.
+
+
+## SEC-019B verification boundary
+
+SEC-019B adds the verifier-side half of this adapter. The adapter retains issued challenges against the exact live SSLSocket object, checks exact challenge equality, uses monotonic session/challenge deadlines, and re-derives the current transport certificate enrollment on every verification. A reconnect or TLS-resumed connection cannot present a challenge from an earlier socket object. The supported verification call has only three arguments: peer, signed envelope and the adapter-issued challenge. Transport booleans and identity snapshots are no longer part of the request-facing API.
+
+The private cryptographic helper remains a testable implementation primitive; production integration must call the adapter method. The adapter still has no socket accept loop or public endpoint. A future executor must revalidate the live peer/session and owner authorization at its own admission boundary; this change returns only ADMITTED_NO_EXECUTION.

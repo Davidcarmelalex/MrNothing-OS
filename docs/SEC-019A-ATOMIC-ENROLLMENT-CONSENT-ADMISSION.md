@@ -51,3 +51,10 @@ The only positive result remains `ADMITTED_NO_EXECUTION`. No Android action is e
 ## Replay-retention decision
 
 The initial draft used wall-clock TTL deletion. Review identified that a forward clock jump followed by rollback could remove a replay record while a capability might again appear unexpired. Automatic wall-clock eviction has therefore been removed. Consumed nonces remain until a separately reviewed compaction/anti-rollback mechanism exists. The 10,000-row limit causes fail-closed capacity rejection rather than unsafe deletion.
+
+
+## SEC-019B follow-on
+
+Implemented in the transport adapter: a session is retained against the exact live server-side SSLSocket object, and every issued challenge is retained against that connection with a monotonic expiry deadline. Verification rechecks the live peer certificate, current transport enrollment and generation, exact challenge/session binding, current owner/device consent enrollment and then performs the atomic nonce transaction. The request-facing adapter method accepts no authentication boolean or caller-supplied certificate/generation/session snapshots. See SEC-019B-LIVE-TLS-SESSION-BINDING.md.
+
+This remains a process-local library boundary. There is no listener, executor, persistent session store, Android TLS client provisioning or production service. Independent security review is still required.

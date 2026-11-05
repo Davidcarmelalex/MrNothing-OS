@@ -14,7 +14,7 @@ from core.owner_consent_issuer import (
     EnrolledOwnerDevice,
     issue_owner_consent_challenge,
 )
-from core.owner_consent_protocol import canonical_payload, verify_and_consume
+from core.owner_consent_protocol import canonical_payload, _verify_and_consume_bound
 
 
 NOW = 1_700_000_000_000
@@ -115,15 +115,14 @@ class OwnerConsentFlowTests(unittest.TestCase):
         ).encode("ascii")
 
     def verify(self, envelope, *, issued=None, now=NOW + 1,
-               authenticated=True, registry=None):
+               registry=None, fingerprint=None):
         capability = self.issued if issued is None else issued
-        return verify_and_consume(
+        return _verify_and_consume_bound(
             envelope,
             challenge=capability.capability.challenge,
             trusted_public_key_spki_der=capability.capability.trusted_public_key_spki_der,
-            transport_authenticated=authenticated,
             enrollment_registry=self.registry if registry is None else registry,
-            transport_certificate_sha256=self.session.transport_certificate_sha256,
+            transport_certificate_sha256=(self.session.transport_certificate_sha256 if fingerprint is None else fingerprint),
             credential_generation=self.session.credential_generation,
             now_epoch_ms=now,
         )
@@ -172,11 +171,11 @@ class OwnerConsentFlowTests(unittest.TestCase):
         self.assertEqual(rejected.reason, "BAD_SIGNATURE")
         self.assertTrue(self.verify(self.envelope(self.issued.capability.challenge)).admitted)
 
-    def test_unauthenticated_transport_is_rejected_without_consuming_nonce(self):
+    def test_invalid_transport_binding_is_rejected_without_consuming_nonce(self):
         signed = self.envelope(self.issued.capability.challenge)
-        rejected = self.verify(signed, authenticated=False)
+        rejected = self.verify(signed, fingerprint="invalid")
         self.assertFalse(rejected.admitted)
-        self.assertEqual(rejected.reason, "UNAUTHENTICATED")
+        self.assertEqual(rejected.reason, "INVALID_TRANSPORT_BINDING")
         self.assertTrue(self.verify(signed).admitted)
 
     def test_revocation_after_challenge_issuance_blocks_verification(self):

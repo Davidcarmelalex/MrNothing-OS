@@ -15,7 +15,7 @@ from core.owner_consent_protocol import (
     ConsentChallenge,
     MAX_ENVELOPE_BYTES,
     canonical_payload,
-    verify_and_consume,
+    _verify_and_consume_bound,
 )
 
 
@@ -100,11 +100,10 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
         ).encode("ascii")
 
     def _verify(self, envelope, *, registry=None):
-        return verify_and_consume(
+        return _verify_and_consume_bound(
             envelope,
             challenge=self.challenge,
             trusted_public_key_spki_der=self.public_der,
-            transport_authenticated=True,
             enrollment_registry=self.registry if registry is None else registry,
             transport_certificate_sha256=self.transport_fingerprint,
             credential_generation=1,
