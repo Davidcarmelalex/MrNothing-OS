@@ -2,11 +2,13 @@ package tech.mrnothing.os
 
 import android.app.Activity
 import android.app.KeyguardManager
-import android.content.ActivityNotFoundException
-import android.content.Intent
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.SystemClock
 import android.text.InputType
 import android.util.TypedValue
@@ -28,7 +30,7 @@ class OwnerAuthorityTrustActivity : Activity() {
     private val confirmation = OwnerAuthorityConfirmationState(
         SystemClock::elapsedRealtimeNanos
     )
-    private val credentialRequest = 41016
+    private var credentialCancellation: CancellationSignal? = null
     private val store by lazy { AndroidOwnerAuthorityTrustStore(applicationContext) }
 
     private lateinit var keyIdField: EditText
@@ -279,6 +281,15 @@ class OwnerAuthorityTrustActivity : Activity() {
             status.text = "Secure, unlocked and interactive device state required. Refused."
             return
         }
+        // API 30+ is required so the prompt can allow DEVICE_CREDENTIAL only.
+        // API 29 deliberately fails closed; there is no deprecated Keyguard or biometric fallback.
+        if (!OwnerCredentialAuthenticationPolicy.supportsCredentialOnlyPrompt(
+                Build.VERSION.SDK_INT
+            )
+        ) {
+            status.text = "Android 11 or later is required for credential-only confirmation. Refused."
+            return
+        }
         if (!independentFingerprintConfirmed.isChecked) {
             status.text = "Separate out-of-band fingerprint comparison is required."
             return
@@ -313,53 +324,102 @@ class OwnerAuthorityTrustActivity : Activity() {
         }
         pendingBinding = binding
 
-        val manager = getSystemService(KeyguardManager::class.java)
-        if (manager == null || !manager.isDeviceSecure) {
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (keyguard == null || !keyguard.isDeviceSecure) {
             cancelPending(false)
             status.text = "Android device credential is not configured. Refused."
             return
         }
-        val prompt = manager.createConfirmDeviceCredentialIntent(
-            "Mr. Nothing authority trust",
-            "Confirm this offline authority trust change. No device action will be enabled."
-        )
-        if (prompt == null) {
+        val biometricManager = getSystemService(BiometricManager::class.java)
+        if (biometricManager == null ||
+            biometricManager.canAuthenticate(
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            ) != BiometricManager.BIOMETRIC_SUCCESS
+        ) {
             cancelPending(false)
-            status.text = "System credential prompt unavailable. Refused."
+            status.text = "Android device credential is unavailable. Refused."
             return
         }
 
+        val prompt = try {
+            BiometricPrompt.Builder(this)
+                .setTitle("Mr. Nothing authority trust")
+                .setSubtitle("Device credential required")
+                .setDescription(
+                    "Confirm this offline authority trust change. No device action will be enabled."
+                )
+                .setAllowedAuthenticators(
+                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                )
+                .build()
+        } catch (_: IllegalArgumentException) {
+            cancelPending(false)
+            status.text = "Credential-only system prompt unavailable. Refused."
+            return
+        }
+
+        val cancellation = CancellationSignal()
+        credentialCancellation = cancellation
         setFormEnabled(false)
         try {
-            startActivityForResult(prompt, credentialRequest)
-        } catch (_: ActivityNotFoundException) {
+            prompt.authenticate(
+                cancellation,
+                mainExecutor,
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        result: BiometricPrompt.AuthenticationResult
+                    ) {
+                        val credentialOnly =
+                            OwnerCredentialAuthenticationPolicy.acceptsDeviceCredential(
+                                Build.VERSION.SDK_INT,
+                                result.authenticationType,
+                                BiometricPrompt.AUTHENTICATION_RESULT_TYPE_DEVICE_CREDENTIAL
+                            )
+                        completeCredentialConfirmation(binding, credentialOnly)
+                    }
+
+                    override fun onAuthenticationError(
+                        errorCode: Int,
+                        errString: CharSequence
+                    ) {
+                        completeCredentialConfirmation(binding, credentialApproved = false)
+                    }
+
+                    override fun onAuthenticationFailed() {
+                        if (pendingBinding == binding) {
+                            status.text =
+                                "Device credential was not accepted. No trust change made."
+                        }
+                    }
+                }
+            )
+        } catch (_: IllegalArgumentException) {
             cancelPending(false)
-            status.text = "System credential prompt unavailable. Refused."
+            status.text = "Credential-only system prompt rejected. Refused."
         } catch (_: SecurityException) {
             cancelPending(false)
-            status.text = "System credential prompt denied. Refused."
+            status.text = "Credential-only system prompt denied. Refused."
         }
     }
 
-    @Deprecated("Credential result is a local trust-ceremony gate only")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != credentialRequest) return
-        val expectedBinding = pendingBinding ?: run {
-            setFormEnabled(true)
-            status.text = "No matching pending trust confirmation. Refused."
-            return
-        }
-        val credentialApproved = resultCode == RESULT_OK &&
+    private fun completeCredentialConfirmation(
+        expectedBinding: String,
+        credentialApproved: Boolean
+    ) {
+        // Late callbacks after cancellation, Activity destruction or a consumed request are inert.
+        if (pendingBinding != expectedBinding) return
+        credentialCancellation = null
+        pendingBinding = null
+
+        val credentialResultAccepted = credentialApproved &&
             independentFingerprintConfirmed.isChecked &&
             OwnerCredentialSafetyGate.isSafe(this)
-        if (!confirmation.finish(expectedBinding, credentialApproved)) {
-            pendingBinding = null
+        if (!confirmation.finish(expectedBinding, credentialResultAccepted)) {
             setFormEnabled(true)
-            status.text = "Credential canceled, expired, mismatched or unsafe. No trust change made."
+            status.text =
+                "Device credential canceled, expired, mismatched or unsafe. No trust change made."
             return
         }
-        pendingBinding = null
 
         val parsed = parseInput()
         if (parsed == null) {
@@ -530,9 +590,17 @@ class OwnerAuthorityTrustActivity : Activity() {
         confirmButton.isEnabled = enabled
     }
 
-    private fun cancelPending(clearImport: Boolean) {
+    private fun revokePendingCredential() {
+        val activeCancellation = credentialCancellation
+        credentialCancellation = null
         confirmation.revoke()
         pendingBinding = null
+        // Revoke the one-shot binding before cancel(), because cancellation may dispatch a callback.
+        activeCancellation?.cancel()
+    }
+
+    private fun cancelPending(clearImport: Boolean) {
+        revokePendingCredential()
         if (::keyIdField.isInitialized) setFormEnabled(true)
         if (clearImport && ::keyIdField.isInitialized) {
             keyIdField.text.clear()
@@ -546,8 +614,7 @@ class OwnerAuthorityTrustActivity : Activity() {
     }
 
     override fun onDestroy() {
-        confirmation.revoke()
-        pendingBinding = null
+        revokePendingCredential()
         super.onDestroy()
     }
 }

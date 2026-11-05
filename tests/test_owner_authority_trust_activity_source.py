@@ -22,11 +22,31 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         main = (SRC / "MainActivity.kt").read_text()
         self.assertIn('addAction(root, "Offline authority trust"', main)
 
-    def test_fresh_system_credential_and_safety_recheck(self):
+    def test_device_credential_only_prompt_and_safety_recheck(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
-        self.assertIn("createConfirmDeviceCredentialIntent", code)
+        self.assertIn("BiometricPrompt.Builder(this)", code)
+        self.assertIn(".setAllowedAuthenticators(", code)
+        self.assertIn("BiometricManager.Authenticators.DEVICE_CREDENTIAL", code)
+        self.assertNotIn("BIOMETRIC_STRONG", code)
+        self.assertNotIn("BIOMETRIC_WEAK", code)
+        self.assertIn(
+            "canAuthenticate(\n                BiometricManager.Authenticators.DEVICE_CREDENTIAL",
+            code,
+        )
+        self.assertIn("OwnerCredentialAuthenticationPolicy.acceptsDeviceCredential", code)
+        self.assertNotIn("createConfirmDeviceCredentialIntent", code)
+        self.assertNotIn("startActivityForResult(", code)
+        self.assertNotIn("onActivityResult(", code)
         self.assertGreaterEqual(code.count("OwnerCredentialSafetyGate.isSafe(this)"), 2)
-        self.assertIn("confirmation.finish(expectedBinding, credentialApproved)", code)
+        self.assertIn("confirmation.finish(expectedBinding, credentialResultAccepted)", code)
+
+    def test_prompt_cancellation_revokes_binding_before_callback(self):
+        code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
+        revoke = code.index("private fun revokePendingCredential()")
+        clear_binding = code.index("pendingBinding = null", revoke)
+        cancel_signal = code.index("activeCancellation?.cancel()", revoke)
+        self.assertLess(clear_binding, cancel_signal)
+        self.assertIn("revokePendingCredential()", code[code.index("override fun onDestroy()"):])
 
     def test_store_commit_follows_credential_and_state_revalidation(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()

@@ -275,3 +275,31 @@ The final QA-020B2 correction at source/test head 9eb814c3a2176f9be552372c5d6f07
 The original QA-020B2 failure at run 42047955324 was a hierarchy-harness defect, not an application defect: empty EditText nodes expose hints as their UIAutomator text and the lower viewport contained only three fields. The corrected test proved all five fields were populated with fixed invalid test strings, then cleared by Cancel. It did not preview or confirm those values, enter credentials, mutate the trust store, grant permissions or invoke an executor.
 
 This evidence is disposable-emulator-only. It does not establish Pixel 9 Pro StrongBox/Keyguard behavior, physical crash recovery, spoken TalkBack, independent security approval or production readiness. No milestone is complete; M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED and M8 BLOCKED. The upstream shared SKILL.md remains unverified and is not claimed as installed.
+
+
+## SEC-020B3 — credential-only platform prompt modernization (2026-11-05)
+
+The SEC-020B2 owner confirmation path is being migrated from the deprecated
+`createConfirmDeviceCredentialIntent` / Activity-result flow to platform
+`BiometricPrompt` with `DEVICE_CREDENTIAL` as the sole allowed authenticator.
+API 30+ is required; API 29 fails closed. Callback acceptance checks the
+platform-reported authentication type and repeats the device-safety check.
+Explicit cancellation and Activity destruction revoke the one-shot binding
+before canceling the prompt signal, making late callbacks inert.
+
+Implementation files:
+- `OwnerAuthorityTrustActivity.kt`: platform credential-only prompt, callback
+  result-type check, CancellationSignal lifecycle.
+- `OwnerCredentialAuthenticationPolicy.kt`: pure API/result fail-closed policy.
+- `OwnerCredentialAuthenticationPolicyTest.kt`: API/result boundary tests.
+- `tests/test_owner_authority_trust_activity_source.py`: source gates for
+  credential-only configuration, removal of deprecated flow and cancellation order.
+- `docs/SEC-020B3-CREDENTIAL-AUTH.md`: implementation and acceptance contract.
+
+This uses the Android platform API rather than adding AndroidX, so the pinned
+Gradle dependency-verification metadata is unchanged. Exact-head CI/emulator
+verification is pending. A successful credential prompt is not exercised by
+the unsecured disposable emulator. No Pixel 9 Pro, StrongBox or physical
+credential test is claimed. Independent security review remains pending.
+Keep M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED;
+M7 BLOCKED on physical hardware; M8 BLOCKED. No milestone is complete.

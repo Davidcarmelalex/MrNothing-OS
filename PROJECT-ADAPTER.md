@@ -101,3 +101,21 @@ The final QA-020B2 correction at source/test head 9eb814c3a2176f9be552372c5d6f07
 The original QA-020B2 failure at run 42047955324 was a hierarchy-harness defect, not an application defect: empty EditText nodes expose hints as their UIAutomator text and the lower viewport contained only three fields. The corrected test proved all five fields were populated with fixed invalid test strings, then cleared by Cancel. It did not preview or confirm those values, enter credentials, mutate the trust store, grant permissions or invoke an executor.
 
 This evidence is disposable-emulator-only. It does not establish Pixel 9 Pro StrongBox/Keyguard behavior, physical crash recovery, spoken TalkBack, independent security approval or production readiness. No milestone is complete; M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED and M8 BLOCKED. The upstream shared SKILL.md remains unverified and is not claimed as installed.
+
+
+## Audit and implementation update — 2026-11-05, SEC-020B3
+
+The branch was audited at `ef0995691025010ee531b01958f455d97047edfa`; the recursive tree contained 233
+entries, the local project adapter and roadmap, and no repository `SKILL.md`.
+The upstream shared factory package remains unverified and is not claimed as
+installed. Open PRs #1 and #3–#7 were inspected; only the authorized
+`feat/phase1-agentic-phone` branch is modified.
+
+SEC-020B3 replaces the deprecated Keyguard credential Intent with the Android
+platform BiometricPrompt API configured for `DEVICE_CREDENTIAL` only. API 30+
+is required; API 29 fails closed. The callback must report the device-credential
+authentication type. A retained CancellationSignal is canceled only after
+the one-shot binding is revoked, so late callbacks cannot commit. No new
+dependency or Android permission is introduced. Exact-head CI and emulator
+verification are pending; independent security review and Pixel 9 Pro hardware
+validation remain outstanding.
