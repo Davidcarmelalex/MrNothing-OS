@@ -37,4 +37,4 @@ Added an independent-runner unsigned Android release build gate. It deliberately
 
 The SBOM covers resolved releaseRuntimeClasspath artifacts only; build plugins, Gradle internals and SDK packages are explicitly outside its scope and are recorded as toolchain provenance. No production signing key is used. All artifacts remain unsigned and release_ready=false.
 
-Exact-head CI-003 acceptance is pending. A green workflow must be observed on the final branch commit before claiming independent-runner reproducibility.
+Exact-head CI-003 acceptance passed on source commit 43e0e0f5f86718fd1c3265364c71bed8547b8a7c. Push run 42014136696 and PR run 42014145465 both completed the two independent builders and third-job verifier successfully. The unsigned APK SHA-256 was identical across runners: 4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9 (2,118,361 bytes; 13 entries). Normalized entry digest, runtime inventory, SPDX-2.3 SBOM, source commit and toolchain inputs also matched. This is an unsigned CI artifact result only; release_ready=false and provenance_signed=false.
