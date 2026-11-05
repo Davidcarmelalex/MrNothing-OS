@@ -93,6 +93,10 @@ class OwnerCredentialPromptProbeActivity : Activity() {
             return
         }
         val signal = CancellationSignal()
+        if (!OwnerCredentialPromptProbeControl.attach(signal)) {
+            status.text = "STATUS: PROMPT_ALREADY_ACTIVE"
+            return
+        }
         cancellation = signal
         status.text = "STATUS: PROMPT_ACTIVE"
         try {
@@ -103,7 +107,7 @@ class OwnerCredentialPromptProbeActivity : Activity() {
                     override fun onAuthenticationSucceeded(
                         result: BiometricPrompt.AuthenticationResult
                     ) {
-                        cancellation = null
+                        clearCancellation(signal)
                         val accepted =
                             OwnerCredentialAuthenticationPolicy.acceptsDeviceCredential(
                                 Build.VERSION.SDK_INT,
@@ -121,7 +125,7 @@ class OwnerCredentialPromptProbeActivity : Activity() {
                         errorCode: Int,
                         errString: CharSequence
                     ) {
-                        cancellation = null
+                        clearCancellation(signal)
                         status.text = "STATUS: PROMPT_ERROR:$errorCode"
                     }
 
@@ -131,23 +135,29 @@ class OwnerCredentialPromptProbeActivity : Activity() {
                 }
             )
         } catch (_: RuntimeException) {
-            cancellation = null
+            clearCancellation(signal)
             status.text = "STATUS: PROMPT_START_REFUSED"
         }
     }
 
+    private fun clearCancellation(signal: CancellationSignal) {
+        OwnerCredentialPromptProbeControl.detach(signal)
+        if (cancellation === signal) cancellation = null
+    }
+
     private fun cancelPrompt() {
-        val active = cancellation
-        if (active == null) {
+        if (cancellation == null || !OwnerCredentialPromptProbeControl.cancelActive()) {
             status.text = "STATUS: NO_ACTIVE_PROMPT"
             return
         }
-        active.cancel()
         status.text = "STATUS: CANCEL_REQUESTED"
     }
 
     override fun onDestroy() {
-        cancellation?.cancel()
+        cancellation?.let { signal ->
+            OwnerCredentialPromptProbeControl.detach(signal)
+            signal.cancel()
+        }
         cancellation = null
         super.onDestroy()
     }

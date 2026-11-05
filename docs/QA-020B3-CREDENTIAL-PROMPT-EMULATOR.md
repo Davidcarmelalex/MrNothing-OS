@@ -17,7 +17,7 @@
 2. Configure a fixed test-only PIN on the freshly created AVD using locksettings set-pin; do not overwrite an existing credential.
 3. Launch the debug-only probe.
 4. Open the system credential UI and verify that the PIN/password prompt is visible.
-5. Locate SystemUI's accessible Tap to cancel authentication background surface and tap a point above the credential panel; require an error callback and never accept cancellation as authentication.
+5. Send an explicit broadcast to the debug-only OwnerCredentialPromptProbeCancelReceiver, protected by android.permission.DUMP. The receiver cancels the probe's active CancellationSignal; require the platform prompt-error callback and verify the credential prompt disappears. No coordinate is guessed and no credential is entered on this path.
 6. Open the prompt again, enter only the synthetic test PIN, and require DEVICE_CREDENTIAL_ACCEPTED.
 7. Clear the test PIN with locksettings clear --old in an EXIT/INT/TERM cleanup trap.
 
@@ -38,3 +38,10 @@ Exact-head run [42067990751](https://github.com/Davidcarmelalex/MrNothing-OS/act
 The captured SystemUI hierarchy exposes a clickable full-screen background node (com.android.systemui:id/background) with content description Tap to cancel authentication. The corrected helper requires that exact package, resource ID, class, description, clickability and visibility, then derives a safe tap point strictly above the credential panel. On the captured API 35 hierarchy it resolves to 540 31. The smoke test now taps that explicit system cancellation surface, waits for the app's prompt-error callback, and only then repeats the prompt for the test-PIN success path.
 
 Three additional parser tests cover safe-point derivation, missing/ambiguous targets, non-clickable surfaces and absence of a safe margin. The local focused suite passed 14 tests; shell syntax and Python compilation passed; the actual failed-run hierarchy resolved to 540 31. These local checks do not replace the required exact-head GitHub emulator rerun. The initial failure is a test-harness cancellation-method defect; it does not establish an application authentication defect.
+
+
+## QA-020B3 cancellation harness correction — 2026-11-06
+
+Exact-head QA-005 run 42095108551 at 8b875fd23d86df525f17d942b74d684682064de2 failed only at cancellation. The SystemUI prompt opened; side-gutter point (133,1033) left the prompt visible for all 25 status polls while the credential field remained empty. The disposable test PIN cleanup completed; no credential was submitted.
+
+The coordinate-based SystemUI tap is withdrawn. A debug-only receiver protected by android.permission.DUMP now cancels the probe's active CancellationSignal. The runtime gate requires the prompt-error callback and prompt disappearance, then reopens the prompt and checks the test-only PIN returns DEVICE_CREDENTIAL_ACCEPTED. This is a programmatic cancellation-signal test, not proof that a user tap on SystemUI's outside-cancel surface works; that separate interaction remains unverified and requires an accessibility-action/UIAutomator test. The receiver/control are debug-only and have no trust-store, permission-grant, network, command-router or executor path. Exact-head CI and emulator rerun remain required.

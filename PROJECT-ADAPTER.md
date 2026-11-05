@@ -148,3 +148,14 @@ The latest authorized branch head at audit was `c92fad5dd8fea0fd5029cd01d14a36fd
 Exact-head Phase 1 push/PR and CI-003 push/PR workflows passed at c92fad5. QA-005 run 42084901826 passed all earlier launcher, recovery, accessibility-structure, insecure-enrollment and QA-020B2 steps, then failed at QA-020B3 cancellation. Artifact 13442612292 proves the bottom-margin tap at (540,1494) entered one character into the SystemUI credential field while leaving the prompt open. The test PIN cleanup succeeded; the fixed PIN was not submitted. The prior safe-bottom-tap assumption is superseded.
 
 The current correction derives a tap point from the actual SystemUI `lockPassword` EditText side gutter (captured fixture: 133,1033), rejects overlapping clickable controls, and asserts immediately after the gesture that the prompt is dismissed or the field remains empty. Exact-head emulator rerun is pending. No physical Pixel, StrongBox, production signing, trust-store commit, permission grant or executor activity is claimed. M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete; independent security review remains pending.
+
+
+## Audit and correction — 2026-11-06, QA-020B3 cancellation harness
+
+At run start the authorized branch was 8b875fd23d86df525f17d942b74d684682064de2; the complete recursive tree contained 249 entries. PROJECT-ADAPTER.md and the roadmap are present; repository SKILL.md is absent. The authorized Library search did not locate an upstream Universal Autonomous Engineering Factory package. The upstream package remains unverified and is not claimed as installed.
+
+Open PRs #1 and #3–#7 were audited. PR #1 remains a draft to main with zero submitted reviews and zero inline threads; other PRs were not modified. Main remains f3c9a701d2a337de8ef393ac14df044a79843d60. The authorized branch is unprotected and no rulesets were returned, so required-review enforcement is not established.
+
+Phase 1 push/PR runs 42095099243 and 42095108564 passed; CI-003 push/PR runs 42095099195 and 42095108570 passed. QA-005 run 42095108551 failed only at QA-020B3 cancellation. The SystemUI prompt appeared; the side-gutter tap (133,1033) did not dismiss it; the credential field remained empty and the test PIN cleanup succeeded.
+
+The coordinate-based cancellation gesture is removed. QA-020B3 now uses a debug-only android.permission.DUMP-protected receiver to cancel the probe's active CancellationSignal. The script must observe the prompt-error callback and prompt disappearance, then verify a second prompt returns DEVICE_CREDENTIAL_ACCEPTED for the synthetic emulator PIN. This tests cancellation-signal behavior, not the user's SystemUI outside-tap gesture. Receiver/control are debug-only and have no trust-store, permission-grant, network, command-router or executor path. Exact-head CI/emulator reruns remain the acceptance gate.
