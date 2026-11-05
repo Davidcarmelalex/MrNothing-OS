@@ -142,8 +142,14 @@ class Qa020B2HierarchyTests(unittest.TestCase):
     def test_field_locator_rejects_missing_or_unknown_label(self):
         with self.assertRaises(ValueError):
             find_field(authority_xml(), "not a real field")
+        missing_edit = (
+            "<hierarchy>"
+            + node("android.widget.TextView", text=FIELD_LABELS[0])
+            + node("android.widget.TextView", text=FIELD_LABELS[1])
+            + "</hierarchy>"
+        )
         with self.assertRaises(ValueError):
-            find_field(authority_xml(), FIELD_LABELS[0])
+            find_field(missing_edit, FIELD_LABELS[0])
 
     def test_invalid_fingerprint_preview_is_visible(self):
         assert_preview_failure(authority_xml(status=PREVIEW_FAILURE))
