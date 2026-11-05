@@ -1,0 +1,112 @@
+name: CI-003 unsigned Android reproducibility
+on:
+  push:
+    branches: [feat/phase1-agentic-phone]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci003-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        builder: [runner-a, runner-b]
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17.0.13+11'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned Android SDK platform and build tools
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed > "$RUNNER_TEMP/ci003-sdk-packages.txt"
+      - name: Download and checksum-verify Gradle 8.9
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+      - name: Run release unit tests and build unsigned release APK
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --no-build-cache :app:testReleaseUnitTest :app:assembleRelease :app:writeReleaseRuntimeInventory
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/build/reports/ci003/release-runtime-dependencies.tsv
+      - name: Generate deterministic SPDX runtime SBOM and build provenance
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          INVENTORY="app/build/reports/ci003/release-runtime-dependencies.tsv"
+          OUT="app/build/outputs/apk/release"
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$SOURCE_COMMIT")"
+          SDKMANAGER_VERSION="$("$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version | tail -n 1 | tr -d '\r')"
+          JAVA_VERSION="$(java -version 2>&1 | head -n 1 | tr -d '"')"
+          cp "$INVENTORY" "$OUT/release-runtime-dependencies.tsv"
+          python3 ../scripts/ci003_artifacts.py sbom --inventory "$INVENTORY" --commit "$SOURCE_COMMIT" --app-version "0.1.0-dev" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/sbom.spdx.json"
+          python3 ../scripts/ci003_artifacts.py provenance --apk "$APK" --sbom "$OUT/sbom.spdx.json" --commit "$SOURCE_COMMIT" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/provenance.json" --operating-system "ubuntu-24.04" --jdk-distribution "Temurin" --jdk-version "$JAVA_VERSION" --gradle-version "8.9" --gradle-sha256 "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab" --agp-version "8.7.3" --kotlin-version "2.0.21" --compile-sdk "35" --build-tools "35.0.0" --sdkmanager-version "$SDKMANAGER_VERSION"
+          sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" > "$OUT/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci003-unsigned-release-\${{ matrix.builder }}
+          path: |
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app/build/outputs/apk/release/release-runtime-dependencies.tsv
+            android/app/build/outputs/apk/release/sbom.spdx.json
+            android/app/build/outputs/apk/release/provenance.json
+            android/app/build/outputs/apk/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-independent-runners:
+    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci003-unsigned-release-runner-a
+          path: runner-a
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci003-unsigned-release-runner-b
+          path: runner-b
+      - name: Verify unsigned APK, normalized contents, SBOM and toolchain equivalence
+        run: |
+          set -euo pipefail
+          python3 scripts/ci003_artifacts.py verify --first runner-a --second runner-b --expected-commit "$(git rev-parse HEAD)" --output ci003-verification.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci003-independent-runner-verification
+          path: ci003-verification.json
+          if-no-files-found: warn
+          retention-days: 7

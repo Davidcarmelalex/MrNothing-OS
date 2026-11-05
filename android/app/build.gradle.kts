@@ -20,3 +20,38 @@ android {
 }
 
 dependencies { testImplementation("junit:junit:4.13.2") }
+
+
+// CI-003: intentionally unsigned release output plus resolved runtime inventory.
+android {
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+        }
+    }
+}
+
+val releaseRuntimeClasspath = configurations.named("releaseRuntimeClasspath")
+tasks.register("writeReleaseRuntimeInventory") {
+    val inventoryFile = layout.buildDirectory.file("reports/ci003/release-runtime-dependencies.tsv")
+    outputs.file(inventoryFile)
+    doLast {
+        val rows = releaseRuntimeClasspath.get().resolvedConfiguration.resolvedArtifacts.map { artifact ->
+            val id = artifact.moduleVersion.id
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            artifact.file.inputStream().use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            val hex = digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            listOf(id.group, artifact.name, id.version, artifact.file.name, hex).joinToString("\t")
+        }.sorted()
+        val output = inventoryFile.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(rows.joinToString("\n") + if (rows.isEmpty()) "" else "\n", Charsets.UTF_8)
+    }
+}

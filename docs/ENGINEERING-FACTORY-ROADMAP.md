@@ -129,3 +129,12 @@ Two independent GitHub runners generated different debug APK SHA-256 values for 
 ## Next bounded release-engineering task — CI-003
 
 Produce a deterministic unsigned Android build artifact (or a separately controlled, explicitly non-production CI signing profile), compare normalized APK contents and provenance across independent runners, record SDK/build-tools/action versions, and add an SBOM. Keep debug keys non-production and never introduce a production signing key into CI. Acceptance requires independent-runner equivalence and documented signature treatment; same-run repeat builds alone are insufficient.
+
+
+## CI-003 — independent-runner unsigned Android reproducibility (2026-11-05)
+
+Implemented a dedicated CI workflow with two isolated ubuntu-24.04 builder jobs and a third verifier job. Both builders use a checksum-verified Gradle 8.9 distribution, Temurin JDK 17.0.13+11, AGP 8.7.3, Kotlin 2.0.21, Android platform 35 and build-tools 35.0.0. The release build has no signing configuration; the verifier rejects v1 signatures and APK Signing Scheme v2/v3 blocks.
+
+A deterministic SPDX-2.3 SBOM is generated from resolved releaseRuntimeClasspath artifacts and includes each dependency checksum and Maven purl. The SBOM explicitly excludes build plugins, Gradle internals and SDK packages; those top-level inputs are captured in unsigned build provenance. Whole APK bytes, normalized ZIP entry content, SBOM, runtime inventory, source commit and toolchain inputs must match across the independent runners.
+
+**Acceptance state:** PENDING exact-head CI-003 workflow. This is an unsigned CI engineering artifact, not a distributable release. No production key, emulator, physical Pixel, OTA or firmware operation is involved. Independent supervisor approval remains pending; no milestone is complete by this implementation.

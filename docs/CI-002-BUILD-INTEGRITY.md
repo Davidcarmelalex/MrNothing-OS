@@ -29,3 +29,12 @@ For SEC-019B commit `02ac61a00f2f49f4ca0c9ff779ad8fa5fbf14e7a`, push and PR GitH
 The app module has no explicit signing configuration, so the default per-run debug keystore is a plausible cause; this has not been experimentally isolated. The result does **not** prove source/build nondeterminism, but it does prove that cross-run APK byte identity has not been established. Do not claim cross-host reproducibility or release readiness.
 
 Next: build a deterministic unsigned artifact or controlled non-production CI signing profile, compare normalized contents across independent runners, record all toolchain inputs, and generate an SBOM. Do not commit or create production signing keys.
+
+
+## CI-003 implementation — 2026-11-05
+
+Added an independent-runner unsigned Android release build gate. It deliberately uses the unsigned AGP release output rather than the per-run debug signing identity. Two isolated ubuntu-24.04 matrix jobs use Temurin 17.0.13+11, checksum-verified Gradle 8.9, AGP 8.7.3, Kotlin 2.0.21, Android platform 35 and build-tools 35.0.0. A third job compares whole APK bytes and normalized ZIP entry contents, verifies matching source/toolchain/provenance, and compares deterministic SPDX-2.3 runtime SBOMs.
+
+The SBOM covers resolved releaseRuntimeClasspath artifacts only; build plugins, Gradle internals and SDK packages are explicitly outside its scope and are recorded as toolchain provenance. No production signing key is used. All artifacts remain unsigned and release_ready=false.
+
+Exact-head CI-003 acceptance is pending. A green workflow must be observed on the final branch commit before claiming independent-runner reproducibility.
