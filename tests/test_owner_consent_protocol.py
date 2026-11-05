@@ -11,7 +11,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from core.command_admission import DurableReplayLedger
 from core.owner_consent_protocol import (
-    ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload, verify_and_consume,
+    ConsentChallenge, MAX_CAPABILITY_TTL_MS, MAX_EPOCH_MS,
+    canonical_payload, verify_and_consume,
 )
 
 FIXTURE = os.path.join(
@@ -140,6 +141,44 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         )
         result = self.verify(b"{}", challenge=long_challenge)
         self.assertEqual(result.reason, "INVALID_CHALLENGE")
+
+    def test_epoch_timestamps_must_fit_signed_64_bit_milliseconds(self):
+        too_large = MAX_EPOCH_MS + 1
+        challenges = (
+            replace(
+                self.challenge,
+                issued_at_epoch_ms=too_large,
+                expires_at_epoch_ms=too_large + 1,
+            ),
+            replace(
+                self.challenge,
+                issued_at_epoch_ms=MAX_EPOCH_MS - 10_000,
+                expires_at_epoch_ms=too_large,
+            ),
+        )
+        for challenge in challenges:
+            with self.subTest(issued=challenge.issued_at_epoch_ms,
+                              expires=challenge.expires_at_epoch_ms):
+                self.assertEqual(
+                    self.verify(b"{}", challenge=challenge).reason,
+                    "INVALID_CHALLENGE",
+                )
+                with self.assertRaises(ValueError):
+                    canonical_payload(challenge)
+
+    def test_signed_long_epoch_boundary_is_accepted(self):
+        challenge = replace(
+            self.challenge,
+            issued_at_epoch_ms=MAX_EPOCH_MS - MAX_CAPABILITY_TTL_MS,
+            expires_at_epoch_ms=MAX_EPOCH_MS,
+        )
+        result = self.verify(
+            self.envelope(challenge),
+            challenge=challenge,
+            now_epoch_ms=challenge.issued_at_epoch_ms + 1_000,
+        )
+        self.assertTrue(result.admitted)
+        self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
 
     def test_wrong_signing_key_is_rejected(self):
         other = ec.generate_private_key(ec.SECP256R1())
