@@ -30,3 +30,12 @@ The follow-up test slice adds a direct JVM test of the process-wide coordinator.
 The operation-gate suite now also races `cancel(token)` against `claimCommit(token)` from two synchronized workers. Exactly one operation must win the synchronized boundary. A stale completion/cancellation token is also tested against a newer active operation so late callbacks cannot cancel or finish the newer transaction.
 
 These tests exercise the JVM executor and pure synchronization gate only. They do not invoke Android Keystore, StrongBox, AtomicFile, Activity lifecycle callbacks or a physical device. Exact-head Phase 1 and CI-003 workflows are the acceptance gate; QA-005 remains a separate launcher/credential-probe emulator suite.
+
+
+## SEC-020B4B — static capability-boundary regression gates
+
+The source-level security boundary is now checked across the owner trust Activity, import parser, Android trust backend, trust store and serialized I/O coordinator. The regression gate rejects direct references to agent/command routing, permission grants, foreground execution, screen capture/accessibility, notification listeners, VPN/device administration, telephony, camera/microphone, arbitrary process launch and network clients/listeners.
+
+A second regression gate parses both manifests. It requires the credential probe Activity and cancellation receiver to exist only in the debug manifest, with both components explicitly exported only behind `android.permission.DUMP`; neither probe may appear in the main/release source manifest.
+
+These are static source/manifest checks. They do not prove absence of reflective or transitive runtime capabilities, do not inspect a Gradle-merged release manifest, and do not exercise the Android trust-store worker on-device. Existing Phase 1 manifest/build gates and exact-head QA-005 remain required. Independent security review and Pixel 9 Pro validation remain separate acceptance gates.

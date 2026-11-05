@@ -103,5 +103,67 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         self.assertEqual(permissions, ["android.permission.USE_BIOMETRIC"])
 
 
+    def test_trust_path_has_no_sensitive_platform_or_execution_capabilities(self):
+        names = (
+            "OwnerAuthorityTrustActivity.kt",
+            "AuthorityTrustImport.kt",
+            "AndroidAuthorityTrustBackend.kt",
+            "OwnerAuthorityTrustStore.kt",
+            "OwnerAuthorityIoCoordinator.kt",
+        )
+        forbidden = (
+            "CommandRouter", "TrustedCommand", "AgentPolicy", "AgentAction",
+            "CommandExecutor", "AgentExecutor",
+            "requestPermissions(", "grantRuntimePermission(",
+            "startForegroundService(", "PackageInstaller",
+            "MediaProjectionManager", "MediaProjection",
+            "AccessibilityService", "AccessibilityNodeInfo",
+            "NotificationListenerService", "VpnService", "DevicePolicyManager",
+            "SmsManager", "TelephonyManager", "AudioRecord", "MediaRecorder",
+            "CameraManager", "ProcessBuilder(", "Runtime.getRuntime(",
+            "HttpURLConnection", "HttpsURLConnection", "ServerSocket(",
+            "Socket(", "DatagramSocket(", "OkHttpClient", "WebSocket",
+        )
+        for name in names:
+            code = (SRC / name).read_text()
+            for marker in forbidden:
+                with self.subTest(file=name, forbidden=marker):
+                    self.assertNotIn(marker, code)
+
+    def test_debug_credential_probe_is_dump_protected_and_debug_only(self):
+        debug_manifest = ROOT / "android/app/src/debug/AndroidManifest.xml"
+        main_root = ET.parse(MANIFEST).getroot()
+        debug_root = ET.parse(debug_manifest).getroot()
+        main_app = main_root.find("application")
+        debug_app = debug_root.find("application")
+        self.assertIsNotNone(main_app)
+        self.assertIsNotNone(debug_app)
+
+        probe_names = {
+            ".OwnerCredentialPromptProbeActivity",
+            ".OwnerCredentialPromptProbeCancelReceiver",
+        }
+        main_names = {
+            node.get(A + "name")
+            for tag in ("activity", "activity-alias", "service", "receiver", "provider")
+            for node in main_app.findall(tag)
+        }
+        self.assertTrue(probe_names.isdisjoint(main_names))
+
+        actual = []
+        for tag in ("activity", "activity-alias", "service", "receiver", "provider"):
+            for node in debug_app.findall(tag):
+                actual.append((tag, node.get(A + "name")))
+                self.assertEqual(node.get(A + "exported"), "true")
+                self.assertEqual(node.get(A + "permission"), "android.permission.DUMP")
+        self.assertEqual(
+            set(actual),
+            {
+                ("activity", ".OwnerCredentialPromptProbeActivity"),
+                ("receiver", ".OwnerCredentialPromptProbeCancelReceiver"),
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
