@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -31,13 +32,16 @@ from core.owner_consent_transport import EnrolledTransportCertificate
 
 
 SCHEMA_NAME = "mrnothing.owner-device-enrollment"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 1  # Signed enrollment-statement protocol version.
+DATABASE_SCHEMA_VERSION = 2  # Adds atomic enrollment-aware consent replay state.
 MAX_ENROLLMENT_ENVELOPE_BYTES = 4_096
 MAX_ENROLLMENT_TTL_MS = 300_000
 MAX_EPOCH_MS = (1 << 63) - 1
 MAX_DEVICES = 5_000
 MAX_HISTORY_ROWS = 8_000
 MAX_DATABASE_BYTES = 4 * 1024 * 1024
+MAX_CONSENT_REPLAY_ROWS = 10_000
+CONSENT_REPLAY_TTL_MS = 60_000
 _SQLITE_TIMEOUT_SECONDS = 5.0
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -346,9 +350,22 @@ class SQLiteOwnerEnrollmentRegistry:
                     UNIQUE(device_id, credential_generation)
                 )
             """)
+            db.execute("""
+                CREATE TABLE owner_consent_replay (
+                    device_id TEXT NOT NULL,
+                    nonce TEXT NOT NULL
+                        CHECK(length(nonce) = 32 AND nonce NOT GLOB '*[^0-9a-f]*'),
+                    consumed_at_epoch_ms INTEGER NOT NULL
+                        CHECK(typeof(consumed_at_epoch_ms) = 'integer'
+                              AND consumed_at_epoch_ms >= 0),
+                    PRIMARY KEY(device_id, nonce),
+                    FOREIGN KEY(device_id) REFERENCES owner_device(device_id)
+                )
+            """)
             db.execute("CREATE INDEX owner_device_active ON owner_device(active, device_id)")
             db.execute("CREATE INDEX owner_history_device ON owner_device_history(device_id, credential_generation)")
-            db.execute("PRAGMA user_version=1")
+            db.execute("CREATE INDEX owner_consent_replay_age ON owner_consent_replay(consumed_at_epoch_ms)")
+            db.execute("PRAGMA user_version=2")
             db.execute("COMMIT")
             os.chmod(self.path, 0o600)
             self._check_file()
@@ -361,6 +378,75 @@ class SQLiteOwnerEnrollmentRegistry:
         finally:
             if db is not None:
                 db.close()
+
+
+    def migrate_v1_to_v2(self, *, explicit_migration: bool = False) -> bool:
+        """Explicitly add atomic consent replay state to an existing v1 registry.
+
+        This migration is additive and preserves all enrollment/history rows.
+        It is never performed implicitly during ordinary lookup or startup.
+        Returns True when a migration occurred and False when already at v2.
+        """
+        if explicit_migration is not True:
+            raise EnrollmentRegistryError("explicit v1-to-v2 migration authorization required")
+        db = self._connect()
+        try:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            tables = {
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+            if version == DATABASE_SCHEMA_VERSION and tables == {
+                "owner_device", "owner_device_history", "owner_consent_replay"
+            }:
+                self._validate_schema(db)
+                return False
+            if version != 1 or tables != {"owner_device", "owner_device_history"}:
+                raise EnrollmentRegistryError("database is not a recognized v1 enrollment registry")
+            check = db.execute("PRAGMA quick_check(1)").fetchone()
+            if check is None or check[0] != "ok":
+                raise EnrollmentRegistryError("v1 enrollment database integrity check failed")
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                raise EnrollmentRegistryError("enrollment schema changed during migration")
+            current_tables = {
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+            if current_tables != {"owner_device", "owner_device_history"}:
+                raise EnrollmentRegistryError("v1 enrollment schema changed during migration")
+            db.execute("""
+                CREATE TABLE owner_consent_replay (
+                    device_id TEXT NOT NULL,
+                    nonce TEXT NOT NULL
+                        CHECK(length(nonce) = 32 AND nonce NOT GLOB '*[^0-9a-f]*'),
+                    consumed_at_epoch_ms INTEGER NOT NULL
+                        CHECK(typeof(consumed_at_epoch_ms) = 'integer'
+                              AND consumed_at_epoch_ms >= 0),
+                    PRIMARY KEY(device_id, nonce),
+                    FOREIGN KEY(device_id) REFERENCES owner_device(device_id)
+                )
+            """)
+            db.execute(
+                "CREATE INDEX owner_consent_replay_age "
+                "ON owner_consent_replay(consumed_at_epoch_ms)"
+            )
+            db.execute("PRAGMA user_version=2")
+            db.execute("COMMIT")
+            self._validate_schema(db)
+            return True
+        except EnrollmentRegistryError:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+        except sqlite3.Error as exc:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise EnrollmentRegistryError("v1-to-v2 enrollment migration failed") from exc
+        finally:
+            db.close()
 
     def _check_file(self) -> None:
         try:
@@ -391,14 +477,14 @@ class SQLiteOwnerEnrollmentRegistry:
     @staticmethod
     def _validate_schema(db: sqlite3.Connection) -> None:
         try:
-            if db.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+            if db.execute("PRAGMA user_version").fetchone()[0] != DATABASE_SCHEMA_VERSION:
                 raise EnrollmentRegistryError("unsupported enrollment database schema")
             tables = {
                 row[0] for row in db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 )
             }
-            if tables != {"owner_device", "owner_device_history"}:
+            if tables != {"owner_device", "owner_device_history", "owner_consent_replay"}:
                 raise EnrollmentRegistryError("unexpected enrollment database tables")
             result = db.execute("PRAGMA quick_check(1)").fetchone()
             if result is None or result[0] != "ok":
@@ -584,6 +670,117 @@ class SQLiteOwnerEnrollmentRegistry:
             )
         except sqlite3.Error as exc:
             raise EnrollmentRegistryError("transport-certificate lookup failed") from exc
+        finally:
+            db.close()
+
+
+    def consume_consent_nonce(
+        self,
+        *,
+        owner_id: str,
+        device_id: str,
+        nonce: str,
+        transport_certificate_sha256: str,
+        credential_generation: int,
+        consent_public_key_spki_der: bytes,
+        now_epoch_ms: int,
+    ) -> str:
+        """Atomically revalidate the paired enrollment and reserve one consent nonce.
+
+        Enrollment rotation/revocation and this operation serialize on the same
+        SQLite writer lock. A successful result is ordered before any later
+        rotation/revocation commit; a rotation/revocation committed first is
+        observed and rejected. This method never executes an action.
+        """
+        if (
+            type(owner_id) is not str or _IDENTIFIER_RE.fullmatch(owner_id) is None
+            or type(device_id) is not str or _IDENTIFIER_RE.fullmatch(device_id) is None
+            or type(nonce) is not str or re.fullmatch(r"[0-9a-f]{32}", nonce) is None
+            or type(transport_certificate_sha256) is not str
+            or _SHA256_RE.fullmatch(transport_certificate_sha256) is None
+            or type(credential_generation) is not int
+            or not 1 <= credential_generation <= MAX_EPOCH_MS
+            or type(now_epoch_ms) is not int
+            or not 0 <= now_epoch_ms <= MAX_EPOCH_MS
+            or type(consent_public_key_spki_der) is not bytes
+            or not 1 <= len(consent_public_key_spki_der) <= 512
+        ):
+            return "INVALID_ADMISSION_CONTEXT"
+        try:
+            public_key = serialization.load_der_public_key(consent_public_key_spki_der)
+        except (ValueError, TypeError, UnsupportedAlgorithm):
+            return "INVALID_ADMISSION_CONTEXT"
+        if not isinstance(public_key, ec.EllipticCurvePublicKey) or public_key.curve.name != "secp256r1":
+            return "INVALID_ADMISSION_CONTEXT"
+        canonical_key = public_key.public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        if canonical_key != consent_public_key_spki_der:
+            return "INVALID_ADMISSION_CONTEXT"
+
+        db = self._connect()
+        try:
+            self._validate_schema(db)
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("""
+                SELECT owner_id, consent_public_key_spki_der,
+                       transport_certificate_sha256, credential_generation, active
+                FROM owner_device WHERE device_id=?
+            """, (device_id,)).fetchone()
+            if row is None or row[4] != 1:
+                db.execute("ROLLBACK")
+                return "ENROLLMENT_NOT_ACTIVE"
+            if row[0] != owner_id:
+                db.execute("ROLLBACK")
+                return "ENROLLMENT_IDENTITY_MISMATCH"
+            if (
+                row[2] != transport_certificate_sha256
+                or row[3] != credential_generation
+            ):
+                db.execute("ROLLBACK")
+                return "ENROLLMENT_CREDENTIAL_MISMATCH"
+            if type(row[1]) is not bytes or not hmac.compare_digest(
+                bytes(row[1]), consent_public_key_spki_der
+            ):
+                db.execute("ROLLBACK")
+                return "ENROLLMENT_KEY_MISMATCH"
+
+            cutoff = now_epoch_ms - CONSENT_REPLAY_TTL_MS
+            if cutoff >= 0:
+                db.execute(
+                    "DELETE FROM owner_consent_replay WHERE consumed_at_epoch_ms < ?",
+                    (cutoff,),
+                )
+            if db.execute(
+                "SELECT 1 FROM owner_consent_replay WHERE device_id=? AND nonce=?",
+                (device_id, nonce),
+            ).fetchone():
+                db.execute("ROLLBACK")
+                return "REPLAY_OR_CAPACITY"
+            count = db.execute("SELECT COUNT(*) FROM owner_consent_replay").fetchone()[0]
+            if count >= MAX_CONSENT_REPLAY_ROWS:
+                db.execute("ROLLBACK")
+                return "REPLAY_OR_CAPACITY"
+            db.execute(
+                "INSERT INTO owner_consent_replay(device_id, nonce, consumed_at_epoch_ms) "
+                "VALUES (?, ?, ?)",
+                (device_id, nonce, now_epoch_ms),
+            )
+            db.execute("COMMIT")
+            return "ADMITTED"
+        except EnrollmentRegistryError:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+        except sqlite3.IntegrityError:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            return "REPLAY_OR_CAPACITY"
+        except sqlite3.Error as exc:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise EnrollmentRegistryError("atomic consent admission failed") from exc
         finally:
             db.close()
 

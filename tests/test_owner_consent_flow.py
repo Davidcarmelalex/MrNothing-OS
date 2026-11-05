@@ -1,16 +1,14 @@
 """AGENT-004E: synthetic end-to-end owner-consent flow; never executes actions."""
 import base64
 from concurrent.futures import ThreadPoolExecutor
+import threading
 import json
-import os
-import tempfile
 import unittest
 from dataclasses import replace
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from core.command_admission import DurableReplayLedger
 from core.owner_consent_issuer import (
     AuthenticatedOwnerSession,
     EnrolledOwnerDevice,
@@ -27,6 +25,8 @@ class _Registry:
     def __init__(self, record=None, *, fail=False):
         self.record = record
         self.fail = fail
+        self.seen = set()
+        self.lock = threading.Lock()
 
     def lookup_active_device(self, device_id):
         if self.fail:
@@ -35,12 +35,31 @@ class _Registry:
             return None
         return self.record
 
+    def consume_consent_nonce(self, *, owner_id, device_id, nonce,
+                              transport_certificate_sha256, credential_generation,
+                              consent_public_key_spki_der, now_epoch_ms):
+        if self.fail:
+            raise OSError("synthetic registry failure")
+        record = self.record
+        if record is None or record.active is not True:
+            return "ENROLLMENT_NOT_ACTIVE"
+        if record.owner_id != owner_id or record.device_id != device_id:
+            return "ENROLLMENT_IDENTITY_MISMATCH"
+        if (record.transport_certificate_sha256 != transport_certificate_sha256
+                or record.credential_generation != credential_generation):
+            return "ENROLLMENT_CREDENTIAL_MISMATCH"
+        if record.public_key_spki_der != consent_public_key_spki_der:
+            return "ENROLLMENT_KEY_MISMATCH"
+        with self.lock:
+            key = (device_id, nonce)
+            if key in self.seen:
+                return "REPLAY_OR_CAPACITY"
+            self.seen.add(key)
+        return "ADMITTED"
+
 
 class OwnerConsentFlowTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.ledger_path = os.path.join(self.temp.name, "consent-replay.sqlite")
-        self.ledger = DurableReplayLedger(self.ledger_path, ttl_seconds=60)
         self.private_key = ec.generate_private_key(ec.SECP256R1())
         self.public_der = self.private_key.public_key().public_bytes(
             serialization.Encoding.DER,
@@ -53,6 +72,7 @@ class OwnerConsentFlowTests(unittest.TestCase):
             transport_certificate_sha256="a" * 64,
             credential_generation=1,
         )
+        self.registry = _Registry(self.record)
         self.session = AuthenticatedOwnerSession(
             owner_id="owner-1",
             device_id="pixel9pro-1",
@@ -63,9 +83,6 @@ class OwnerConsentFlowTests(unittest.TestCase):
             credential_generation=1,
         )
         self.issued = self.issue()
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def issue(self, *, session=None, record=None, registry=None, nonce=NONCE):
         selected_session = self.session if session is None and hasattr(self, "session") else session
@@ -97,7 +114,7 @@ class OwnerConsentFlowTests(unittest.TestCase):
             ensure_ascii=True,
         ).encode("ascii")
 
-    def verify(self, envelope, *, issued=None, ledger=None, now=NOW + 1,
+    def verify(self, envelope, *, issued=None, now=NOW + 1,
                authenticated=True, registry=None):
         capability = self.issued if issued is None else issued
         return verify_and_consume(
@@ -105,10 +122,9 @@ class OwnerConsentFlowTests(unittest.TestCase):
             challenge=capability.capability.challenge,
             trusted_public_key_spki_der=capability.capability.trusted_public_key_spki_der,
             transport_authenticated=authenticated,
-            enrollment_registry=_Registry(self.record) if registry is None else registry,
+            enrollment_registry=self.registry if registry is None else registry,
             transport_certificate_sha256=self.session.transport_certificate_sha256,
             credential_generation=self.session.credential_generation,
-            ledger=self.ledger if ledger is None else ledger,
             now_epoch_ms=now,
         )
 
@@ -119,12 +135,11 @@ class OwnerConsentFlowTests(unittest.TestCase):
         self.assertTrue(result.admitted)
         self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
 
-    def test_replay_remains_rejected_after_sqlite_ledger_reopen(self):
+    def test_replay_remains_rejected_by_atomic_registry_admission(self):
         challenge = self.issued.capability.challenge
         signed = self.envelope(challenge)
         self.assertTrue(self.verify(signed).admitted)
-        reopened = DurableReplayLedger(self.ledger_path, ttl_seconds=60)
-        result = self.verify(signed, ledger=reopened)
+        result = self.verify(signed)
         self.assertFalse(result.admitted)
         self.assertEqual(result.reason, "REPLAY_OR_CAPACITY")
 

@@ -5,14 +5,11 @@ grant permissions or execute device actions.
 """
 import base64
 import json
-import os
-import tempfile
 import unittest
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from core.command_admission import DurableReplayLedger
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import (
     ConsentChallenge,
@@ -25,17 +22,35 @@ from core.owner_consent_protocol import (
 class _Registry:
     def __init__(self, record):
         self.record = record
+        self.seen = set()
 
     def lookup_active_device(self, device_id):
         if self.record is None or self.record.device_id != device_id:
             return None
         return self.record
 
+    def consume_consent_nonce(self, *, owner_id, device_id, nonce,
+                              transport_certificate_sha256, credential_generation,
+                              consent_public_key_spki_der, now_epoch_ms):
+        record = self.record
+        if record is None or record.active is not True:
+            return "ENROLLMENT_NOT_ACTIVE"
+        if record.owner_id != owner_id or record.device_id != device_id:
+            return "ENROLLMENT_IDENTITY_MISMATCH"
+        if (record.transport_certificate_sha256 != transport_certificate_sha256
+                or record.credential_generation != credential_generation):
+            return "ENROLLMENT_CREDENTIAL_MISMATCH"
+        if record.public_key_spki_der != consent_public_key_spki_der:
+            return "ENROLLMENT_KEY_MISMATCH"
+        key = (device_id, nonce)
+        if key in self.seen:
+            return "REPLAY_OR_CAPACITY"
+        self.seen.add(key)
+        return "ADMITTED"
+
 
 class OwnerConsentParserMutationTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.ledger = self._new_ledger("default.sqlite")
         self.private_key = ec.generate_private_key(ec.SECP256R1())
         self.public_der = self.private_key.public_key().public_bytes(
             serialization.Encoding.DER,
@@ -58,14 +73,6 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
             transport_certificate_sha256=self.transport_fingerprint,
             credential_generation=1,
         ))
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def _new_ledger(self, name):
-        return DurableReplayLedger(
-            os.path.join(self.temp.name, name), ttl_seconds=60
-        )
 
     def _payload(self):
         return {
@@ -92,16 +99,15 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
             outer, separators=(",", ":"), ensure_ascii=True, allow_nan=True
         ).encode("ascii")
 
-    def _verify(self, envelope, *, ledger=None):
+    def _verify(self, envelope, *, registry=None):
         return verify_and_consume(
             envelope,
             challenge=self.challenge,
             trusted_public_key_spki_der=self.public_der,
             transport_authenticated=True,
-            enrollment_registry=self.registry,
+            enrollment_registry=self.registry if registry is None else registry,
             transport_certificate_sha256=self.transport_fingerprint,
             credential_generation=1,
-            ledger=self.ledger if ledger is None else ledger,
             now_epoch_ms=self.now,
         )
 
@@ -114,7 +120,7 @@ class OwnerConsentParserMutationTests(unittest.TestCase):
         self.assertLess(len(compact), MAX_ENVELOPE_BYTES)
         exact_limit = compact + b" " * (MAX_ENVELOPE_BYTES - len(compact))
         self.assertEqual(len(exact_limit), MAX_ENVELOPE_BYTES)
-        result = self._verify(exact_limit, ledger=self._new_ledger("max.sqlite"))
+        result = self._verify(exact_limit, registry=_Registry(self.registry.record))
         self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
 
     def test_malformed_outer_framing_corpus_fails_closed(self):

@@ -13,14 +13,12 @@ from dataclasses import dataclass
 import hmac
 import json
 import re
-import sqlite3
 from typing import Any, Protocol
 
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from core.command_admission import DurableReplayLedger
 
 
 SCREEN_ACTIONS = frozenset({"read_screen", "navigate", "scroll"})
@@ -28,7 +26,6 @@ MAX_CAPABILITY_TTL_MS = 30_000
 MAX_ENVELOPE_BYTES = 4_096
 MAX_PUBLIC_KEY_DER_BYTES = 512
 MAX_SIGNATURE_DER_BYTES = 72
-CONSENT_REPLAY_NAMESPACE = "consent-v1:"
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _SIGNATURE_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -66,9 +63,19 @@ class ConsentAdmissionResult:
 
 
 class OwnerConsentEnrollmentRegistry(Protocol):
-    """Trusted paired enrollment registry; never sourced from request input."""
+    """Trusted registry that atomically validates enrollment and consumes a nonce."""
 
-    def lookup_active_device(self, device_id: str) -> object | None:
+    def consume_consent_nonce(
+        self,
+        *,
+        owner_id: str,
+        device_id: str,
+        nonce: str,
+        transport_certificate_sha256: str,
+        credential_generation: int,
+        consent_public_key_spki_der: bytes,
+        now_epoch_ms: int,
+    ) -> str:
         ...
 
 
@@ -189,54 +196,6 @@ def _decode_signature(signature: str) -> bytes | None:
     return raw
 
 
-def _enrollment_mismatch_reason(
-    registry: OwnerConsentEnrollmentRegistry,
-    *,
-    challenge: ConsentChallenge,
-    trusted_public_key_spki_der: bytes,
-    transport_certificate_sha256: str,
-    credential_generation: int,
-) -> str | None:
-    """Compare the live paired enrollment with the authenticated session snapshot."""
-    try:
-        record = registry.lookup_active_device(challenge.device_id)
-    except Exception:
-        return "ENROLLMENT_REGISTRY_UNAVAILABLE"
-    if record is None:
-        return "ENROLLMENT_NOT_ACTIVE"
-    try:
-        owner_id = record.owner_id
-        device_id = record.device_id
-        active = record.active
-        current_key = record.public_key_spki_der
-        current_fingerprint = record.transport_certificate_sha256
-        current_generation = record.credential_generation
-    except Exception:
-        return "ENROLLMENT_RECORD_INVALID"
-    if type(active) is not bool:
-        return "ENROLLMENT_RECORD_INVALID"
-    if active is not True:
-        return "ENROLLMENT_NOT_ACTIVE"
-    if type(owner_id) is not str or type(device_id) is not str:
-        return "ENROLLMENT_RECORD_INVALID"
-    if owner_id != challenge.owner_id or device_id != challenge.device_id:
-        return "ENROLLMENT_IDENTITY_MISMATCH"
-    if (
-        type(current_fingerprint) is not str
-        or _FINGERPRINT_RE.fullmatch(current_fingerprint) is None
-        or current_fingerprint != transport_certificate_sha256
-        or type(current_generation) is not int
-        or not 1 <= current_generation <= MAX_CREDENTIAL_GENERATION
-        or current_generation != credential_generation
-    ):
-        return "ENROLLMENT_CREDENTIAL_MISMATCH"
-    if type(current_key) is not bytes:
-        return "ENROLLMENT_RECORD_INVALID"
-    if not hmac.compare_digest(current_key, trusted_public_key_spki_der):
-        return "ENROLLMENT_KEY_MISMATCH"
-    return None
-
-
 def verify_and_consume(
     envelope: bytes,
     *,
@@ -246,16 +205,15 @@ def verify_and_consume(
     enrollment_registry: OwnerConsentEnrollmentRegistry,
     transport_certificate_sha256: str,
     credential_generation: int,
-    ledger: DurableReplayLedger,
     now_epoch_ms: int,
 ) -> ConsentAdmissionResult:
-    """Verify one owner-signed capability and atomically consume its host nonce.
+    """Verify a signed capability and atomically bind enrollment to nonce use.
 
-    Challenge, key, transport-session snapshot, registry and time must come
-    from the trusted host layer, never an LLM or request payload. The active
-    paired enrollment is checked after signature verification and again after
-    nonce reservation. A change observed during verification fails closed; the
-    nonce may be consumed on that race. This function never executes a command.
+    The paired enrollment comparison and nonce insertion occur under the
+    enrollment database's single BEGIN IMMEDIATE transaction. Rotation or
+    revocation therefore serializes before or after admission; there is no
+    separate-database check/consume/check window. This function never executes
+    a command. Transport-session object binding remains a separate gate.
     """
     if transport_authenticated is not True:
         return ConsentAdmissionResult(False, "UNAUTHENTICATED")
@@ -266,7 +224,7 @@ def verify_and_consume(
         or not 1 <= credential_generation <= MAX_CREDENTIAL_GENERATION
     ):
         return ConsentAdmissionResult(False, "INVALID_TRANSPORT_BINDING")
-    if not callable(getattr(enrollment_registry, "lookup_active_device", None)):
+    if not callable(getattr(enrollment_registry, "consume_consent_nonce", None)):
         return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_INVALID")
     if not _valid_challenge(challenge):
         return ConsentAdmissionResult(False, "INVALID_CHALLENGE")
@@ -278,10 +236,6 @@ def verify_and_consume(
         1 <= len(trusted_public_key_spki_der) <= MAX_PUBLIC_KEY_DER_BYTES
     ):
         return ConsentAdmissionResult(False, "INVALID_TRUSTED_KEY")
-    if not isinstance(ledger, DurableReplayLedger):
-        return ConsentAdmissionResult(False, "LEDGER_UNAVAILABLE")
-    if type(ledger.ttl_seconds) is not int or ledger.ttl_seconds < MAX_CAPABILITY_TTL_MS // 1000:
-        return ConsentAdmissionResult(False, "REPLAY_WINDOW_TOO_SHORT")
 
     parsed = _decode_envelope(envelope)
     if parsed is None:
@@ -298,8 +252,10 @@ def verify_and_consume(
         public_key = serialization.load_der_public_key(trusted_public_key_spki_der)
     except (ValueError, TypeError, UnsupportedAlgorithm):
         return ConsentAdmissionResult(False, "INVALID_TRUSTED_KEY")
-    if (not isinstance(public_key, ec.EllipticCurvePublicKey)
-            or public_key.curve.name != "secp256r1"):
+    if (
+        not isinstance(public_key, ec.EllipticCurvePublicKey)
+        or public_key.curve.name != "secp256r1"
+    ):
         return ConsentAdmissionResult(False, "INVALID_TRUSTED_KEY")
 
     try:
@@ -311,33 +267,29 @@ def verify_and_consume(
     except (ValueError, TypeError, UnsupportedAlgorithm):
         return ConsentAdmissionResult(False, "BAD_SIGNATURE")
 
-    enrollment_reason = _enrollment_mismatch_reason(
-        enrollment_registry,
-        challenge=challenge,
-        trusted_public_key_spki_der=trusted_public_key_spki_der,
-        transport_certificate_sha256=transport_certificate_sha256,
-        credential_generation=credential_generation,
-    )
-    if enrollment_reason is not None:
-        return ConsentAdmissionResult(False, enrollment_reason)
-
     try:
-        if not ledger.reserve(
-            CONSENT_REPLAY_NAMESPACE + challenge.device_id,
-            challenge.nonce, now_epoch_ms // 1000
-        ):
-            return ConsentAdmissionResult(False, "REPLAY_OR_CAPACITY")
-    except sqlite3.Error:
-        return ConsentAdmissionResult(False, "LEDGER_UNAVAILABLE")
-
-    enrollment_reason = _enrollment_mismatch_reason(
-        enrollment_registry,
-        challenge=challenge,
-        trusted_public_key_spki_der=trusted_public_key_spki_der,
-        transport_certificate_sha256=transport_certificate_sha256,
-        credential_generation=credential_generation,
-    )
-    if enrollment_reason is not None:
-        return ConsentAdmissionResult(False, "ENROLLMENT_CHANGED_DURING_VERIFICATION")
-
-    return ConsentAdmissionResult(True, "ADMITTED_NO_EXECUTION")
+        admission = enrollment_registry.consume_consent_nonce(
+            owner_id=challenge.owner_id,
+            device_id=challenge.device_id,
+            nonce=challenge.nonce,
+            transport_certificate_sha256=transport_certificate_sha256,
+            credential_generation=credential_generation,
+            consent_public_key_spki_der=trusted_public_key_spki_der,
+            now_epoch_ms=now_epoch_ms,
+        )
+    except Exception:
+        return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+    if admission == "ADMITTED":
+        return ConsentAdmissionResult(True, "ADMITTED_NO_EXECUTION")
+    if type(admission) is not str:
+        return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_INVALID")
+    if admission in {
+        "INVALID_ADMISSION_CONTEXT",
+        "ENROLLMENT_NOT_ACTIVE",
+        "ENROLLMENT_IDENTITY_MISMATCH",
+        "ENROLLMENT_CREDENTIAL_MISMATCH",
+        "ENROLLMENT_KEY_MISMATCH",
+        "REPLAY_OR_CAPACITY",
+    }:
+        return ConsentAdmissionResult(False, admission)
+    return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_INVALID")

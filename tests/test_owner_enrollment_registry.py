@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -269,6 +270,108 @@ class RegistryTests(unittest.TestCase):
         for thread in threads: thread.join()
         self.assertEqual(outcomes.count("enroll"), 1)
         self.assertEqual(len(outcomes), 2)
+        self.assertEqual(len(self.registry.history("pixel-1")), 1)
+
+
+    def _admission_args(self, *, nonce="0123456789abcdef0123456789abcdef",
+                        owner="owner-1", device="pixel-1", cert=None,
+                        key=None, generation=1, now=NOW):
+        key = self.consent1 if key is None else key
+        return {
+            "owner_id": owner,
+            "device_id": device,
+            "nonce": nonce,
+            "transport_certificate_sha256": self.cert1 if cert is None else cert,
+            "credential_generation": generation,
+            "consent_public_key_spki_der": spki(key),
+            "now_epoch_ms": now,
+        }
+
+    def test_atomic_consent_admission_is_one_use_and_survives_reopen(self):
+        self.enroll()
+        args = self._admission_args()
+        self.assertEqual(self.registry.consume_consent_nonce(**args), "ADMITTED")
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        self.assertEqual(
+            reopened.consume_consent_nonce(**args), "REPLAY_OR_CAPACITY"
+        )
+
+    def test_revocation_committed_before_admission_is_rejected_atomically(self):
+        self.enroll()
+        revoke = self.statement(
+            operation="revoke", generation=2, enrollment_id="revoke-2",
+            cert=self.cert1, key=self.consent1,
+        )
+        self.registry.apply_signed_enrollment(revoke, now_epoch_ms=NOW)
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**self._admission_args()),
+            "ENROLLMENT_NOT_ACTIVE",
+        )
+
+    def test_rotation_committed_before_admission_rejects_old_pair(self):
+        self.enroll()
+        rotate = self.statement(
+            operation="rotate", generation=2, enrollment_id="rotate-2",
+            cert=self.cert2, key=self.consent2,
+        )
+        self.registry.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**self._admission_args()),
+            "ENROLLMENT_CREDENTIAL_MISMATCH",
+        )
+
+    def test_concurrent_duplicate_consent_nonce_commits_exactly_once(self):
+        self.enroll()
+        args = self._admission_args()
+        barrier = threading.Barrier(12)
+        outcomes = []
+        lock = threading.Lock()
+
+        def worker():
+            barrier.wait()
+            result = self.registry.consume_consent_nonce(**args)
+            with lock:
+                outcomes.append(result)
+
+        workers = [threading.Thread(target=worker) for _ in range(12)]
+        for worker_thread in workers:
+            worker_thread.start()
+        for worker_thread in workers:
+            worker_thread.join()
+        self.assertEqual(outcomes.count("ADMITTED"), 1)
+        self.assertEqual(outcomes.count("REPLAY_OR_CAPACITY"), 11)
+
+    def test_invalid_consent_admission_context_does_not_mutate_state(self):
+        self.enroll()
+        args = self._admission_args(nonce="not-a-canonical-nonce")
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**args),
+            "INVALID_ADMISSION_CONTEXT",
+        )
+        self.assertEqual(
+            self.registry.consume_consent_nonce(**self._admission_args()),
+            "ADMITTED",
+        )
+
+    def test_v1_database_migration_is_explicit_additive_and_idempotent(self):
+        self.enroll()
+        db = sqlite3.connect(self.path)
+        db.execute("DROP INDEX owner_consent_replay_age")
+        db.execute("DROP TABLE owner_consent_replay")
+        db.execute("PRAGMA user_version=1")
+        db.commit()
+        db.close()
+        with self.assertRaises(EnrollmentRegistryError):
+            self.registry.lookup_active_device("pixel-1")
+        with self.assertRaises(EnrollmentRegistryError):
+            self.registry.migrate_v1_to_v2()
+        self.assertTrue(self.registry.migrate_v1_to_v2(explicit_migration=True))
+        self.assertFalse(self.registry.migrate_v1_to_v2(explicit_migration=True))
+        self.assertEqual(self.registry.lookup_active_device("pixel-1").device_id, "pixel-1")
         self.assertEqual(len(self.registry.history("pixel-1")), 1)
 
     def test_missing_database_fails_closed(self):
