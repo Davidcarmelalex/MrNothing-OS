@@ -51,9 +51,11 @@ jobs:
       - name: Run release unit tests and build unsigned release APK
         run: |
           set -euo pipefail
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --no-build-cache :app:testReleaseUnitTest :app:assembleRelease :app:writeReleaseRuntimeInventory
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --no-build-cache --dependency-verification=strict :app:testReleaseUnitTest :app:assembleRelease :app:writeReleaseRuntimeInventory
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
           test -f app/build/reports/ci003/release-runtime-dependencies.tsv
+      - name: Negative control — reject modified Gradle dependency
+        run: python3 ../scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Generate deterministic SPDX runtime SBOM and build provenance
         run: |
           set -euo pipefail

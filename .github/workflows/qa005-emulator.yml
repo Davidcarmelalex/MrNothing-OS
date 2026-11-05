@@ -61,7 +61,9 @@ jobs:
           curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
           echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
           unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon :app:assembleDebug
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:assembleDebug
+      - name: Negative control — reject modified Gradle dependency
+        run: python3 scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Start disposable x86_64 emulator with bounded waits
         run: |
           set -euo pipefail
