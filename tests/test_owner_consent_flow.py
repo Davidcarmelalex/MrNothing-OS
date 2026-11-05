@@ -182,10 +182,12 @@ class OwnerConsentFlowTests(unittest.TestCase):
     def test_revocation_after_challenge_issuance_blocks_verification(self):
         signed = self.envelope(self.issued.capability.challenge)
         self.record = replace(self.record, active=False)
+        self.registry.record = self.record
         rejected = self.verify(signed)
         self.assertFalse(rejected.admitted)
         self.assertEqual(rejected.reason, "ENROLLMENT_NOT_ACTIVE")
         self.record = replace(self.record, active=True)
+        self.registry.record = self.record
         self.assertTrue(self.verify(signed).admitted)
 
     def test_credential_rotation_after_issuance_blocks_old_session(self):
@@ -195,6 +197,7 @@ class OwnerConsentFlowTests(unittest.TestCase):
             transport_certificate_sha256="b" * 64,
             credential_generation=2,
         )
+        self.registry.record = self.record
         rejected = self.verify(signed)
         self.assertFalse(rejected.admitted)
         self.assertEqual(rejected.reason, "ENROLLMENT_CREDENTIAL_MISMATCH")
@@ -230,12 +233,11 @@ class OwnerConsentFlowTests(unittest.TestCase):
         self.assertFalse(result.issued)
         self.assertEqual(result.reason, "REGISTRY_UNAVAILABLE")
 
-    def test_replay_ledger_failure_fails_closed(self):
+    def test_admission_registry_failure_fails_closed(self):
         signed = self.envelope(self.issued.capability.challenge)
-        self.ledger.path = os.path.join(self.temp.name, "missing", "ledger.sqlite")
-        result = self.verify(signed)
+        result = self.verify(signed, registry=_Registry(self.record, fail=True))
         self.assertFalse(result.admitted)
-        self.assertEqual(result.reason, "LEDGER_UNAVAILABLE")
+        self.assertEqual(result.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
 
 
 if __name__ == "__main__":
