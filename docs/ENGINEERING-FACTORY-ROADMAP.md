@@ -374,3 +374,10 @@ SEC-020B4B extends the existing SEC-020B3/B4 source gate rather than duplicating
 PR #1 remains open and draft against `main`; the base remains `f3c9a701d2a337de8ef393ac14df044a79843d60`. It has no submitted review or inline review threads. The branch object reports unprotected; the explicit branch-protection endpoint is not accessible to this integration (HTTP 403), and the repository rulesets endpoint returned an empty list. Other worker PRs/branches remain untouched.
 
 Milestones remain M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Independent security review, Pixel 9 Pro StrongBox/Keyguard, physical AtomicFile recovery, spoken TalkBack, permission-bound agent execution, signed OTA and production release evidence remain outstanding.
+
+
+## CI-004 Gradle-merged release manifest security gate — 2026-11-06
+
+The source-manifest policy and debug-manifest regression tests did not prove the actual release variant's merged manifest. CI-003 now runs scripts/release_manifest_gate.py after :app:assembleRelease on both independent builders. The gate fails closed on missing/ambiguous AGP output; checks reviewed permissions, backup/cleartext/debug flags, exported components, MAIN/HOME/DEFAULT and MAIN/LAUNCHER filters, shared UID, instrumentation and debug credential probe leakage; emits a deterministic manifest SHA-256 report; and compares that report across runner A and B.
+
+Sixteen focused local unit tests passed before submission, including negative controls and a workflow-order regression. The checked-in main source manifest also passes the existing source gate. Exact-head CI-003 is still required to prove the selected AGP 8.7.3 output path and actual merged release manifest. This does not decode the final binary APK manifest, establish runtime capability absence, sign an artifact or establish release readiness. Keep M1/M6 in progress and M8 blocked; no milestone is complete. Independent security review remains pending.

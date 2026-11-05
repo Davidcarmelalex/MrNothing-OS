@@ -54,6 +54,12 @@ jobs:
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --no-build-cache --dependency-verification=strict :app:testReleaseUnitTest :app:assembleRelease :app:writeReleaseRuntimeInventory
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
           test -f app/build/reports/ci003/release-runtime-dependencies.tsv
+
+      - name: Verify Gradle-merged release manifest security
+        run: |
+          set -euo pipefail
+          python3 ../scripts/release_manifest_gate.py --manifest-root app/build/intermediates --output app/build/reports/ci003/release-manifest-security.json
+          test -s app/build/reports/ci003/release-manifest-security.json
       - name: Negative control — reject modified Gradle dependency
         run: python3 ../scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Generate deterministic SPDX runtime SBOM and build provenance
@@ -69,9 +75,10 @@ jobs:
           test -n "$SDKMANAGER_VERSION"
           printf "CI-003 toolchain: JDK=%s sdkmanager=%s\n" "$JAVA_VERSION" "$SDKMANAGER_VERSION"
           cp "$INVENTORY" "$OUT/release-runtime-dependencies.tsv"
+          cp app/build/reports/ci003/release-manifest-security.json "$OUT/release-manifest-security.json"
           python3 ../scripts/ci003_artifacts.py sbom --inventory "$INVENTORY" --commit "$SOURCE_COMMIT" --app-version "0.1.0-dev" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/sbom.spdx.json"
           python3 ../scripts/ci003_artifacts.py provenance --apk "$APK" --sbom "$OUT/sbom.spdx.json" --commit "$SOURCE_COMMIT" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/provenance.json" --operating-system "ubuntu-24.04" --jdk-distribution "Temurin" --jdk-version "$JAVA_VERSION" --gradle-version "8.9" --gradle-sha256 "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab" --agp-version "8.7.3" --kotlin-version "2.0.21" --compile-sdk "35" --build-tools "35.0.0" --sdkmanager-version "$SDKMANAGER_VERSION"
-          sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" > "$OUT/SHA256SUMS.txt"
+          sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" "$OUT/release-manifest-security.json" > "$OUT/SHA256SUMS.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci003-unsigned-release-${{ matrix.builder }}
@@ -81,6 +88,7 @@ jobs:
             android/app/build/outputs/apk/release/sbom.spdx.json
             android/app/build/outputs/apk/release/provenance.json
             android/app/build/outputs/apk/release/SHA256SUMS.txt
+            android/app/build/outputs/apk/release/release-manifest-security.json
           if-no-files-found: error
           retention-days: 7
 
@@ -109,6 +117,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/ci003_artifacts.py verify --first runner-a --second runner-b --expected-commit "$(git rev-parse HEAD)" --output ci003-verification.json
+          cmp runner-a/release-manifest-security.json runner-b/release-manifest-security.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

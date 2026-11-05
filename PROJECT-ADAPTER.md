@@ -192,3 +192,14 @@ All five exact-head Actions workflows passed: Phase 1 push/PR, CI-003 push/PR an
 SEC-020B4B adds static regression gates to the existing owner-authority source test: all trust I/O components must remain disconnected from agent/command execution, permission grants, screen capture/accessibility, device administration, telephony, camera/microphone, network and process-launch capabilities. The debug credential probe must remain absent from the main manifest and DUMP-protected in the debug manifest. These are source/manifest assertions, not runtime proof or independent security approval. No production behavior or permission is added.
 
 PR #1 remains draft, open and unreviewed. The branch object reports unprotected; explicit protection details are inaccessible to this integration (HTTP 403), and no repository rulesets were returned. Other worker branches were not modified. All eight milestones remain as previously recorded; no milestone is complete.
+
+
+## Audit and implementation update — 2026-11-06, CI-004 release manifest gate
+
+The authorized feature branch was audited at 33d70c1462ee5a44c3a58edde6c02216dea63ccd. The complete recursive tree contained 255 entries; PROJECT-ADAPTER.md and the engineering roadmap were present; no repository SKILL.md was present. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed.
+
+Open PRs #1 and #3–#7 were inspected. PR #1 remains a draft against main; no review submissions or inline review threads were present. The exact-head Phase 1 push/PR, CI-003 push/PR and QA-005 emulator PR workflows all completed successfully at 33d70c14. The Python policy suite reported 436 passing tests on push and PR; Android debug/release unit tests and builds, independent unsigned artifact reproducibility and the disposable API 35 x86_64 emulator smoke workflow passed. QA-011 remains an availability preflight, and QA-012 is structural semantics only; neither is spoken TalkBack acceptance. No physical Pixel 9 Pro test or independent security review occurred.
+
+CI-004 adds a fail-closed check of the Gradle-merged release manifest to the existing two-runner CI-003 build. It rejects unreviewed/duplicate permissions, exported non-Home components, debug credential probes, unsafe backup/cleartext/debug flags, shared UID and instrumentation, and missing launcher/HOME filters. A deterministic manifest SHA-256 report is uploaded and compared across both independent runners. Sixteen focused local tests passed before submission; exact-head GitHub Actions remain the acceptance evidence.
+
+No Android application behavior, permission, trust record, device setting, signing key, executor path, physical device or production deployment was modified. PR #1 remains draft. Independent security approval remains pending. M1/M2/M6 remain in progress, M3 partial, M4 not started, M5 not accepted, M7 blocked and M8 blocked. No milestone is complete.
