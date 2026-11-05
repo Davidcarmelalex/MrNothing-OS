@@ -141,6 +141,11 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
 
+        addAction(root, "Offline authority trust",
+            "Open the owner-visible offline authority import and credential confirmation ceremony") {
+            startActivity(Intent(this, OwnerAuthorityTrustActivity::class.java))
+        }
+
         addAction(root, "Owner consent safety preview",
             "Open local credential verification preview; no agent screen access is enabled") {
             startActivity(Intent(this, OwnerConsentPreviewActivity::class.java))

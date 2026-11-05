@@ -221,3 +221,19 @@ QA-005 passed the disposable x86_64 emulator launcher/recovery, 200% font, HOME 
 The initial implementation commits exposed two Kotlin compilation issues; these were corrected in follow-up commits before the final `e530187` exact-head workflows passed. The failed intermediate workflow attempts remain in Actions history. Independent security review remains pending. SEC-020B1 is a compiled and CI-tested storage primitive, not a hardware-validated or production-approved trust store. Keep M1/M6 in progress; M7/M8 blocked; no milestone is complete.
 
 **Next gate:** independent security review of marker lifecycle, StrongBox assumptions, AtomicFile semantics, uninstall/rollback boundaries and the unconnected owner-confirmation/execution paths before SEC-020B2 UI integration.
+
+
+## SEC-020B2 owner-visible offline authority trust ceremony (2026-11-05)
+
+Implemented a bounded Android UI layer over SEC-020A and SEC-020B1:
+- Non-exported OwnerAuthorityTrustActivity with no new Android permission.
+- Strict canonical Base64 parsing for Ed25519 SPKI DER and optional 64-byte rotation signatures; positive canonical decimal generations; exact uppercase SHA-256 fingerprint comparison.
+- Candidate fingerprint preview and explicit owner attestation that the value was compared through a separate trusted out-of-band channel.
+- One-shot 30-second monotonic confirmation state bound to the mode, trust-store snapshot and digest of all imported fields.
+- Fresh Android system-credential prompt, post-return safety recheck, field reparse, trust-store reinspection and binding comparison before creating a SEC-020A Ready proposal and invoking SEC-020B1 commit.
+- Cancellation, Activity destruction, expiry, changed input/state, unavailable/corrupt trust state and failed credential all refuse.
+- No network, Android permission grant, remote enrollment, executor, screen capture or device action is connected.
+
+JVM tests use synthetic Ed25519 keys and a fake clock; Python source tests enforce the manifest and code boundaries. These do not prove real Keyguard behavior, StrongBox hardware, AtomicFile crash recovery, TalkBack speech or Pixel 9 Pro compatibility. The checkbox is an owner attestation, not cryptographic proof of the independent fingerprint channel. The Activity currently performs bounded trust-store I/O synchronously; evaluate lifecycle-safe serialized background I/O before production integration.
+
+The exact-head CI gate, emulator QA and independent security review are separate acceptance requirements. M1, M2 and M6 remain IN PROGRESS; M3 remains PARTIAL; M4, M5 and M7 remain NOT STARTED/BLOCKED; M8 remains BLOCKED. No milestone is complete. The upstream shared SKILL.md remains unverified and is not claimed as installed.
