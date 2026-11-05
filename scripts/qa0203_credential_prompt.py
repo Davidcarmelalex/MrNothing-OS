@@ -13,6 +13,13 @@ BUTTONS = (
 )
 BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\Z")
 SYSTEM_PACKAGES = {"com.android.systemui", "com.android.settings"}
+CANCEL_SURFACE_PACKAGE = "com.android.systemui"
+CANCEL_SURFACE_RESOURCE_ID = "com.android.systemui:id/background"
+CANCEL_SURFACE_DESCRIPTION = "Tap to cancel authentication"
+PROMPT_PANEL_RESOURCE_IDS = {
+    "com.android.systemui:id/auth_credential_header",
+    "com.android.systemui:id/auth_credential_input",
+}
 
 
 def parse_hierarchy(path):
@@ -23,6 +30,16 @@ def parse_hierarchy(path):
     if root.tag != "hierarchy":
         raise ValueError("Expected UIAutomator hierarchy root")
     return list(root.iter("node"))
+
+
+def _bounds(node):
+    match = BOUNDS.fullmatch(node.get("bounds", ""))
+    if not match:
+        raise ValueError("Invalid UI node bounds")
+    x1, y1, x2, y2 = map(int, match.groups())
+    if x1 >= x2 or y1 >= y2:
+        raise ValueError("Nonpositive UI node bounds")
+    return x1, y1, x2, y2
 
 
 def _center(node):
@@ -48,6 +65,41 @@ def find_button(path, label):
     if len(matches) != 1:
         raise ValueError(f"Expected exactly one probe button: {label}")
     return _center(matches[0])
+
+
+def find_prompt_cancel_target(path):
+    """Return a safe point on SystemUI's explicit outside-tap cancel surface."""
+    nodes = parse_hierarchy(path)
+    matches = [
+        node for node in nodes
+        if node.get("package") == CANCEL_SURFACE_PACKAGE
+        and node.get("resource-id") == CANCEL_SURFACE_RESOURCE_ID
+        and node.get("class") == "android.widget.ImageView"
+        and node.get("content-desc") == CANCEL_SURFACE_DESCRIPTION
+        and node.get("clickable") == "true"
+        and node.get("visible-to-user", "true") == "true"
+    ]
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one visible SystemUI authentication-cancel surface")
+    x1, y1, x2, y2 = _bounds(matches[0])
+    if (x1, y1) != (0, 0):
+        raise ValueError("Authentication-cancel surface is not full-screen")
+    panels = [
+        node for node in nodes
+        if node.get("package") == CANCEL_SURFACE_PACKAGE
+        and node.get("resource-id") in PROMPT_PANEL_RESOURCE_IDS
+    ]
+    if not panels:
+        raise ValueError("Credential prompt panel bounds are missing")
+    panel_top = min(_bounds(node)[1] for node in panels)
+    if panel_top <= y1 + 1:
+        raise ValueError("No safe outside-panel cancel point is available")
+    # SystemUI explicitly labels this background "Tap to cancel authentication".
+    # Choose the midpoint of the top margin, strictly above the credential panel.
+    safe_y = y1 + (panel_top - y1) // 2
+    if not (y1 < safe_y < panel_top):
+        raise ValueError("Unable to derive an outside-panel cancel point")
+    return (x1 + x2) // 2, safe_y
 
 
 def status(path):
@@ -104,7 +156,7 @@ def assert_prompt_visible(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=(
-        "button", "status", "assert-probe", "assert-status",
+        "button", "cancel-target", "status", "assert-probe", "assert-status",
         "assert-status-prefix", "assert-prompt-visible"
     ))
     parser.add_argument("xml")
@@ -115,6 +167,8 @@ def main():
             if args.expected is None:
                 raise ValueError("Button label is required")
             print(*find_button(args.xml, args.expected))
+        elif args.command == "cancel-target":
+            print(*find_prompt_cancel_target(args.xml))
         elif args.command == "status":
             print(status(args.xml))
         elif args.command == "assert-probe":

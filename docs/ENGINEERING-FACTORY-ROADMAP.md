@@ -310,3 +310,12 @@ M7 BLOCKED on physical hardware; M8 BLOCKED. No milestone is complete.
 The SEC-020B3 production Activity and a debug-only QA probe now share one OwnerCredentialPromptFactory, preventing the test prompt configuration from drifting from production. The probe is protected by android.permission.DUMP, exists only in src/debug, and has no trust-store, permission-grant or executor path. QA-020B3 uses a fixed test-only PIN on the disposable API 35 x86_64 AVD, checks system prompt visibility, cancellation denial and a successful platform-reported DEVICE_CREDENTIAL callback, then clears the PIN in cleanup. It uses ordinary adb shell UID 2000; no root or physical device is involved.
 
 This is not a successful SEC-020B1 StrongBox-backed trust commit and does not prove Pixel 9 Pro compatibility. Exact-head CI and emulator evidence are required. Independent security review remains pending.
+
+
+## QA-020B3 emulator cancellation correction — 2026-11-05
+
+At source/test head d33b17ca5a35329889ed82f9dfde7bda402dd4b4, Phase 1 push/PR and CI-003 push/PR workflows passed. The Phase 1 PR Python policy suite reported 428 passing tests; Android manifest gate, Gradle unit tests, debug assembly, repeat APK comparison, strict dependency verification and negative control passed. CI-003's two independent release builders and verifier passed. QA-005 emulator run 42067990751 passed all earlier emulator gates and QA-020B2 but failed at QA-020B3 cancellation. The captured hierarchy shows KEYCODE_BACK left SystemUI's credential prompt visible; the test-PIN cleanup succeeded.
+
+The QA-020B3 helper and smoke script now use SystemUI's explicit accessible Tap to cancel authentication background surface. The parser derives a point above the credential panel and refuses ambiguous or unsafe hierarchies. Three regression tests cover safe-point selection and fail-closed cases. Local focused Python tests: 14 passed; shell syntax and Python compilation passed; the captured failure artifact resolves to 540 31. Exact-head GitHub emulator rerun is pending; no runtime pass is claimed.
+
+The earlier QA-020B3 success path did not execute because cancellation failed first. Successful DEVICE_CREDENTIAL callback validation remains unverified until the corrected emulator run passes. No StrongBox-backed trust commit or Pixel 9 Pro validation is established. Independent security review remains pending; no milestone is complete.

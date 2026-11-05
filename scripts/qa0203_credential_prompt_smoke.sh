@@ -71,12 +71,23 @@ tap_button() {
   adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
 }
 
+tap_prompt_cancel_surface() {
+  local name="$1"
+  local coords x y
+  dump_hierarchy "$name"
+  coords="$(python3 scripts/qa0203_credential_prompt.py cancel-target "$CURRENT_XML")"
+  read -r x y <<< "$coords"
+  printf 'Tapping SystemUI authentication-cancel surface at %s,%s\\n' "$x" "$y"
+  adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
+}
+
 wait_for_prompt() {
   local name="$1"
   for attempt in $(seq 1 20); do
     dump_hierarchy "$name-$attempt"
     if python3 scripts/qa0203_credential_prompt.py assert-prompt-visible "$CURRENT_XML" \
         > /dev/null 2>&1; then
+      python3 scripts/qa0203_credential_prompt.py cancel-target "$CURRENT_XML" > /dev/null
       return 0
     fi
     sleep 1
@@ -112,7 +123,9 @@ python3 scripts/qa0203_credential_prompt.py assert-probe "$CURRENT_XML"
 
 tap_button "Authenticate with device credential" "cancel-start"
 wait_for_prompt "cancel-prompt"
-adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_BACK
+# Back did not dismiss this SystemUI credential screen on the API 35 AVD.
+# Use its explicit accessible outside-tap cancel surface, above the credential panel.
+tap_prompt_cancel_surface "cancel-prompt-cancel-surface"
 wait_for_status "STATUS: PROMPT_ERROR:" "cancel-result"
 python3 scripts/qa0203_credential_prompt.py assert-status-prefix \
   "$CURRENT_XML" "STATUS: PROMPT_ERROR:"
