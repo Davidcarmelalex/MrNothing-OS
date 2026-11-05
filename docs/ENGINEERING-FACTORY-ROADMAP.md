@@ -257,3 +257,8 @@ The first exact-head emulator run reached the owner trust Activity but failed it
 At branch head 2600e33abb42bdb6ee6361056539c4e6af0f00ca, Phase 1 push/PR and CI-003 push/PR checks passed. QA-005 run 42047955324 passed its launcher, large-font, HOME consent/recovery, keyboard, structural accessibility and insecure-enrollment steps, then failed in QA-020B2's Cancel assertion. The uploaded hierarchy artifact 13425996691 showed that UIAutomator exposes an empty EditText's hint as its text attribute and that only the bottom three fields were in the post-cancel viewport. The Activity source's cancelPending(true) explicitly clears all five fields; no app defect was established.
 
 The corrected emulator harness enters only five fixed invalid dummy strings, verifies all five before Cancel, then scrolls to the top and verifies all five empty-field hints plus unchanged trust state. It does not submit the dummy values to preview/confirmation or trust-store code. Exact-head CI rerun is required. QA-011 remains service-disabled preflight, QA-012 remains structural only, and no physical Pixel/TalkBack speech acceptance is claimed. No milestone is complete; M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED and M8 BLOCKED. Independent security review remains PENDING.
+
+
+### QA-020B2 snapshot split
+
+The corrected smoke harness captures the Cancel result immediately while the lower status TextView is visible, then scrolls to the top for the five empty-field hints and trust-state comparison. These assertions use separate hierarchy snapshots because the status and all five fields do not share a single scroll viewport.

@@ -83,3 +83,8 @@ The current authorized branch head at run start was 2600e33abb42bdb6ee6361056539
 The exact-head Phase 1 push/PR and CI-003 push/PR workflows passed at 2600e33. QA-005 PR run 42047955324 failed only in QA-020B2 after all prior launcher/accessibility/enrollment steps passed. Artifact 13425996691 established that UIAutomator reports an empty EditText's hint in its text attribute and that the hierarchy was still scrolled to the bottom, exposing only three fields. The Android Activity source calls clear() on all five EditText values in cancelPending(true); the observed failure was a harness assertion error, not evidence of an application defect.
 
 The QA-020B2 harness is strengthened to enter five fixed invalid dummy strings (no valid key, fingerprint, signature or credential), verify them, invoke Cancel, scroll to the top, and require all five EditText nodes to return to their exact empty-field hints with the trust-state label unchanged. No preview or confirmation follows dummy entry. No app code, permissions, role, trust store, enrollment, executor or physical device is changed. Independent security review remains pending. Upstream shared SKILL.md remains unverified.
+
+
+### QA-020B2 snapshot split
+
+The corrected smoke harness captures the Cancel result immediately while the lower status TextView is visible, then scrolls to the top for the five empty-field hints and trust-state comparison. These assertions use separate hierarchy snapshots because the status and all five fields do not share a single scroll viewport.

@@ -40,3 +40,8 @@ The first emulator attempt successfully launched the owner trust Activity. Its U
 The exact-head emulator run 42047955324 reached the owner trust Activity and passed launcher navigation, empty-input preview refusal, insecure-device credential denial, and all preceding QA-005 checks. It failed only at the Cancel assertion. Artifact 13425996691 showed two harness assumptions were wrong: UIAutomator exposes an empty EditText's hint in its text attribute, and the post-cancel hierarchy was still scrolled to the bottom, so only three of five fields were present. The Android Activity's cancelPending(true) path explicitly clears all five EditText values; no application defect was demonstrated.
 
 The harness is strengthened rather than weakening the assertion. It now enters five fixed, deliberately invalid, non-secret dummy strings into the five fields, verifies those exact values, invokes Cancel, scrolls to the top, and requires all five EditText nodes to return to their exact empty-field hints while the trust-state label remains unchanged. It never previews or confirms the dummy material, never supplies a valid key/fingerprint/signature, and never enters a credential. This remains a disposable emulator-only test and does not prove successful Keyguard confirmation, StrongBox, physical Pixel 9 Pro behavior or production safety.
+
+
+### QA-020B2 snapshot split
+
+The corrected smoke harness captures the Cancel result immediately while the lower status TextView is visible, then scrolls to the top for the five empty-field hints and trust-state comparison. These assertions use separate hierarchy snapshots because the status and all five fields do not share a single scroll viewport.

@@ -123,6 +123,8 @@ scroll_to_top "dummy-fields"
 python3 scripts/qa020b2_authority_trust.py dummy "$CURRENT_XML"
 
 tap_button "Cancel any pending trust ceremony and clear imported public-key fields"
+dump_hierarchy "cancel-status"
+python3 scripts/qa020b2_authority_trust.py cancel-status "$CURRENT_XML"
 scroll_to_top "cancelled"
 AFTER_CANCEL="$(python3 scripts/qa020b2_authority_trust.py cancelled "$CURRENT_XML")"
 python3 scripts/qa020b2_authority_trust.py same-state "$CURRENT_XML" "$TRUST_STATE"

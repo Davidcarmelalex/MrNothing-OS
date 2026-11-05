@@ -176,9 +176,12 @@ def assert_dummy_fields(xml):
     return trust_state(xml)
 
 
+def assert_cancel_status(xml):
+    _exact_text(parse_hierarchy(xml), CANCELLED, "android.widget.TextView")
+
+
 def assert_cancelled(xml):
     nodes = parse_hierarchy(xml)
-    _exact_text(nodes, CANCELLED, "android.widget.TextView")
     for label in FIELD_LABELS:
         _exact_text(nodes, label, "android.widget.TextView")
     edits = _edit_fields(nodes)
@@ -204,7 +207,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=(
         "screen", "button", "field", "dummy", "preview", "denied",
-        "credential-cancelled", "cancelled", "same-state", "launcher"
+        "credential-cancelled", "cancel-status", "cancelled", "same-state", "launcher"
     ))
     parser.add_argument("xml")
     parser.add_argument("value", nargs="?")
@@ -232,6 +235,9 @@ def main():
     elif args.mode == "credential-cancelled":
         assert_credential_cancelled(content)
         print("System credential prompt canceled without trust mutation")
+    elif args.mode == "cancel-status":
+        assert_cancel_status(content)
+        print("Cancel status visible")
     elif args.mode == "cancelled":
         print(assert_cancelled(content))
     elif args.mode == "same-state":

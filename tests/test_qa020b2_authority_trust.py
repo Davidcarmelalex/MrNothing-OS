@@ -14,6 +14,7 @@ from scripts.qa020b2_authority_trust import (
     PREVIEW_FAILURE,
     assert_authority_screen,
     assert_cancelled,
+    assert_cancel_status,
     assert_credential_cancelled,
     assert_dummy_fields,
     assert_insecure_denial,
@@ -164,9 +165,14 @@ class Qa020B2HierarchyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             assert_dummy_fields(authority_xml(edit_texts=values))
 
+    def test_cancel_status_is_asserted_in_its_own_visible_snapshot(self):
+        assert_cancel_status(authority_xml(status=CANCELLED))
+        with self.assertRaises(ValueError):
+            assert_cancel_status(authority_xml(status=INITIAL_STATUS))
+
     def test_cancel_restores_all_five_empty_field_hints_and_preserves_state(self):
         self.assertTrue(assert_cancelled(authority_xml(
-            status=CANCELLED, edit_texts=FIELD_HINTS
+            status="", edit_texts=FIELD_HINTS
         )).startswith("Trust state: unavailable."))
 
     def test_cancel_with_retained_import_is_rejected(self):
@@ -209,6 +215,7 @@ class Qa020B2HierarchyTests(unittest.TestCase):
         self.assertIn('getprop ro.kernel.qemu', SMOKE)
         self.assertIn('grep -qx 1', SMOKE)
         self.assertIn('adb -s "$ANDROID_SERIAL" shell input text "$value"', SMOKE)
+        self.assertIn('qa020b2_authority_trust.py cancel-status', SMOKE)
         for label, value in zip(FIELD_LABELS, FIELD_DUMMY_VALUES):
             self.assertIn(f'enter_dummy_field "{label}" "{value}"', SMOKE)
         self.assertNotIn("settings put", SMOKE)
