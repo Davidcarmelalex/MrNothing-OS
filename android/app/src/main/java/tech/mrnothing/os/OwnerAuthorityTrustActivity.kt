@@ -8,6 +8,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
@@ -152,30 +153,30 @@ class OwnerAuthorityTrustActivity : Activity() {
 
         keyIdField = field(
             root, "Authority key identifier", "Example: authority-2026-01",
-            TypedValue.TYPE_CLASS_TEXT or TypedValue.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         )
         generationField = field(
             root, "Generation", "Positive decimal integer, no leading zeros",
-            TypedValue.TYPE_CLASS_NUMBER
+            InputType.TYPE_CLASS_NUMBER
         )
         spkiField = field(
             root, "Ed25519 public-key SPKI DER (canonical Base64)",
             "Paste one canonical Base64 line",
-            TypedValue.TYPE_CLASS_TEXT or TypedValue.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
-                TypedValue.TYPE_TEXT_FLAG_MULTI_LINE,
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE,
             multiline = true
         )
         rotationSignatureField = field(
             root, "Current-authority rotation signature (Base64)",
             "Required only when rotating an existing authority",
-            TypedValue.TYPE_CLASS_TEXT or TypedValue.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
-                TypedValue.TYPE_TEXT_FLAG_MULTI_LINE,
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE,
             multiline = true
         )
         fingerprintField = field(
             root, "Independently obtained SHA-256 fingerprint",
             "SHA256: followed by 64 uppercase hexadecimal characters",
-            TypedValue.TYPE_CLASS_TEXT or TypedValue.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         )
 
         fingerprintStatus = TextView(this).apply {
@@ -248,8 +249,8 @@ class OwnerAuthorityTrustActivity : Activity() {
         fingerprintStatus.text = if (fingerprint == null) {
             "Candidate fingerprint unavailable. Check the key identifier, generation and canonical Base64."
         } else {
-            "Candidate fingerprint:\\n" + fingerprint +
-                "\\nObtain the same value through a separate trusted channel before confirming."
+            "Candidate fingerprint:\n" + fingerprint +
+                "\nObtain the same value through a separate trusted channel before confirming."
         }
     }
 
