@@ -40,7 +40,7 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         self.assertNotIn("startActivityForResult(", code)
         self.assertNotIn("onActivityResult(", code)
         self.assertGreaterEqual(code.count("OwnerCredentialSafetyGate.isSafe(this)"), 2)
-        self.assertIn("OwnerCredentialSafetyGate.isSafe(applicationContext)", code)
+        self.assertIn("OwnerCredentialSafetyGate.isSafe(appContext)", code)
         self.assertIn("confirmation.finish(expectedBinding, credentialResultAccepted)", code)
 
     def test_cancellation_invalidates_operation_before_signal_callback(self):
