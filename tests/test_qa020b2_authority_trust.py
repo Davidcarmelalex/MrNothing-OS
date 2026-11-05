@@ -102,7 +102,8 @@ class Qa020B2HierarchyTests(unittest.TestCase):
     def test_duplicate_button_is_rejected(self):
         xml = button_xml(BUTTON_DESCRIPTIONS["preview"])
         with self.assertRaises(ValueError):
-            find_button(xml.replace("</hierarchy>", xml.removeprefix("<hierarchy>")))
+            find_button(xml.replace("</hierarchy>", xml.removeprefix("<hierarchy>")),
+                        BUTTON_DESCRIPTIONS["preview"])
 
     def test_malformed_or_nonpositive_bounds_are_rejected(self):
         for bounds in ("unknown", "[10,10][10,10]", "[20,20][10,10]"):
