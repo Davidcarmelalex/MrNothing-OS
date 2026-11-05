@@ -47,3 +47,18 @@ Required before this slice can be treated as accepted:
 - Physical Pixel 9 Pro validation is a later M7 gate; no physical-device result is claimed here.
 
 Release state remains `release_ready=false`; artifacts remain unsigned and not for release.
+
+
+## Final exact-head verification — 2026-11-05
+
+The implementation source head `e530187404a07425a2e8dc066e024f4b8d982daf` passed:
+
+- Phase 1 push: [42028301394](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028301394)
+- Phase 1 pull request: [42028312778](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028312778)
+- CI-003 push: [42028301428](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028301428)
+- CI-003 pull request: [42028312691](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028312691)
+- QA-005 disposable emulator: [42028312811](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028312811), [evidence artifact 13415725749](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42028312811/artifacts/13415725749)
+
+The Phase 1 policy workflow reported 380 Python tests passed. Gradle `:app:testDebugUnitTest` and `:app:assembleDebug` passed, including the new store test class; no per-class JUnit count was emitted in the workflow console. Strict dependency verification and its modified-artifact negative control passed. CI-003 independent runners produced byte-identical unsigned APKs (2,166,373 bytes; SHA-256 `b055d54e57717db3f620dbdf997a2960d0a087746107089f3fc470bf70452adf`) and matching normalized entries, runtime inventory and SPDX runtime SBOM. The provenance remains explicitly `release_ready=false`.
+
+The emulator workflow passed QA-005 through QA-013 applicable checks. QA-011 reported `blocked_service_disabled`; QA-012 was structural accessibility validation only. Neither is spoken TalkBack acceptance. No physical Pixel 9 Pro, StrongBox hardware, persistent storage crash recovery or owner credential ceremony was exercised. Independent security review remains pending. The intermediate implementation commits had compile failures that were corrected before this final exact-head verification; the failed runs remain visible in Actions history.

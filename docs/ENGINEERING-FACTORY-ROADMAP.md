@@ -208,3 +208,16 @@ Implemented a bounded storage layer beneath SEC-020A. `OwnerAuthorityTrustStore`
 This is a storage primitive only. It is not connected to the owner enrollment Activity, does not establish that SEC-020A's confirmation boolean came from a fresh system-credential result, does not provision a production authority, and does not connect enrollment, permission grants or command execution. Marker aliases detect rollback of app-private record data only while the Android Keystore aliases remain; they are not a hardware monotonic counter and do not survive uninstall/factory reset or a compromised OS. Pure-JVM tests use synthetic keys; Android Keystore/StrongBox and Pixel behavior remain unverified. Exact-head CI and independent security review are pending. Keep M1/M6 in progress and all other milestones unchanged; no milestone is complete.
 
 **Next bounded task:** after CI acceptance, SEC-020B2 owner-visible offline import/first-install/rotation/recovery UI, binding the fingerprint comparison to a fresh Android system-credential result. Keep the executor disconnected.
+
+
+## SEC-020B1 verification update — 2026-11-05
+
+Implementation source head: `e530187404a07425a2e8dc066e024f4b8d982daf`.
+
+**Exact-head workflows:** Phase 1 push `42028301394` PASS; Phase 1 PR `42028312778` PASS; CI-003 push `42028301428` PASS; CI-003 PR `42028312691` PASS; QA-005 PR `42028312811` PASS. Phase 1 reported 380 Python tests passed. The Android Gradle debug unit-test task and debug assembly passed; the workflow log does not publish a per-class JUnit count. The CI-003 independent verifier reported byte-identical unsigned APKs (2,166,373 bytes, 13 entries), APK SHA-256 `b055d54e57717db3f620dbdf997a2960d0a087746107089f3fc470bf70452adf`, normalized entries SHA-256 `b2e594bbc4b8087011de32e3aa6a47275614f699893cf137afbe630ba0fb4c70`, identical runtime inventory SHA-256 `a8a1b16dd1cefb90d14426c477e924a3710c7a160def52a2ece3a6d55c266e44`, and identical SPDX runtime SBOM SHA-256 `d4ea7332864facde8875fbee65ddc68bc1de940c19609760beca147c41e035f6`. Provenance remains `release_ready=false`.
+
+QA-005 passed the disposable x86_64 emulator launcher/recovery, 200% font, HOME consent/cancel, stock-launcher restoration, keyboard focus, structural accessibility and insecure owner-enrollment denial checks. QA-011 reported `blocked_service_disabled`; QA-012 did not test spoken TalkBack. Evidence artifact: `13415725749`. This is emulator validation only, not Pixel 9 Pro hardware validation.
+
+The initial implementation commits exposed two Kotlin compilation issues; these were corrected in follow-up commits before the final `e530187` exact-head workflows passed. The failed intermediate workflow attempts remain in Actions history. Independent security review remains pending. SEC-020B1 is a compiled and CI-tested storage primitive, not a hardware-validated or production-approved trust store. Keep M1/M6 in progress; M7/M8 blocked; no milestone is complete.
+
+**Next gate:** independent security review of marker lifecycle, StrongBox assumptions, AtomicFile semantics, uninstall/rollback boundaries and the unconnected owner-confirmation/execution paths before SEC-020B2 UI integration.
