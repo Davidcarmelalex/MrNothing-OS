@@ -26,6 +26,9 @@ on:
       - 'tests/test_qa013_owner_enrollment.py'
       - 'scripts/qa020b2_*'
       - 'tests/test_qa020b2_*'
+      - 'scripts/qa0203_*'
+      - 'tests/test_qa0203_*'
+      - 'android/app/src/debug/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -150,6 +153,10 @@ jobs:
         env:
           QA020B2_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa020b2
         run: bash scripts/qa020b2_authority_trust_smoke.sh
+      - name: "QA-020B3: credential-only platform prompt (debug probe, emulator only)"
+        env:
+          QA020B3_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa020b3
+        run: bash scripts/qa0203_credential_prompt_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |

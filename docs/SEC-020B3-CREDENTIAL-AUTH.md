@@ -1,6 +1,6 @@
 # SEC-020B3 — device-credential-only system authentication
 
-**Status:** implementation submitted on `feat/phase1-agentic-phone`; exact-head CI and emulator rerun pending.
+**Status:** SEC-020B3 implementation and exact-head CI accepted. QA-020B3 adds a debug-only disposable-emulator probe for the shared platform prompt; it does not exercise the StrongBox-backed trust-store commit.
 
 ## Scope
 
@@ -43,8 +43,7 @@ errors consume the request as denied. Authentication failure never commits.
 
 No Android permission was added or removed. No authority material, private key,
 credential or secret is stored in the callback. No network, permission grant,
-enrollment service, command router or executor is connected. Existing synchronous
-trust-store I/O remains a separate lifecycle-safe serialization review item.
+enrollment service, command router or executor is connected. The debug-only QA probe is deliberately isolated from the trust store. Existing synchronous trust-store I/O remains a separate lifecycle-safe serialization review item.
 
 ## Verification requirements
 
@@ -53,8 +52,15 @@ trust-store I/O remains a separate lifecycle-safe serialization review item.
 - Python source gates enforce credential-only authenticator configuration,
   removal of the deprecated Intent/result flow, and cancellation ordering.
 - Exact-head Phase 1 and CI-003 workflows must pass.
-- QA-005 must rerun on its disposable API 35 x86_64 emulator. Its unsecured
-  emulator must remain denied before any credential prompt; this does not prove
-  a successful system credential interaction.
+- QA-005 first runs QA-020B2 on the fresh unsecured API 35 x86_64 emulator and verifies denial before a prompt. QA-020B3 then configures a fixed test-only PIN through ordinary adb shell (uid 2000), exercises cancellation and successful DEVICE_CREDENTIAL callback on a debug-only probe using the same prompt factory as production, and clears the PIN in an EXIT trap. It does not invoke the trust store or prove StrongBox-backed commit.
 - Independent security review and physical Pixel 9 Pro validation remain
   separate required gates.
+
+
+## QA-020B3 prompt-runtime evidence boundary
+
+The production Activity and the debug-only probe share OwnerCredentialPromptFactory, which configures only BiometricManager.Authenticators.DEVICE_CREDENTIAL. The probe Activity is declared only in src/debug/AndroidManifest.xml, protected by android.permission.DUMP, and absent from the main/release manifest. Its source has no trust-store, permission-grant, command-router or executor reference.
+
+On the disposable API 35 x86_64 AVD, QA-020B3 sets a fixed synthetic PIN as ordinary adb shell UID 2000, proves the system PIN prompt appears, verifies Back/cancel returns an error rather than success, then verifies the platform callback reports AUTHENTICATION_RESULT_TYPE_DEVICE_CREDENTIAL after the test PIN. An EXIT/INT/TERM cleanup clears the test PIN. The script never runs adb root, su, fastboot, flashing or physical-device commands.
+
+This validates the shared prompt factory and Android system UI callback only. It does not bypass or mock the StrongBox-backed trust store, commit an authority, establish Pixel 9 Pro behavior, or replace independent security review.

@@ -1,4 +1,4 @@
-"""SEC-020B2 source gates; these are not Android runtime or StrongBox tests."""
+"""SEC-020B3 source gates; these are not physical-device or StrongBox tests."""
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -24,9 +24,11 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
 
     def test_device_credential_only_prompt_and_safety_recheck(self):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
-        self.assertIn("BiometricPrompt.Builder(this)", code)
-        self.assertIn(".setAllowedAuthenticators(", code)
-        self.assertIn("BiometricManager.Authenticators.DEVICE_CREDENTIAL", code)
+        factory = (SRC / "OwnerCredentialPromptFactory.kt").read_text()
+        self.assertIn("OwnerCredentialPromptFactory.create(", code)
+        self.assertIn("BiometricPrompt.Builder(activity)", factory)
+        self.assertIn(".setAllowedAuthenticators(", factory)
+        self.assertIn("BiometricManager.Authenticators.DEVICE_CREDENTIAL", factory)
         self.assertNotIn("BIOMETRIC_STRONG", code)
         self.assertNotIn("BIOMETRIC_WEAK", code)
         self.assertIn(

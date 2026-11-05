@@ -303,3 +303,10 @@ the unsecured disposable emulator. No Pixel 9 Pro, StrongBox or physical
 credential test is claimed. Independent security review remains pending.
 Keep M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED;
 M7 BLOCKED on physical hardware; M8 BLOCKED. No milestone is complete.
+
+
+## QA-020B3 — device-credential prompt runtime probe (2026-11-05)
+
+The SEC-020B3 production Activity and a debug-only QA probe now share one OwnerCredentialPromptFactory, preventing the test prompt configuration from drifting from production. The probe is protected by android.permission.DUMP, exists only in src/debug, and has no trust-store, permission-grant or executor path. QA-020B3 uses a fixed test-only PIN on the disposable API 35 x86_64 AVD, checks system prompt visibility, cancellation denial and a successful platform-reported DEVICE_CREDENTIAL callback, then clears the PIN in cleanup. It uses ordinary adb shell UID 2000; no root or physical device is involved.
+
+This is not a successful SEC-020B1 StrongBox-backed trust commit and does not prove Pixel 9 Pro compatibility. Exact-head CI and emulator evidence are required. Independent security review remains pending.

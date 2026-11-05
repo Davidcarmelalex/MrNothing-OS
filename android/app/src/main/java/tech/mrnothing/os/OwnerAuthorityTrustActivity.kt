@@ -342,16 +342,12 @@ class OwnerAuthorityTrustActivity : Activity() {
         }
 
         val prompt = try {
-            BiometricPrompt.Builder(this)
-                .setTitle("Mr. Nothing authority trust")
-                .setSubtitle("Device credential required")
-                .setDescription(
-                    "Confirm this offline authority trust change. No device action will be enabled."
-                )
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                )
-                .build()
+            OwnerCredentialPromptFactory.create(
+                this,
+                "Mr. Nothing authority trust",
+                "Device credential required",
+                "Confirm this offline authority trust change. No device action will be enabled."
+            )
         } catch (_: IllegalArgumentException) {
             cancelPending(false)
             status.text = "Credential-only system prompt unavailable. Refused."

@@ -119,3 +119,12 @@ the one-shot binding is revoked, so late callbacks cannot commit. No new
 dependency or Android permission is introduced. Exact-head CI and emulator
 verification are pending; independent security review and Pixel 9 Pro hardware
 validation remain outstanding.
+
+
+## Audit and QA implementation update — 2026-11-05, QA-020B3
+
+The exact audited branch head was 0c29a35ac39f9e7f92aa9fc009a1c33c2e9784e7; the complete recursive tree contained 236 entries. PROJECT-ADAPTER.md and docs/ENGINEERING-FACTORY-ROADMAP.md are present; no repository SKILL.md exists. The upstream shared factory package remains unverified and is not claimed as installed. Open PRs #1 and #3–#7 were inspected; only feat/phase1-agentic-phone is modified.
+
+The exact-head SEC-020B3 runs were green: Phase 1 push/PR 42057750836 / 42057761743, CI-003 push/PR 42057750392 / 42057761731, and QA-005 PR 42057762205. QA-005 passed QA-020B2 only; it did not exercise a successful credential prompt. PR #1 remains draft with no independent review submissions or inline review threads. Branch-protection read returned HTTP 403; repository rulesets returned an empty list, so required-review enforcement is not established.
+
+QA-020B3 adds a debug-only prompt probe sharing the production OwnerCredentialPromptFactory. It uses a disposable API 35 x86_64 AVD and a fixed synthetic PIN set/cleared through ordinary adb shell UID 2000. It verifies visible system PIN UI, cancellation denial and a successful platform-reported DEVICE_CREDENTIAL callback. The probe has no trust-store, permission-grant or executor path and is excluded from the main/release manifest. This is prompt-runtime evidence only, not StrongBox trust commit or Pixel hardware evidence. Exact-head CI is pending at submission.
