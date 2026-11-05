@@ -61,7 +61,7 @@ jobs:
           OUT="app/build/outputs/apk/release"
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$SOURCE_COMMIT")"
-          SDKMANAGER_VERSION="$("$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version | tail -n 1 | tr -d '\r')"
+          SDKMANAGER_VERSION="$("$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version 2>&1 | tail -n 1 | tr -d '\r')"
           JAVA_VERSION="$(java -version 2>&1 | head -n 1 | tr -d '"')"
           cp "$INVENTORY" "$OUT/release-runtime-dependencies.tsv"
           python3 ../scripts/ci003_artifacts.py sbom --inventory "$INVENTORY" --commit "$SOURCE_COMMIT" --app-version "0.1.0-dev" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/sbom.spdx.json"
