@@ -341,7 +341,8 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             first = self.adapter.issue_challenge(server, action="read_screen")
             self.assertTrue(first.issued)
             self.transport_registry.record = EnrolledTransportCertificate(
-                "owner-1", "pixel9pro-1", self.fingerprint, active=False
+                "owner-1", "pixel9pro-1", self.fingerprint, active=False,
+                credential_generation=1,
             )
             second = self.adapter.issue_challenge(server, action="read_screen")
             self.assertEqual(second.reason, "TRANSPORT_CERT_REVOKED")

@@ -57,6 +57,8 @@ class EnrolledOwnerDevice:
     device_id: str
     public_key_spki_der: bytes
     active: bool = True
+    transport_certificate_sha256: str | None = None
+    credential_generation: int | None = None
 
 
 class OwnerConsentRegistry(Protocol):

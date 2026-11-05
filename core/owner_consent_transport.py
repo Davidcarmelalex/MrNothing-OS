@@ -47,6 +47,7 @@ class EnrolledTransportCertificate:
     device_id: str
     certificate_sha256: str
     active: bool = True
+    credential_generation: int | None = None
 
 
 class OwnerTransportRegistry(Protocol):
