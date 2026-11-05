@@ -24,6 +24,8 @@ on:
       - 'tests/test_qa012_semantics.py'
       - 'scripts/qa013_*'
       - 'tests/test_qa013_owner_enrollment.py'
+      - 'scripts/qa020b2_*'
+      - 'tests/test_qa020b2_*'
   workflow_dispatch:
 permissions:
   contents: read
@@ -144,6 +146,10 @@ jobs:
         env:
           QA013_OUTPUT: qa005-evidence/qa013
         run: bash scripts/qa013_owner_enrollment_smoke.sh
+      - name: "QA-020B2: owner authority trust UI runtime (emulator only)"
+        env:
+          QA020B2_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa020b2
+        run: bash scripts/qa020b2_authority_trust_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |

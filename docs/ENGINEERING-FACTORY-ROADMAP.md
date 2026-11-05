@@ -237,3 +237,11 @@ Implemented a bounded Android UI layer over SEC-020A and SEC-020B1:
 JVM tests use synthetic Ed25519 keys and a fake clock; Python source tests enforce the manifest and code boundaries. These do not prove real Keyguard behavior, StrongBox hardware, AtomicFile crash recovery, TalkBack speech or Pixel 9 Pro compatibility. The checkbox is an owner attestation, not cryptographic proof of the independent fingerprint channel. The Activity currently performs bounded trust-store I/O synchronously; evaluate lifecycle-safe serialized background I/O before production integration.
 
 The exact-head CI gate, emulator QA and independent security review are separate acceptance requirements. M1, M2 and M6 remain IN PROGRESS; M3 remains PARTIAL; M4, M5 and M7 remain NOT STARTED/BLOCKED; M8 remains BLOCKED. No milestone is complete. The upstream shared SKILL.md remains unverified and is not claimed as installed.
+
+## QA-020B2 — owner authority trust UI runtime validation (2026-11-05)
+
+The SEC-020B2 owner-facing Activity was already reachable from MainActivity, but the existing QA-005 emulator workflow did not open it. Added an emulator-only runtime gate that navigates through the launcher, checks the five authority import labels and editable fields, verifies empty-input fingerprint preview refusal, exercises the insecure-device credential preflight (and cancels an unexpected system credential screen without entering credentials), verifies Cancel clears all fields while preserving the trust-state label, and returns to the launcher.
+
+The helper rejects malformed/duplicate/invisible hierarchy targets, unsupported trust states and changed post-cancel state. The script refuses non-emulator serials and requires ro.kernel.qemu=1. It never enters keys, fingerprints, signatures or credentials; never grants permissions or changes the HOME role; and never attempts a successful credential confirmation or trust-store commit.
+
+Exact-head CI/emulator evidence is pending. This is UI runtime coverage only, not StrongBox, Keyguard-success, Pixel 9 Pro, TalkBack speech or independent security acceptance. Keep M1/M2/M6 in progress and all other milestones at their existing verified states; no milestone is complete.
