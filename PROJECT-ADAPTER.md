@@ -45,3 +45,7 @@ SEC-019B extends the consent boundary with exact live SSLSocket-object binding, 
 
 
 SEC-020A adds a pure-JVM offline authority trust policy for first-install, signed rotation and explicit recovery. It returns a validated proposal only; it does not persist trust, mutate Android Keystore, display a ceremony UI or connect enrollment/execution. SEC-020B remains required for the StrongBox-backed generation watermark, encrypted active-anchor persistence and owner-visible credential-confirmed ceremony.
+
+## Audit update — 2026-11-05, SEC-020B1
+
+The current audited feature-branch head before this run was `487b341a11a9ffd1559882d7f269380311f79a35`. CI-005 strict Gradle dependency verification is already implemented and recorded as exact-head passing; it was not duplicated. SEC-020A is present as a pure-JVM trust-transition policy. This run adds SEC-020B1's bounded StrongBox-required storage transaction backend, marker-first commit ordering, encrypted active-record persistence and JVM failure-injection tests. The store is not connected to the owner enrollment UI, network enrollment, permissions or executor. Upstream shared `SKILL.md` remains unverified; this local adapter is not an installed upstream package.
