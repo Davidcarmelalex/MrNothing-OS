@@ -160,3 +160,14 @@ Add Gradle dependency verification metadata for the Android plugin, buildscript 
 A temporary bootstrap workflow generated candidate Gradle SHA-256 dependency-verification metadata on two independent jobs for source commit `c4de864f784afab71419f568acad7011b472e451`. Push run 42019671946 and PR run 42019677930 both succeeded and produced byte-identical metadata (249 components, 441 artifacts/checksums; SHA-256 `1650f08eb3d1006045efc9ea32507245a5464e8126fba10d6e915343876da2ec`). The candidate was structurally inspected before inclusion; the temporary bootstrap workflow is removed in the implementation commit.
 
 The implementation adds `android/gradle/verification-metadata.xml`, strict Gradle dependency verification to all three Android workflows, a disposable local-Maven positive/negative tampering test, and standard-library metadata/workflow regression tests. This is checksum verification, not publisher-signature verification; the generated file does not bind artifacts to repository URLs. Exact-head CI acceptance is pending. Keep M1 IN PROGRESS and M8 BLOCKED.
+
+
+## CI-005 exact-head acceptance — 2026-11-05
+
+CI-005 is **IMPLEMENTED AND EXACT-HEAD CI-PASSING** on `0cf420e8f40580a6a75efbd4bc1de11d0e72db91`. Phase 1 push/PR runs 42020767479 and 42020774162 passed; both Python policy jobs ran 380 tests, and both Android jobs passed strict dependency verification, unit tests, debug assembly, repeat APK comparison and the tampered-artifact negative control. CI-003 push/PR runs 42020767603 and 42020774161 passed both independent builders, their negative controls, unsigned release assembly, SPDX runtime SBOM and the independent artifact verifier. QA-005 PR run 42020774153 passed the strict-verification negative control and emulator checks QA-005 through QA-010 and QA-013. QA-011 reported TalkBack service disabled; QA-012 was structural semantics only.
+
+The candidate metadata was independently generated and compared from two bootstrap runners (249 components, 441 artifact checksums; SHA-256 `1650f08eb3d1006045efc9ea32507245a5464e8126fba10d6e915343876da2ec`). It is checksum verification, not PGP publisher-signature verification, and does not bind artifact coordinates to repository URLs. No production signing or release readiness is implied.
+
+**Next bounded security task — SEC-020:** define and implement the offline enrollment-authority public-key provisioning and first-install trust ceremony, including owner-visible fingerprint confirmation, anti-rollback generation handling, rotation/recovery, synthetic failure-injection tests and explicit no-network/no-execution boundaries. Keep the executor disconnected until the independent security gate passes.
+
+**Milestone state remains unchanged:** M1 IN PROGRESS, M2 IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M6 IN PROGRESS, M7 BLOCKED by physical Pixel access, M8 BLOCKED. No milestone is COMPLETE; independent supervisor/security approval remains pending.

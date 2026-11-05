@@ -1,6 +1,6 @@
 # CI-005 — Gradle dependency verification
 
-**Status:** implementation prepared; final exact-head CI acceptance pending.
+**Status:** ACCEPTED on exact implementation head `0cf420e8f40580a6a75efbd4bc1de11d0e72db91` (2026-11-05).
 
 ## Purpose
 
@@ -37,3 +37,30 @@ A disposable negative-control project creates two local Maven artifacts. Gradle 
 ## Acceptance
 
 Final acceptance requires exact-head Phase 1 push/PR, CI-003 push/PR and QA-005 emulator workflows to pass with strict verification active, plus the negative-control step and Python static tests. Until those runs finish, CI-005 remains in progress.
+
+
+## Exact-head acceptance — 2026-11-05
+
+Implementation source commit: `0cf420e8f40580a6a75efbd4bc1de11d0e72db91`.
+
+All five final exact-head GitHub Actions runs completed successfully:
+
+| Workflow | Event | Run | Result |
+| --- | --- | --- | --- |
+| Phase 1 checks | push | [42020767479](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42020767479) | success |
+| Phase 1 checks | pull request | [42020774162](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42020774162) | success |
+| CI-003 unsigned reproducibility | push | [42020767603](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42020767603) | success |
+| CI-003 unsigned reproducibility | pull request | [42020774161](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42020774161) | success |
+| QA-005 disposable emulator | pull request | [42020774153](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42020774153) | success |
+
+Evidence from the final runs:
+
+- Python policy/static suite: **380 tests passed** in both Phase 1 push and PR jobs.
+- Android debug unit tests and assembly passed with `--dependency-verification=strict`; the repeat debug APK was byte-identical within each runner.
+- CI-003 runner-a and runner-b both passed strict verification, release unit tests, unsigned release assembly, runtime inventory and SPDX-2.3 runtime SBOM generation. The independent verifier passed.
+- The local Maven positive/negative control passed in Phase 1, both CI-003 builders and QA-005: the checksum-matching artifact was accepted and the modified artifact was rejected by Gradle strict verification.
+- Cross-runner unsigned APK SHA-256: `4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9`; normalized APK-entry digest: `ad274b70c474a120a7524b4c093e1b57af4cd353ba2ad00e57916f4baf04e8e8`.
+- Runtime SBOM SHA-256 on both CI-003 PR builders: `b4bcd6607ae208bfba11045d2796b4d3ac7f65bdd800bd8fcfa15e9b4942d8a6`.
+- QA-005 through QA-010 and QA-013 passed on a disposable x86_64 emulator. QA-011 reported the TalkBack service disabled; QA-012 was a structural semantics check, not spoken TalkBack acceptance.
+
+The build provenance continues to report `release_ready=false` and unsigned artifacts. CI-005 acceptance is limited to the current dependency graph and the exact workflows above; PGP signature verification, repository-URL binding, physical Pixel validation and production release gates remain open.
