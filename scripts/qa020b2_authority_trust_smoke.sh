@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # QA-020B2: exercise the owner authority trust UI on a disposable emulator only.
-# No authority material, credentials, keys, permissions or device actions are supplied.
+# Only fixed, deliberately invalid dummy strings are typed; no keys or credentials are used.
 set -euo pipefail
 
-: "${ANDROID_SERIAL:?Set ANDROID_SERIAL to an emulator-* serial}"
-: "${QA020B2_OUTPUT:?Set QA020B2_OUTPUT to an evidence directory}"
+test -n "$ANDROID_SERIAL"
+test -n "$QA020B2_OUTPUT"
 case "$ANDROID_SERIAL" in
   emulator-*) ;;
   *) echo "Refusing non-emulator target" >&2; exit 2 ;;
@@ -16,13 +16,16 @@ adb -s "$ANDROID_SERIAL" shell getprop ro.kernel.qemu | tr -d '\r' | grep -qx 1
 
 size="$(adb -s "$ANDROID_SERIAL" shell wm size | tr -d '\r' | sed -n 's/^Physical size: //p' | tail -1)"
 [[ "$size" =~ ^[0-9]+x[0-9]+$ ]] || { echo "Unable to read emulator display size" >&2; exit 1; }
-width="${size%x*}"
-height="${size#*x}"
+width="$(printf '%s' "$size" | cut -d x -f 1)"
+height="$(printf '%s' "$size" | cut -d x -f 2)"
 swipe_up() {
   adb -s "$ANDROID_SERIAL" shell input swipe "$((width / 2))" "$((height * 3 / 4))" \
     "$((width / 2))" "$((height / 4))" 300
 }
-
+swipe_down() {
+  adb -s "$ANDROID_SERIAL" shell input swipe "$((width / 2))" "$((height / 4))" \
+    "$((width / 2))" "$((height * 3 / 4))" 300
+}
 dump_hierarchy() {
   local name="$1"
   local remote="/sdcard/qa020b2-$name.xml"
@@ -30,6 +33,11 @@ dump_hierarchy() {
   adb -s "$ANDROID_SERIAL" shell uiautomator dump "$remote" >/dev/null
   adb -s "$ANDROID_SERIAL" pull "$remote" "$CURRENT_XML" >/dev/null
   test -s "$CURRENT_XML"
+}
+scroll_to_top() {
+  local name="$1"
+  for _ in $(seq 1 8); do swipe_down; done
+  dump_hierarchy "$name"
 }
 
 tap_button() {
@@ -46,6 +54,27 @@ tap_button() {
     dump_hierarchy "scroll-$RANDOM"
   done
   echo "Unable to find visible button: $description" >&2
+  return 1
+}
+
+enter_dummy_field() {
+  local label="$1" value="$2"
+  local coords x y
+  for attempt in $(seq 1 8); do
+    if coords="$(python3 scripts/qa020b2_authority_trust.py field "$CURRENT_XML" "$label" 2>/dev/null)"; then
+      read -r x y <<< "$coords"
+      adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
+      sleep 0.3
+      adb -s "$ANDROID_SERIAL" shell input text "$value"
+      adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_BACK
+      sleep 0.5
+      dump_hierarchy "dummy-$RANDOM"
+      return 0
+    fi
+    swipe_up
+    dump_hierarchy "field-scroll-$RANDOM"
+  done
+  echo "Unable to locate visible field: $label" >&2
   return 1
 }
 
@@ -72,7 +101,7 @@ if printf '%s' "$RESUMED" | grep -q 'tech.mrnothing.os/.OwnerAuthorityTrustActiv
   python3 scripts/qa020b2_authority_trust.py denied "$CURRENT_XML"
 elif printf '%s' "$RESUMED" | grep -Eq 'com\.android\.(systemui|settings)'; then
   # A credential UI may appear only if this supposedly fresh AVD has a secure lock.
-  # Never type a PIN/password or approve it; immediately cancel and verify no mutation.
+  # Never type a PIN/password or pattern; immediately cancel and verify no mutation.
   adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_BACK
   sleep 1
   dump_hierarchy "credential-cancelled"
@@ -82,8 +111,19 @@ else
   exit 1
 fi
 
+# Populate every field with fixed invalid data so Cancel's clear behavior is exercised.
+# None of these values is valid authority material; no preview/confirmation follows.
+scroll_to_top "dummy-start"
+enter_dummy_field "Authority key identifier" "qa-dummy-key"
+enter_dummy_field "Generation" "2"
+enter_dummy_field "Ed25519 public-key SPKI DER (canonical Base64)" "not-base64"
+enter_dummy_field "Current-authority rotation signature (Base64)" "not-a-signature"
+enter_dummy_field "Independently obtained SHA-256 fingerprint" "not-a-fingerprint"
+scroll_to_top "dummy-fields"
+python3 scripts/qa020b2_authority_trust.py dummy "$CURRENT_XML"
+
 tap_button "Cancel any pending trust ceremony and clear imported public-key fields"
-dump_hierarchy "cancelled"
+scroll_to_top "cancelled"
 AFTER_CANCEL="$(python3 scripts/qa020b2_authority_trust.py cancelled "$CURRENT_XML")"
 python3 scripts/qa020b2_authority_trust.py same-state "$CURRENT_XML" "$TRUST_STATE"
 
@@ -93,7 +133,7 @@ dump_hierarchy "launcher-return"
 python3 scripts/qa020b2_authority_trust.py launcher "$CURRENT_XML"
 
 printf '%s\n' \
-  "QA-020B2 PASS: owner authority UI opened, fields and labels verified, invalid preview refused, credential boundary denied/canceled, import cleared, trust state unchanged, launcher restored." \
+  "QA-020B2 PASS: owner authority UI opened; empty preview refused; insecure credential preflight denied/canceled; all five fixed invalid dummy fields were cleared; trust state unchanged; launcher restored." \
   > "$QA020B2_OUTPUT/result.txt"
 printf '%s\n' "$TRUST_STATE" > "$QA020B2_OUTPUT/initial-trust-state.txt"
 printf '%s\n' "$AFTER_CANCEL" > "$QA020B2_OUTPUT/final-trust-state.txt"

@@ -14,6 +14,22 @@ FIELD_LABELS = (
     "Current-authority rotation signature (Base64)",
     "Independently obtained SHA-256 fingerprint",
 )
+# UIAutomator exposes an empty EditText's hint through its text attribute.
+FIELD_HINTS = (
+    "Example: authority-2026-01",
+    "Positive decimal integer, no leading zeros",
+    "Paste one canonical Base64 line",
+    "Required only when rotating an existing authority",
+    "SHA256: followed by 64 uppercase hexadecimal characters",
+)
+# Fixed, deliberately invalid and non-secret values used only to test Cancel.
+FIELD_DUMMY_VALUES = (
+    "qa-dummy-key",
+    "2",
+    "not-base64",
+    "not-a-signature",
+    "not-a-fingerprint",
+)
 INITIAL_STATUS = "No authority change is pending. Compare the fingerprint independently."
 PREVIEW_FAILURE = (
     "Candidate fingerprint unavailable. Check the key identifier, generation and canonical Base64."
@@ -52,6 +68,26 @@ def _exact_text(nodes, expected, class_name=None):
     return matches[0]
 
 
+def _edit_fields(nodes):
+    return [
+        node for node in nodes
+        if node.get("package") == PACKAGE
+        and node.get("class") == "android.widget.EditText"
+    ]
+
+
+def _center(node):
+    if node.get("visible-to-user", "true") != "true":
+        raise ValueError("Target UI field is not visible")
+    bounds = BOUNDS.fullmatch(node.get("bounds", ""))
+    if not bounds:
+        raise ValueError("Invalid UI field bounds")
+    x1, y1, x2, y2 = map(int, bounds.groups())
+    if x1 >= x2 or y1 >= y2:
+        raise ValueError("Nonpositive UI field bounds")
+    return (x1 + x2) // 2, (y1 + y2) // 2
+
+
 def trust_state(xml):
     nodes = parse_hierarchy(xml)
     matches = [
@@ -75,15 +111,30 @@ def assert_authority_screen(xml):
     _exact_text(nodes, TITLE, "android.widget.TextView")
     for label in FIELD_LABELS:
         _exact_text(nodes, label, "android.widget.TextView")
-    edits = [
-        node for node in nodes
-        if node.get("package") == PACKAGE
-        and node.get("class") == "android.widget.EditText"
-    ]
-    if len(edits) != 5:
+    if len(_edit_fields(nodes)) != 5:
         raise ValueError("Expected exactly five authority import fields")
-    # The status TextView is below the initial ScrollView viewport; later actions assert it.
+    # The initial status TextView may be below the ScrollView viewport.
     return trust_state(xml)
+
+
+def find_field(xml, label):
+    if label not in FIELD_LABELS:
+        raise ValueError("Unknown authority import field label")
+    nodes = parse_hierarchy(xml)
+    for index, node in enumerate(nodes):
+        if (node.get("package") == PACKAGE
+                and node.get("class") == "android.widget.TextView"
+                and node.get("text") == label):
+            for candidate in nodes[index + 1:]:
+                if candidate.get("package") != PACKAGE:
+                    continue
+                if candidate.get("class") == "android.widget.EditText":
+                    return _center(candidate)
+                if (candidate.get("class") == "android.widget.TextView"
+                        and candidate.get("text") in FIELD_LABELS):
+                    break
+            break
+    raise ValueError("Authority import field is not currently visible")
 
 
 def find_button(xml, description):
@@ -98,13 +149,7 @@ def find_button(xml, description):
     ]
     if len(matches) != 1:
         raise ValueError("Expected exactly one visible, enabled local button")
-    bounds = BOUNDS.fullmatch(matches[0].get("bounds", ""))
-    if not bounds:
-        raise ValueError("Invalid button bounds")
-    x1, y1, x2, y2 = map(int, bounds.groups())
-    if x1 >= x2 or y1 >= y2:
-        raise ValueError("Nonpositive button bounds")
-    return (x1 + x2) // 2, (y1 + y2) // 2
+    return _center(matches[0])
 
 
 def assert_preview_failure(xml):
@@ -119,16 +164,28 @@ def assert_credential_cancelled(xml):
     _exact_text(parse_hierarchy(xml), CREDENTIAL_CANCELLED, "android.widget.TextView")
 
 
+def assert_dummy_fields(xml):
+    nodes = parse_hierarchy(xml)
+    for label in FIELD_LABELS:
+        _exact_text(nodes, label, "android.widget.TextView")
+    edits = _edit_fields(nodes)
+    if len(edits) != 5:
+        raise ValueError("Expected all five authority import fields in the dummy-input snapshot")
+    if [node.get("text", "") for node in edits] != list(FIELD_DUMMY_VALUES):
+        raise ValueError("Synthetic dummy values were not present in all five authority fields")
+    return trust_state(xml)
+
+
 def assert_cancelled(xml):
     nodes = parse_hierarchy(xml)
     _exact_text(nodes, CANCELLED, "android.widget.TextView")
-    edits = [
-        node for node in nodes
-        if node.get("package") == PACKAGE
-        and node.get("class") == "android.widget.EditText"
-    ]
-    if len(edits) != 5 or any(node.get("text", "") for node in edits):
-        raise ValueError("Cancel did not clear all five authority import fields")
+    for label in FIELD_LABELS:
+        _exact_text(nodes, label, "android.widget.TextView")
+    edits = _edit_fields(nodes)
+    if len(edits) != 5:
+        raise ValueError("Expected all five authority import fields after scrolling to the top")
+    if [node.get("text", "") for node in edits] != list(FIELD_HINTS):
+        raise ValueError("Cancel did not restore all five authority import fields to their empty hints")
     return trust_state(xml)
 
 
@@ -146,8 +203,8 @@ def assert_launcher(xml):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=(
-        "screen", "button", "preview", "denied", "credential-cancelled",
-        "cancelled", "same-state", "launcher"
+        "screen", "button", "field", "dummy", "preview", "denied",
+        "credential-cancelled", "cancelled", "same-state", "launcher"
     ))
     parser.add_argument("xml")
     parser.add_argument("value", nargs="?")
@@ -159,6 +216,13 @@ def main():
         if not args.value:
             raise ValueError("Button description is required")
         print(*find_button(content, args.value))
+    elif args.mode == "field":
+        if not args.value:
+            raise ValueError("Field label is required")
+        print(*find_field(content, args.value))
+    elif args.mode == "dummy":
+        print(assert_dummy_fields(content))
+        print("All five fixed synthetic invalid values verified")
     elif args.mode == "preview":
         assert_preview_failure(content)
         print("Invalid/empty fingerprint preview refused")
