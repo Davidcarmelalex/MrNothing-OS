@@ -33,7 +33,7 @@ The verifier requires all of the following from its trusted caller:
 3. The enrolled P-256 SubjectPublicKeyInfo DER from a trusted device/owner registry.
 4. `now_epoch_ms` from the trusted verifier clock.
 
-The signed payload must exactly match the host's expected challenge fields. The host challenge issuer must bind device, owner, session, action, issue/expiry times and a cryptographically random nonce. The verifier rejects a challenge lifetime greater than 30 seconds, expired/future challenges, malformed/duplicate JSON keys, unknown fields, non-P-256 keys, invalid signatures and unauthenticated transport.
+The signed payload must exactly match the host's expected challenge fields. The host challenge issuer must bind device, owner, session, action, issue/expiry times and a cryptographically random nonce. The verifier rejects a challenge lifetime greater than 30 seconds, expired/future challenges, malformed/duplicate JSON keys, unknown fields, non-P-256 keys, invalid signatures and unauthenticated transport. Both epoch-millisecond fields are restricted to `0..Long.MAX_VALUE`; this is required because Kotlin represents them as signed `Long` values. Python rejects out-of-range integers before signing or verification, and the shared test coverage exercises the maximum representable expiry boundary.
 
 After signature verification, the existing `DurableReplayLedger` atomically consumes `(consent-v1:<device_id>, nonce)`, using a separate device namespace so command IDs cannot collide with consent nonces. Its configured retention must be at least 30 seconds. The ledger capacity is still shared, so exhaustion can deny consent admission; it never permits it. Database errors, replay and capacity exhaustion fail closed.
 

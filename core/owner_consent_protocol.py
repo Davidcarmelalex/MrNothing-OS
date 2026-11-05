@@ -24,6 +24,8 @@ from core.command_admission import DurableReplayLedger
 
 SCREEN_ACTIONS = frozenset({"read_screen", "navigate", "scroll"})
 MAX_CAPABILITY_TTL_MS = 30_000
+# Kotlin/JVM uses signed Long epoch milliseconds; keep the wire contract identical.
+MAX_EPOCH_MS = (1 << 63) - 1
 MAX_ENVELOPE_BYTES = 4_096
 MAX_PUBLIC_KEY_DER_BYTES = 512
 MAX_SIGNATURE_DER_BYTES = 72
@@ -88,7 +90,11 @@ def _valid_challenge(challenge: object) -> bool:
             or type(challenge.expires_at_epoch_ms) is not int):
         return False
     ttl = challenge.expires_at_epoch_ms - challenge.issued_at_epoch_ms
-    return 0 < ttl <= MAX_CAPABILITY_TTL_MS and challenge.issued_at_epoch_ms >= 0
+    return (
+        0 < ttl <= MAX_CAPABILITY_TTL_MS
+        and 0 <= challenge.issued_at_epoch_ms <= MAX_EPOCH_MS
+        and 0 <= challenge.expires_at_epoch_ms <= MAX_EPOCH_MS
+    )
 
 
 def canonical_payload(challenge: ConsentChallenge) -> bytes:
