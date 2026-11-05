@@ -1,6 +1,6 @@
 # CI-003 — independent-runner unsigned Android reproducibility
 
-**Status:** Implemented in the feature branch; acceptance is pending exact-head GitHub Actions evidence.
+**Status:** CI-003 exact-head acceptance passed on 2026-11-05.
 
 ## Purpose
 
@@ -42,3 +42,25 @@ The generated SPDX-2.3 SBOM inventories resolved Android releaseRuntimeClasspath
 - A matching pair of GitHub-hosted runners is evidence for this exact source/toolchain/run, not proof that every future host or environment is reproducible.
 - No emulator, physical Pixel 9 Pro, OTA, firmware or production deployment is performed by CI-003.
 - A successful CI-003 result does not complete M1 or M8 without independent approval and the remaining milestone gates.
+
+
+## Exact-head CI-003 acceptance — 2026-11-05
+
+Verified source commit: 43e0e0f5f86718fd1c3265364c71bed8547b8a7c.
+
+Both independent-runner workflows passed, including their third-job verifier:
+- Push CI-003 run 42014136696 — success.
+- PR CI-003 run 42014145465 — success.
+
+Each workflow completed both isolated builders and the independent verifier. Both builders passed Gradle 8.9 checksum verification, release unit tests, unsigned release assembly, resolved runtime inventory, SPDX-2.3 SBOM generation and unsigned build provenance.
+
+Cross-runner evidence:
+- Unsigned APK SHA-256 on both builders: 4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9.
+- APK size: 2,118,361 bytes; 13 ZIP entries.
+- Normalized ZIP-entry content SHA-256: ad274b70c474a120a7524b4c093e1b57af4cd353ba2ad00e57916f4baf04e8e8.
+- SPDX-2.3 runtime SBOM SHA-256: af5311a96e363ac57fe939777c1b42b7ad25414cacf4c84eedfc688f8859644f; three packages (application plus two resolved runtime artifacts).
+- Resolved runtime inventory SHA-256: a8a1b16dd1cefb90d14426c477e924a3710c7a160def52a2ece3a6d55c266e44.
+- Matching toolchain: ubuntu-24.04, Temurin/OpenJDK 17.0.13, sdkmanager package revision 12.0, Gradle 8.9 with the pinned distribution SHA-256, AGP 8.7.3, Kotlin 2.0.21, Android platform 35 and build-tools 35.0.0.
+- Verifier reported byte-identical APKs, identical normalized contents, runtime inventory, SBOM, toolchain and source commit.
+
+The verifier report explicitly retains release_ready=false and provenance_signed=false. This establishes reproducibility for this unsigned artifact and recorded runner/toolchain pair only. It does not establish a signed release, complete build-environment SBOM, immutable GitHub Action pinning, physical-device compatibility or production readiness.
