@@ -196,7 +196,7 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
     private fun isStrongBoxBacked(key: SecretKey): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
-        val info = factory.getKeySpec(key, KeyInfo::class.java)
+        val info = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
         return info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
     }
 
