@@ -21,6 +21,23 @@ This is still a transport-neutral admission prototype. The SQLite replay
 ledger is single-host, and the caller must supply an authenticated transport
 identity and a unique device key. No command is executed by this module.
 
+## Owner-UI capability verifier (SEC-014B)
+
+core/owner_consent_verifier.py is a separate in-memory admission prototype
+for one-use read_screen, navigate and scroll capabilities. It binds each
+capability to the configured device, owner, session, action, random process
+epoch and a maximum 30-second monotonic-time window. It never issues
+capabilities, grants Android permissions or executes actions.
+
+The verifier bounds both consumed nonce markers and revoked session IDs. A
+duplicate revocation is idempotent. If a new revocation arrives after the
+revocation registry reaches its configured capacity, the verifier enters a
+deny-all state for the current epoch; it does not silently omit the requested
+revocation. A new process epoch invalidates every prior-process capability.
+The revocation registry itself is not persistent, and the HMAC key/context
+must still come from a trusted host. This is not the production Android
+Keystore signing or authorization boundary.
+
 ## Envelope
 ```json
 {"command_id":"unique-id","issued_at":1000,"action":"get_battery","arguments":{},"signature":"hex-hmac"}

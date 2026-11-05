@@ -81,6 +81,69 @@ class ConsentVerifierTests(unittest.TestCase):
         self.assertFalse(self.check(cap))
         self.assertFalse(self.check(self.mint(nonce="unique-nonce-00000002")))
 
+    def test_revocation_capacity_overflow_fails_closed_for_every_session(self):
+        self.verifier = ConsentVerifier(
+            device_id="pixel9pro-1", owner_id="owner-1",
+            owner_ui_verification_key=KEY, clock=lambda: self.now,
+            max_revoked_sessions=1,
+        )
+        self.assertTrue(self.verifier.revoke_session("session-1"))
+        self.assertFalse(self.verifier.revoke_session("session-2"))
+        self.assertEqual(len(self.verifier._revoked), 1)
+        self.assertTrue(self.verifier._revocation_overflow)
+        for session_id, nonce in (
+            ("session-1", "unique-nonce-00000001"),
+            ("session-2", "unique-nonce-00000002"),
+            ("session-3", "unique-nonce-00000003"),
+        ):
+            cap = self.mint(session_id=session_id, nonce=nonce)
+            self.assertFalse(self.check(cap, session_id=session_id))
+
+    def test_duplicate_revocation_is_idempotent_and_does_not_consume_capacity(self):
+        self.verifier = ConsentVerifier(
+            device_id="pixel9pro-1", owner_id="owner-1",
+            owner_ui_verification_key=KEY, clock=lambda: self.now,
+            max_revoked_sessions=1,
+        )
+        self.assertTrue(self.verifier.revoke_session("session-1"))
+        self.assertTrue(self.verifier.revoke_session("session-1"))
+        cap = self.mint(
+            session_id="session-2",
+            nonce="unique-nonce-00000002",
+        )
+        self.assertTrue(self.check(cap, session_id="session-2"))
+        self.assertFalse(self.verifier._revocation_overflow)
+
+    def test_concurrent_revocations_cannot_exceed_capacity_and_fail_closed(self):
+        self.verifier = ConsentVerifier(
+            device_id="pixel9pro-1", owner_id="owner-1",
+            owner_ui_verification_key=KEY, clock=lambda: self.now,
+            max_revoked_sessions=2,
+        )
+        sessions = [f"session-{index}" for index in range(10)]
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            outcomes = list(pool.map(self.verifier.revoke_session, sessions))
+        self.assertEqual(outcomes.count(True), 2)
+        self.assertEqual(outcomes.count(False), 8)
+        self.assertEqual(len(self.verifier._revoked), 2)
+        self.assertTrue(self.verifier._revocation_overflow)
+        for index, session_id in enumerate(sessions):
+            cap = self.mint(
+                session_id=session_id,
+                nonce=f"unique-nonce-{index:08d}",
+            )
+            self.assertFalse(self.check(cap, session_id=session_id))
+
+    def test_invalid_revocation_capacity_is_rejected(self):
+        for limit in (True, 0, 100_001):
+            with self.subTest(limit=limit):
+                with self.assertRaises(ValueError):
+                    ConsentVerifier(
+                        device_id="pixel9pro-1", owner_id="owner-1",
+                        owner_ui_verification_key=KEY, clock=lambda: self.now,
+                        max_revoked_sessions=limit,
+                    )
+
     def test_process_restart_invalidates_old_epoch(self):
         cap = self.mint()
         restarted = ConsentVerifier(
