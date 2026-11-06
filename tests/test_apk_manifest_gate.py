@@ -139,7 +139,7 @@ class PackagedApkManifestWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ci003-reproducibility.yml").read_text(encoding="utf-8")
         build = workflow.index(":app:testReleaseUnitTest :app:assembleRelease")
         merged_gate = workflow.index("release_manifest_gate.py")
-        decode = workflow.index("apkanalyzer manifest print")
+        decode = workflow.index('"$APKANALYZER" manifest print "$APK"')
         packaged_gate = workflow.index("apk_manifest_gate.py")
         verify = workflow.index(
             "cmp runner-a/release-packaged-manifest-security.json runner-b/release-packaged-manifest-security.json"
@@ -149,6 +149,7 @@ class PackagedApkManifestWorkflowTests(unittest.TestCase):
         self.assertLess(decode, packaged_gate)
         self.assertLess(packaged_gate, verify)
         self.assertIn("cmdline-tools/latest/bin/apkanalyzer", workflow)
+        self.assertIn('"$APKANALYZER" manifest print "$APK"', workflow)
         self.assertIn("--expected-package tech.mrnothing.os", workflow)
         self.assertIn("release-packaged-manifest-security.json", workflow)
 
