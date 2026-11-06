@@ -75,7 +75,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             source,
         )
 
-    def test_locked_keyguard_reveals_system_pin_with_bounded_swipe(self):
+    def test_locked_keyguard_reveals_system_pin_with_unprivileged_shell_swipe(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
         swipe_start = source.index("private fun swipeUpToRevealSystemCredentialEntry()", prepare_start)
@@ -95,15 +95,14 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("resources.displayMetrics", swipe)
         self.assertIn("widthPixels", swipe)
         self.assertIn("heightPixels", swipe)
-        self.assertIn("MotionEvent.ACTION_DOWN", swipe)
-        self.assertIn("MotionEvent.ACTION_MOVE", swipe)
-        self.assertIn("MotionEvent.ACTION_UP", swipe)
-        self.assertIn("MotionEvent.ACTION_CANCEL", swipe)
-        self.assertIn("automation.injectInputEvent(event, true)", swipe)
-        self.assertIn("if (pointerDown)", swipe)
+        self.assertIn('shell("id")', swipe)
+        self.assertIn('"uid=2000(shell)"', swipe)
+        self.assertIn('shell("input swipe $centerX $startY $centerX $endY 300")', swipe)
+        self.assertNotIn("MotionEvent", source)
         self.assertNotIn("requestDismissKeyguard", source)
         self.assertNotIn("wm dismiss-keyguard", source)
         self.assertNotIn("KEYCODE_MENU", source)
+        self.assertNotIn("adb root", source)
 
     def test_activity_default_factory_remains_android_backend(self):
         source = (MAIN / "java/tech/mrnothing/os/OwnerAuthorityTrustActivity.kt").read_text()

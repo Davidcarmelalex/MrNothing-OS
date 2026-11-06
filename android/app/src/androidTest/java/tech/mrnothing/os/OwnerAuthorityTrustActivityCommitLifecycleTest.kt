@@ -12,7 +12,6 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
 import android.test.InstrumentationTestCase
-import android.view.MotionEvent
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -212,71 +211,33 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     /**
      * Reveal the secure lockscreen's system-owned credential entry surface.
      *
-     * This injects an ordinary swipe-up gesture through instrumentation UI
-     * automation. It does not dismiss Keyguard, authenticate, or type a PIN.
-     * The caller must still observe an exact visible SystemUI credential
-     * resource-ID/class pair before entering the disposable emulator PIN.
+     * Use Android's ordinary input utility from the unprivileged shell identity
+     * already required by QA-005. This is a swipe gesture only; it cannot
+     * authenticate or dismiss a secure Keyguard. The caller still requires an
+     * exact visible SystemUI credential resource-ID/class match before PIN entry.
      */
     private fun swipeUpToRevealSystemCredentialEntry() {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
-        val width = metrics.widthPixels.toFloat()
-        val height = metrics.heightPixels.toFloat()
-        assertTrue("emulator display metrics are unavailable", width > 0f && height > 0f)
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        assertTrue("emulator display metrics are unavailable", width > 0 && height > 0)
 
-        val x = width * 0.5f
-        val startY = height * 0.82f
-        val middleY = height * 0.55f
-        val endY = height * 0.28f
-        val downTime = SystemClock.uptimeMillis()
-        val automation = getInstrumentation().uiAutomation
-        var pointerDown = false
+        val centerX = width / 2
+        val startY = (height * 0.82f).toInt()
+        val endY = (height * 0.28f).toInt()
+        val identity = shell("id")
+        assertTrue(
+            "keyguard gesture requires ordinary adb shell identity; refusing privileged execution",
+            identity.contains("uid=2000(shell)")
+        )
 
-        val inject: (Int, Float) -> Unit = { action, y ->
-            val event = MotionEvent.obtain(
-                downTime,
-                SystemClock.uptimeMillis(),
-                action,
-                x,
-                y,
-                0
-            )
-            try {
-                assertTrue(
-                    "UiAutomation rejected keyguard swipe action=$action",
-                    automation.injectInputEvent(event, true)
-                )
-            } finally {
-                event.recycle()
-            }
-        }
-
-        try {
-            inject(MotionEvent.ACTION_DOWN, startY)
-            pointerDown = true
-            SystemClock.sleep(80)
-            inject(MotionEvent.ACTION_MOVE, middleY)
-            SystemClock.sleep(80)
-            inject(MotionEvent.ACTION_MOVE, endY)
-            SystemClock.sleep(80)
-            inject(MotionEvent.ACTION_UP, endY)
-            pointerDown = false
-        } finally {
-            if (pointerDown) {
-                val cancel = MotionEvent.obtain(
-                    downTime,
-                    SystemClock.uptimeMillis(),
-                    MotionEvent.ACTION_CANCEL,
-                    x,
-                    endY,
-                    0
-                )
-                try {
-                    automation.injectInputEvent(cancel, true)
-                } finally {
-                    cancel.recycle()
-                }
-            }
-        }
+        val result = shell("input swipe $centerX $startY $centerX $endY 300")
+        assertFalse(
+            "Android input utility rejected the keyguard swipe: $result",
+            result.contains("usage", ignoreCase = true) ||
+                result.contains("error", ignoreCase = true)
+        )
+        SystemClock.sleep(250)
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
