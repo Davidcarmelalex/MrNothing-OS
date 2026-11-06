@@ -27,7 +27,22 @@ import javax.crypto.spec.GCMParameterSpec
  * SEC-020B1 Android backend. It refuses to fall back from StrongBox to TEE or
  * software. Marker aliases are append-only; ordinary rotation never deletes them.
  */
-internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
+private const val DEFAULT_AES_ALIAS = "mrnothing_authority_record_aes_v1"
+private const val DEFAULT_MARKER_PREFIX = "mrnothing_authority_marker_v1_"
+
+/**
+ * Alias overrides are a test-isolation seam only. Production construction uses
+ * the original defaults; instrumentation tests supply a unique disposable namespace.
+ */
+internal class AndroidAuthorityTrustCrypto(
+    private val markerPrefix: String = DEFAULT_MARKER_PREFIX,
+    private val aesAlias: String = DEFAULT_AES_ALIAS
+) : AuthorityTrustCrypto {
+    init {
+        require(markerPrefix.isNotBlank())
+        require(aesAlias.isNotBlank())
+        require(!aesAlias.startsWith(markerPrefix))
+    }
     override fun highestObservedGeneration(): Long? = synchronized(LOCK) {
         try {
             val store = loadKeyStore() ?: return@synchronized null
@@ -132,7 +147,7 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
                 val store = loadKeyStore() ?: return@synchronized null
                 val highest = highestObservedGeneration(store) ?: return@synchronized null
                 if (highest <= 0L) return@synchronized null
-                val key = store.getKey(AES_ALIAS, null) as? SecretKey
+                val key = store.getKey(aesAlias, null) as? SecretKey
                     ?: return@synchronized null
                 if (!isStrongBoxBacked(key)) return@synchronized null
                 val iv = envelope.copyOfRange(0, GCM_IV_BYTES)
@@ -157,8 +172,8 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
         val aliases: Enumeration<String> = store.aliases()
         while (aliases.hasMoreElements()) {
             val alias = aliases.nextElement()
-            if (!alias.startsWith(MARKER_PREFIX)) continue
-            val suffix = alias.removePrefix(MARKER_PREFIX)
+            if (!alias.startsWith(markerPrefix)) continue
+            val suffix = alias.removePrefix(markerPrefix)
             val generation = suffix.toLongOrNull() ?: return null
             if (generation <= 0L || generation.toString() != suffix) return null
             val key = store.getKey(alias, null) as? SecretKey ?: return null
@@ -167,19 +182,19 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
         }
         // An encryption key without any generation marker is an inconsistent
         // partial state, not a fresh installation.
-        if (highest == 0L && store.containsAlias(AES_ALIAS)) return null
+        if (highest == 0L && store.containsAlias(aesAlias)) return null
         return highest
     }
 
     private fun getOrCreateEncryptionKey(store: KeyStore): SecretKey? {
-        if (store.containsAlias(AES_ALIAS)) {
-            val existing = store.getKey(AES_ALIAS, null) as? SecretKey ?: return null
+        if (store.containsAlias(aesAlias)) {
+            val existing = store.getKey(aesAlias, null) as? SecretKey ?: return null
             return if (isStrongBoxBacked(existing)) existing else null
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
-                AES_ALIAS,
+                aesAlias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
                 .setKeySize(AES_KEY_BITS)
@@ -211,7 +226,7 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
             OwnerAuthorityTrustCeremony.fingerprintForOwner(record.publicKeySpkiDer) ==
                 record.fingerprint
 
-    private fun markerAlias(generation: Long) = MARKER_PREFIX + generation.toString()
+    private fun markerAlias(generation: Long) = markerPrefix + generation.toString()
 
     private fun markerPayload(record: AuthorityTrustRecord): ByteArray {
         val bytes = ByteArrayOutputStream()
@@ -239,8 +254,6 @@ internal class AndroidAuthorityTrustCrypto : AuthorityTrustCrypto {
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val HMAC_ALGORITHM = "HmacSHA256"
-        const val AES_ALIAS = "mrnothing_authority_record_aes_v1"
-        const val MARKER_PREFIX = "mrnothing_authority_marker_v1_"
         const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
         const val AES_KEY_BITS = 256
         const val GCM_IV_BYTES = 12

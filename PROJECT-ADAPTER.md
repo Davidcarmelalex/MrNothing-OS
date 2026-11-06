@@ -460,3 +460,18 @@ The exact audited branch head was 67252b5d4418bd5419a70dafea943d04f8d91c11; the 
 The failure was in the test's assumption, not production code: an interrupted first Android AtomicFile write has no previous base to restore. Android discards the uncommitted staging file and the persistence adapter correctly reports Missing. The trust-store coordinator has the generation marker first, so a nonzero marker with a missing active record must produce RecoveryRequired(ACTIVE_RECORD_MISSING), not Empty.
 
 The test is corrected to assert that two-layer behavior using a synthetic marker-only crypto fixture. No production Android source, permissions, Keystore policy or trust transition was changed. Exact-head CI and emulator rerun are pending. Independent human security approval, spoken TalkBack, physical Pixel 9 Pro/StrongBox and production readiness remain unverified.
+
+
+## Engineering Factory run — 2026-11-06, SEC-020B5 acceptance and SEC-020B6
+
+**Audit:** branch `feat/phase1-agentic-phone`, head `c80634ec871516e829fb18025de8af732fee422f`; complete recursive tree 279 entries, not truncated. `PROJECT-ADAPTER.md` and `docs/ENGINEERING-FACTORY-ROADMAP.md` exist. No repository `SKILL.md` exists. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed.
+
+**Pull requests:** six open PRs (#1, #3, #4, #5, #6, #7). PR #1 remains open/draft against `main`, with current head c80634ec and zero submitted reviews or inline review threads. Other PR branches were not changed.
+
+**SEC-020B5:** accepted for the exact-head API 35 x86_64 disposable-emulator AtomicFile path. Phase 1 push/PR each passed 518 Python tests and Android unit/build/dependency/manifest gates. CI-003 push/PR independent verification passed; unsigned APKs were byte-identical at 7,829,060 bytes with SHA-256 `3c09c4b4c7956cb7e2a90fdc96c9ab909f53f4526c8439ed25b0aae78c49f1ea`. QA-005 passed all 21 workflow steps; eight instrumentation tests started and finished successfully, including three SEC-020B4D and five SEC-020B5 tests. Synthetic PIN cleanup succeeded. Detailed run IDs and limitations are in the roadmap and SEC-020B5 document.
+
+**SEC-020B6:** an isolated test-alias namespace and eight AndroidKeyStore failure-mode instrumentation cases have been added; a Python source-policy suite protects production alias defaults and StrongBox-only behavior. Production construction remains no-argument with the original aliases. Exact-head CI is pending; do not accept SEC-020B6 until Phase 1, CI-003 and QA-005 all pass.
+
+**Safety/evidence:** no production authority was enrolled, no user device or production alias was touched, no permission was granted, and no root/flashing/deployment occurred. Emulator StrongBox behavior, physical Pixel 9 Pro, spoken TalkBack, actual process-kill/power-loss durability, independent human security approval and production release remain unverified. QA-011/012 are not spoken TalkBack acceptance. No milestone is complete.
+
+**Next bounded task:** after SEC-020B6 exact-head CI, add deterministic KeyInfo/Keystore provider-failure injection for metadata exceptions and missing AES-key-with-valid-marker states; actual StrongBox/reboot/recovery remains a supervised M7 Pixel 9 Pro hardware gate.

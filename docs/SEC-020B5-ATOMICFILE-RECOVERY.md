@@ -1,6 +1,6 @@
 # SEC-020B5 — Android AtomicFile interruption and recovery tests
 
-**Status:** instrumentation tests added; exact-head Android/QA CI pending.
+**Status at initial submission:** instrumentation tests added; exact-head Android/QA CI pending.
 
 ## Scope
 
@@ -36,3 +36,15 @@ The corrected instrumentation test now asserts:
 - a synthetic high-water marker at generation 1 causes OwnerAuthorityTrustStore.inspect() to return RecoveryRequired(ACTIVE_RECORD_MISSING), never Empty.
 
 This is a test-contract correction, not a production storage change. Exact-head rerun and independent review remain pending. The test still does not simulate process death, kernel crash or power loss.
+
+
+## Exact-head acceptance — 2026-11-06
+
+**Acceptance head:** `c80634ec871516e829fb18025de8af732fee422f` on `feat/phase1-agentic-phone`.
+
+- Phase 1 push [42210823960](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210823960) and PR [42210832289](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832289) both passed. Each Python-policy job reported **518 tests**; Android `:app:testDebugUnitTest`, `:app:assembleDebug`, same-run repeat debug-APK byte comparison, strict Gradle dependency verification, modified-dependency negative control and the source-manifest security gate passed.
+- CI-003 push [42210824198](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210824198) and PR [42210832148](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832148) passed both independent builders and the independent verifier. The unsigned release APKs were byte-identical at 7,829,060 bytes, SHA-256 `3c09c4b4c7956cb7e2a90fdc96c9ab909f53f4526c8439ed25b0aae78c49f1ea`; normalized-entry SHA-256 `9e6c4b9489af0f8b07f1d5fdae1d2ac6746041686d84fded9c0cecd4ddbc97d1`. Runtime inventory and SPDX runtime SBOM matched. The scoped CI-006 build-environment inventory matched at 1,260 components; it is not a complete hosted-runner image SBOM. The verifier reported `reproducible=true` and `release_ready=false`.
+- QA-005 [42210832208](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832208) passed all 21 workflow steps on a disposable API 35 x86_64 emulator. Gradle reported **8 instrumentation tests started and 8 finished**, followed by `BUILD SUCCESSFUL`. The run includes the three SEC-020B4D lifecycle tests and five SEC-020B5 AtomicFile tests. QA-006 through QA-013 and QA-020B2/B3 also completed; synthetic emulator PIN cleanup reported `Lock credential cleared`. Evidence artifact [13498728651](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832208/artifacts/13498728651).
+- QA-011 remains a read-only TalkBack availability preflight and is not spoken-navigation acceptance. QA-012 is structural semantics only.
+
+**Gate decision:** SEC-020B5 is accepted for the tested API 35 x86_64 disposable-emulator AtomicFile path only. The interrupted-write tests use deterministic unfinished-stream simulation; they do not prove process-kill, kernel-crash, sudden-power-loss, filesystem-corruption or physical-device durability. The emulator does not establish StrongBox behavior. Independent human security review and Pixel 9 Pro validation remain pending. Release provenance remains unsigned and `release_ready=false`.

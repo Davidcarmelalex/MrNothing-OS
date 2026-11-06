@@ -693,3 +693,25 @@ Exact-head CI before correction:
 The failed assertion expected an unfinished first AtomicFile write to remain Present. That is not Android's atomic staging contract when no prior base/backup exists: the staging file is discarded and openRead() reports Missing. The corrected test asserts Missing at the persistence layer, then injects a synthetic generation high-water marker and requires the trust-store coordinator to return RecoveryRequired(ACTIVE_RECORD_MISSING), never Empty. This validates the marker-first fail-closed behavior without changing production trust code.
 
 SEC-020B5 remains IN PROGRESS until the corrected exact-head instrumentation, full QA-005 sequence and current-head CI pass. No process-kill, kernel-crash, power-loss, filesystem durability, StrongBox or physical Pixel 9 Pro evidence is claimed. No milestone is complete; independent human security review remains pending.
+
+
+## Engineering Factory run — SEC-020B5 accepted; SEC-020B6 started (2026-11-06)
+
+**Audit baseline:** `feat/phase1-agentic-phone` at `c80634ec871516e829fb18025de8af732fee422f`; recursive tree has 279 entries and is not truncated. `PROJECT-ADAPTER.md` and this roadmap are present. No repository `SKILL.md` exists; the upstream shared package remains unverified and is not claimed as installed. Six PRs are open (#1, #3, #4, #5, #6 and #7). PR #1 remains open/draft, head `c80634ec871516e829fb18025de8af732fee422f`, base `main`, with zero submitted reviews and zero inline review threads. No other PR branch was modified.
+
+### SEC-020B5 exact-head acceptance
+
+- Phase 1 push [42210823960](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210823960) and PR [42210832289](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832289) passed. Both Python-policy jobs ran **518 tests**. Both Android jobs passed `:app:testDebugUnitTest`, `:app:assembleDebug`, same-run repeat debug-APK byte comparison, strict dependency verification and the modified-dependency negative control. Android source-manifest security checks passed.
+- CI-003 push [42210824198](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210824198) and PR [42210832148](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832148) passed both builders and independent verification. Unsigned APKs were byte-identical (7,829,060 bytes; SHA-256 `3c09c4b4c7956cb7e2a90fdc96c9ab909f53f4526c8439ed25b0aae78c49f1ea`; normalized-entry SHA-256 `9e6c4b9489af0f8b07f1d5fdae1d2ac6746041686d84fded9c0cecd4ddbc97d1`). Runtime inventory, SPDX runtime SBOM and scoped 1,260-component CI-006 build-environment inventory matched. The inventory is not a complete hosted-runner image SBOM. Provenance reports `reproducible=true`, `release_ready=false`.
+- QA-005 [42210832208](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832208) passed all 21 workflow steps on a disposable API 35 x86_64 emulator. The instrumentation log reports 8 tests started and 8 finished, then `BUILD SUCCESSFUL`; this includes three SEC-020B4D lifecycle tests and five SEC-020B5 AtomicFile tests. QA-006 through QA-013 and QA-020B2/B3 completed, and the synthetic PIN cleanup reported `Lock credential cleared`. Evidence artifact [13498728651](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42210832208/artifacts/13498728651).
+- SEC-020B5 is accepted for this API 35 x86_64 emulator AtomicFile path only. It does not prove process-kill, kernel-crash, power-loss, filesystem-corruption, StrongBox or Pixel 9 Pro durability. QA-011 is service availability only (`blocked_service_disabled`); QA-012 is structural semantics, not spoken TalkBack.
+
+### SEC-020B6 implementation
+
+A test-only alias namespace was added to `AndroidAuthorityTrustCrypto`; default production aliases and no-argument production construction remain unchanged. New API 35 instrumentation covers StrongBox-required generation with no TEE fallback, missing marker proof, malformed/non-canonical/zero marker aliases, TEE-only marker rejection, AES alias without a generation marker, and wrong key type under the marker prefix. A Python source-policy test protects default aliases, both StrongBox requirements and the security-level comparison.
+
+SEC-020B6 is **IN PROGRESS** until exact-head Phase 1, CI-003 and QA-005 pass on the new commit. Emulator results do not establish StrongBox hardware. KeyInfo-provider exception injection and actual Pixel 9 Pro M7 validation remain open.
+
+**Current milestone status:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED by physical-device access; M8 BLOCKED. No milestone is COMPLETE. Independent human security review, spoken TalkBack acceptance, physical Pixel 9 Pro/StrongBox validation, signed release, OTA rollback and production deployment remain outstanding.
+
+**Next task after SEC-020B6 exact-head acceptance:** add a deterministic KeyInfo/Keystore failure-injection seam for provider exceptions and missing AES-key-with-valid-marker states, without weakening StrongBox policy; then reserve real StrongBox and reboot/recovery acceptance for supervised Pixel 9 Pro M7 hardware validation.
