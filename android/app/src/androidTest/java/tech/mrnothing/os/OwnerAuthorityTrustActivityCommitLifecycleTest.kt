@@ -20,9 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * SEC-020B4D: exercises the real owner-trust Activity around its commit claim.
  *
- * The test host uses an in-memory fake store. A synthetic emulator PIN is set
- * and cleared within each test so the production credential-only prompt and
- * callback path are exercised without using a real user credential.
+ * The test host uses an in-memory fake store. The QA-005 workflow provisions
+ * and clears a synthetic emulator PIN around this instrumentation task so the
+ * production credential-only prompt and callback run without a real user credential.
  */
 class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase() {
     fun testDestroyBeforeCommitClaimPreventsFakeStoreMutation() {
