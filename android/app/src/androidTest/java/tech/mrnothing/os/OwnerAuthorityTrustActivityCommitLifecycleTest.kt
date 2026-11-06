@@ -11,7 +11,6 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
-import java.security.KeyPairGenerator
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -57,8 +56,12 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                 (privateField(target, "confirmButton") as Button).isEnabled
             }
 
-            val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-            val spki = pair.public.encoded
+            // RFC 8032 test vector 1 public key (public material only). Avoid
+            // provider-default key generation: Android may route Ed25519 generation
+            // to AndroidKeyStore, which requires a KeyGenParameterSpec.
+            val spki = Base64.getDecoder().decode(
+                "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+            )
             val fingerprint = OwnerAuthorityTrustCeremony.fingerprintForOwner(spki)
                 ?: throw AssertionError("synthetic Ed25519 fingerprint unavailable")
 

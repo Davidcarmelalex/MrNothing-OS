@@ -189,5 +189,17 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         )
 
 
+    def test_commit_lifecycle_instrumentation_uses_public_only_ed25519_fixture(self):
+        code = (
+            ROOT
+            / "android/app/src/androidTest/java/tech/mrnothing/os/"
+              "OwnerAuthorityTrustActivityCommitLifecycleTest.kt"
+        ).read_text()
+        self.assertIn("RFC 8032 test vector 1 public key", code)
+        self.assertIn("Base64.getDecoder().decode(", code)
+        self.assertNotIn("KeyPairGenerator", code)
+        self.assertNotIn("KeyGenParameterSpec", code)
+
+
 if __name__ == "__main__":
     unittest.main()
