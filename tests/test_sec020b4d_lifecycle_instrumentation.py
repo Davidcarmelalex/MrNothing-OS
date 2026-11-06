@@ -104,6 +104,19 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("KEYCODE_MENU", source)
         self.assertNotIn("adb root", source)
 
+    def test_missing_credential_ui_failure_captures_bounded_window_evidence(self):
+        source = TEST.read_text(encoding="utf-8")
+        self.assertIn("private fun credentialUiSnapshot()", source)
+        self.assertIn("automation.windows", source)
+        self.assertIn("rootInActiveWindow", source)
+        self.assertIn("java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>", source)
+        self.assertIn("visited < 80", source)
+        self.assertIn("take(9000)", source)
+        self.assertIn("node.recycle()", source)
+        self.assertIn('shell("dumpsys window windows")', source)
+        self.assertIn("lastCredentialPreflightDiagnostics", source)
+        self.assertIn("ui=${credentialUiSnapshot()}", source)
+
     def test_activity_default_factory_remains_android_backend(self):
         source = (MAIN / "java/tech/mrnothing/os/OwnerAuthorityTrustActivity.kt").read_text()
         self.assertIn("internal open fun createTrustStore(context: Context)", source)

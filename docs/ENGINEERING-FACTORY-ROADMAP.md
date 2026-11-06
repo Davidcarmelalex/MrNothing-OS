@@ -554,3 +554,12 @@ Milestones unchanged: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED
 **Correction:** use the Android `input swipe` utility only after verifying the test shell identity is `uid=2000(shell)`; calculate coordinates from display metrics; swipe only when Keyguard is locked and no exact SystemUI credential field is already visible. Keep exact package/resource-ID/class/visibility validation before synthetic PIN entry. This is an unprivileged user-gesture simulation, not Keyguard dismissal or authentication.
 
 **Acceptance:** exact-head Phase 1, CI-003 and full QA-005 must pass; both commit-boundary cases must reach their fake-store assertions; synthetic PIN cleanup must succeed. SEC-020B4D remains NOT ACCEPTED. Milestones unchanged: M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No physical Pixel 9 Pro, production signing, deployment or independent human security approval is claimed.
+
+
+## SEC-020B4D — bounded credential UI diagnostics (2026-11-06)
+
+**Baseline:** `e5a313ac6c942b982739294e097daa90c6eadcf4`. Phase 1 push/PR [42184476741](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184476741) / [42184482244](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184482244) passed (509 Python tests each; Android checks passed). CI-003 push/PR [42184476880](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184476880) / [42184482249](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184482249) passed independent reproducibility.
+
+**Failure:** QA-005 [42184482208](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184482208) passed emulator boot and queued-Activity destruction, but both commit-boundary tests failed before prompt display after an unprivileged shell swipe. PIN cleanup succeeded; later QA steps were skipped. Artifact [13487605359](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42184482208/artifacts/13487605359).
+
+**Next task:** diagnostics only. Capture a bounded UiAutomation window/accessibility node snapshot (80 nodes/9 KB), filtered `dumpsys window windows` focus summary, and shell identity/display/swipe coordinates on failure. Recycle all AccessibilityNodeInfo instances. Do not add further input gestures until evidence shows whether the lockscreen root is visible and what window owns focus. SEC-020B4D remains NOT ACCEPTED; all prior milestone states remain unchanged.

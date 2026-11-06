@@ -16,6 +16,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
+import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -29,6 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * production credential-only prompt and callback run without a real user credential.
  */
 class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase() {
+    private var lastCredentialPreflightDiagnostics = "not-started"
+
     fun testDestroyBeforeCommitClaimPreventsFakeStoreMutation() {
         runScenario(destroyAfterClaim = false)
     }
@@ -191,7 +194,9 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             // reveal the PIN pad. Use a normal swipe-up gesture only when the
             // exact system-owned credential field is not already visible.
             if (!hasVisibleSystemCredentialInput()) {
-                swipeUpToRevealSystemCredentialEntry()
+                lastCredentialPreflightDiagnostics = swipeUpToRevealSystemCredentialEntry()
+            } else {
+                lastCredentialPreflightDiagnostics = "exact SystemUI credential field was already visible"
             }
             awaitSystemCredentialUi("locked emulator did not expose the SystemUI PIN field")
             // Enter the synthetic PIN only after the exact SystemUI field
@@ -216,7 +221,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
      * authenticate or dismiss a secure Keyguard. The caller still requires an
      * exact visible SystemUI credential resource-ID/class match before PIN entry.
      */
-    private fun swipeUpToRevealSystemCredentialEntry() {
+    private fun swipeUpToRevealSystemCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -231,13 +236,16 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             identity.contains("uid=2000(shell)")
         )
 
-        val result = shell("input swipe $centerX $startY $centerX $endY 300")
+        val command = "input swipe $centerX $startY $centerX $endY 300"
+        val result = shell(command)
         assertFalse(
             "Android input utility rejected the keyguard swipe: $result",
             result.contains("usage", ignoreCase = true) ||
                 result.contains("error", ignoreCase = true)
         )
         SystemClock.sleep(250)
+        return "identity=" + identity.trim() + "; display=" + width + "x" + height +
+            "; command=" + command + "; output=" + result.trim().take(200)
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
@@ -264,6 +272,65 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         )
     }
 
+    /**
+     * Bounded read-only accessibility/window snapshot for diagnosing a missing
+     * system credential surface. It records at most 80 nodes and 9 KB; every
+     * AccessibilityNodeInfo acquired from UiAutomation is recycled.
+     */
+    private fun credentialUiSnapshot(): String {
+        val automation = getInstrumentation().uiAutomation
+        val windows = try {
+            automation.windows
+        } catch (error: RuntimeException) {
+            return "windows-error=${error.javaClass.simpleName}"
+        }
+        val roots = windows.mapNotNull { it.root }.toMutableList()
+        if (roots.isEmpty()) {
+            automation.rootInActiveWindow?.let(roots::add)
+        }
+
+        val output = StringBuilder("windowCount=${windows.size}; rootCount=${roots.size}")
+        var visited = 0
+        for ((windowIndex, root) in roots.withIndex()) {
+            val pending = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+            pending.addLast(root to 0)
+            while (pending.isNotEmpty() && visited < 80) {
+                val (node, depth) = pending.removeFirst()
+                output.append("\nwindow[").append(windowIndex).append("] ")
+                    .append("  ".repeat(depth.coerceAtMost(8)))
+                    .append(node.toString().take(350))
+                visited += 1
+                if (depth < 7) {
+                    val childCount = try { node.childCount } catch (_: RuntimeException) { 0 }
+                    for (index in 0 until childCount) {
+                        val child = try { node.getChild(index) } catch (_: RuntimeException) { null }
+                        if (child != null) pending.addLast(child to depth + 1)
+                    }
+                }
+                node.recycle()
+            }
+            while (pending.isNotEmpty()) {
+                pending.removeFirst().first.recycle()
+            }
+        }
+
+        val focusSummary = try {
+            shell("dumpsys window windows").lineSequence()
+                .filter {
+                    it.contains("mCurrentFocus", ignoreCase = true) ||
+                        it.contains("mFocusedApp", ignoreCase = true) ||
+                        it.contains("Keyguard", ignoreCase = true) ||
+                        it.contains("StatusBar", ignoreCase = true)
+                }
+                .take(16)
+                .joinToString(" | ")
+        } catch (error: RuntimeException) {
+            "window-dump-error=${error.javaClass.simpleName}"
+        }
+        output.append("\nwindowFocus=").append(focusSummary.take(1800))
+        return output.toString().take(9000)
+    }
+
     private fun awaitSystemCredentialUi(message: String) {
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -272,7 +339,9 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
         fail(
             "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
-                "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}"
+                "preflight=$lastCredentialPreflightDiagnostics; " +
+                "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}; " +
+                "ui=${credentialUiSnapshot()}"
         )
     }
 
