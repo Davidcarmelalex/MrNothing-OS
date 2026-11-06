@@ -299,6 +299,8 @@ class WorkflowIntegrationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         workflow = (root / ".github/workflows/ci003-reproducibility.yml").read_text(encoding="utf-8")
         self.assertIn("build_environment_sbom.py generate", workflow)
+        self.assertIn('cat /etc/os-release > "$RUNNER_TEMP/ci003-os-release.txt"', workflow)
+        self.assertIn('--os-release-file "$RUNNER_TEMP/ci003-os-release.txt"', workflow)
         self.assertIn("build_environment_sbom.py attach", workflow)
         self.assertIn("build_environment_sbom.py negative-control", workflow)
         self.assertIn("build_environment_sbom.py verify", workflow)

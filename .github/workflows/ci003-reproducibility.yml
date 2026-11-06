@@ -43,6 +43,7 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed > "$RUNNER_TEMP/ci003-sdk-packages.txt"
           dpkg-query -W -f='${db:Status-Abbrev}\t${binary:Package}\t${Version}\n' > "$RUNNER_TEMP/ci003-dpkg-packages.tsv"
+          cat /etc/os-release > "$RUNNER_TEMP/ci003-os-release.txt"
           python3 -m pip list --format=json > "$RUNNER_TEMP/ci003-python-packages.json"
           python3 --version > "$RUNNER_TEMP/ci003-python-version.txt"
           java -version 2>&1 | head -n 1 | tr -d '"' > "$RUNNER_TEMP/ci003-jdk-version.txt"
@@ -116,7 +117,7 @@ jobs:
             --runner-image-version "${ImageVersion:?GitHub runner image version metadata missing}" \
             --jdk-version "$JAVA_VERSION" \
             --python-version "$PYTHON_VERSION" \
-            --os-release-file /etc/os-release \
+            --os-release-file "$RUNNER_TEMP/ci003-os-release.txt" \
             --dpkg-packages-file "$RUNNER_TEMP/ci003-dpkg-packages.tsv" \
             --python-packages-file "$RUNNER_TEMP/ci003-python-packages.json" \
             --sdk-packages-file "$RUNNER_TEMP/ci003-sdk-packages.txt" \
