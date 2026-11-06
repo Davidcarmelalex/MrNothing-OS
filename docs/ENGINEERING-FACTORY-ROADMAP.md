@@ -830,3 +830,29 @@ Marker retrieval failures must make the trust store `Unavailable`, make marker v
 The previous emulator-only trust-store failure-injection slice is closed. The next unblocked task is a detailed, non-executing Pixel 9 Pro hardware validation protocol. It must define exact-model/boot-state preflight, reviewed test-artifact provenance, StrongBox feature and `KeyInfo.securityLevel` checks, disposable-alias key operations, process-death/reboot persistence, marker-first recovery, owner-credential prompt/cancellation, HOME-role recovery, accessibility/TalkBack, SIM/VoLTE/Wi-Fi/Bluetooth, battery/thermal observation, privacy-redacted evidence and independent signoff. The protocol is prepared at `docs/M7-PIXEL9PRO-HARDWARE-VALIDATION.md`; actual hardware execution remains BLOCKED until the exact device and explicit operator consent are available.
 
 **Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending physical Pixel 9 Pro; M8 BLOCKED. No milestone is complete. Human security review, spoken TalkBack, physical StrongBox/reboot recovery, signed release, OTA rollback and production deployment remain outstanding.
+
+
+## Engineering Factory run — 2026-11-06, M7 offline Pixel 9 Pro preflight utility
+
+**Audit baseline:** `feat/phase1-agentic-phone` at `520686472371c3e1ae609911bd78eae687b2b8a7`; recursive tree 283 entries, not truncated; latest 20 commits inspected; six open PRs (#1, #3, #4, #5, #6, #7); PR #1 remains open/draft against `main` and matches the authorized head. `PROJECT-ADAPTER.md` and this roadmap are present; repository `SKILL.md` is absent; upstream shared factory package remains unverified. Branch API reports `protected=false`; repository rulesets are empty; branch-protection detail returned 403 to this integration. No other PR branch was modified.
+
+### Exact-head baseline before this change
+
+- Phase 1 push [42253179947](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42253179947) and PR [42253188165](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42253188165): both passed Python policy and Android debug build/unit/repeat-build/dependency-negative-control/manifest gates.
+- CI-003 push [42253179969](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42253179969) and PR [42253188174](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42253188174): both independent builders and independent verifier passed unsigned APK, normalized contents, runtime inventory, SBOM and provenance checks.
+- QA-005 [42253188203](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42253188203): disposable API 35 x86_64 emulator smoke workflow passed. QA-011 is a read-only TalkBack service preflight; QA-012 is structural semantics only. Neither establishes spoken TalkBack acceptance.
+- Combined commit status endpoint returned no legacy status rows; Actions workflow/job conclusions above are the CI evidence.
+
+### Implementation
+
+Added `scripts/m7_pixel9pro_preflight.py`, an offline validator for a manually captured, redacted ADB snapshot, and `tests/test_m7_pixel9pro_preflight.py`. Existing QA-011 covers TalkBack service readiness and SEC-014D covers an in-app device-lock/credential preview; neither duplicates this M7 model/boot-state/StrongBox-feature preflight. The new validator checks exact Google Pixel 9 Pro / `caiman` identity, API >=34, connected/authorized ADB state, locked bootloader, green Verified Boot, locked vbmeta, non-emulator indication and the StrongBox PackageManager feature. It never invokes ADB, shell or fastboot, never changes device state, and emits no serial/IMEI/phone/SIM/network/account identifiers or raw build fingerprint. A passing report remains preflight-only; `acceptance_passed=false` and `strongbox_key_security_level_verified=false`.
+
+The M7 protocol now documents the redacted JSON schema and offline command. Its example is synthetic. Device collection still requires separate explicit owner approval; no device was connected.
+
+### Tests and acceptance
+
+Local command executed in a clean temporary test workspace: `python3 -m unittest -v tests/test_m7_pixel9pro_preflight.py` — **18 tests passed**. These are synthetic parser/CLI/safety tests, not Android, emulator or hardware tests. The new test module is discovered automatically by `scripts/phase1-preflight.sh` through `unittest discover -s tests -p 'test_*.py'`. Exact-head Phase 1 and CI-003 push/PR runs for the new commit are pending at commit creation and must be checked before accepting this slice. QA-005 is not expected to trigger because no Android/QA workflow paths changed.
+
+**Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised physical Pixel 9 Pro access and independent review; M8 BLOCKED. No milestone is complete. StrongBox key-level proof, reboot persistence, spoken TalkBack, human security review, signed release, OTA rollback and production readiness remain outstanding.
+
+**Next task:** after exact-head CI passes, prepare the supervised M7 device session only when the exact `caiman` device, owner/operator approval for each stage and an independent reviewer are available. Do not run ADB against a physical device without that approval.

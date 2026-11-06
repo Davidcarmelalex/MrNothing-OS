@@ -20,12 +20,13 @@ Do not start until all of the following are true:
 
 Use ADB only after the owner approves connecting the device. These commands are diagnostic reads; redact serials and personal identifiers before saving output:
 
-    adb devices -l
+    adb get-state
+    adb shell getprop ro.product.manufacturer
     adb shell getprop ro.product.model
     adb shell getprop ro.product.device
     adb shell getprop ro.build.version.release
     adb shell getprop ro.build.version.sdk
-    adb shell getprop ro.build.fingerprint
+    adb shell getprop ro.kernel.qemu
     adb shell getprop ro.boot.flash.locked
     adb shell getprop ro.boot.verifiedbootstate
     adb shell getprop ro.boot.vbmeta.device_state
@@ -141,3 +142,34 @@ M7 can be marked **COMPLETE** only when every applicable hardware row has device
 - No claim of OTA rollback, signed production readiness or AI telephony from the tests in this document.
 
 **Current disposition:** protocol prepared; physical Pixel 9 Pro access and explicit operator approval are still required. The upstream shared engineering-factory package remains unverified; this document is project-specific work.
+
+## 2.1 Offline snapshot preflight validator
+
+After separate, explicit owner approval to connect the device, an operator may collect only the read-only values listed above and place them in a local JSON file. Do not retain the output of `adb devices -l`; it contains the device serial. Do not include serial, IMEI, phone number, SIM identifiers, account names, Wi-Fi SSID/BSSID, personal notifications or the full build fingerprint.
+
+The project validator is deliberately offline: it does not invoke ADB or any shell command. Run it against the redacted snapshot:
+
+    python3 scripts/m7_pixel9pro_preflight.py --snapshot /path/to/redacted-snapshot.json --output /path/to/preflight-result.json
+
+The input schema is `mrnothing-m7-pixel9pro-preflight-v1` and contains only `adb_state`, the allowlisted `properties` below, and the PackageManager `features` lines:
+
+    {
+      "schema": "mrnothing-m7-pixel9pro-preflight-v1",
+      "adb_state": "device",
+      "properties": {
+        "ro.product.manufacturer": "Google",
+        "ro.product.model": "Pixel 9 Pro",
+        "ro.product.device": "caiman",
+        "ro.build.version.release": "16",
+        "ro.build.version.sdk": "36",
+        "ro.kernel.qemu": "0",
+        "ro.boot.flash.locked": "1",
+        "ro.boot.verifiedbootstate": "green",
+        "ro.boot.vbmeta.device_state": "locked"
+      },
+      "features": ["feature:android.hardware.strongbox_keystore"]
+    }
+
+The example is synthetic, not a device observation. The validator blocks wrong model/codename, unauthorized/disconnected ADB, unlocked/unknown boot state, emulator indication, unsupported API baseline or missing StrongBox feature. It emits only allowlisted model/build fields and named pass/fail checks; unknown input fields are not copied into the report.
+
+A passing report is `ready_for_supervised_hardware_session` only. It always sets `acceptance_passed=false` and `strongbox_key_security_level_verified=false`. PackageManager feature advertisement does not prove a generated key is StrongBox-backed; only the separately approved instrumentation check of `KeyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX` can establish that key-level property. This offline preflight cannot install, grant permissions, reboot, alter settings or complete M7.
