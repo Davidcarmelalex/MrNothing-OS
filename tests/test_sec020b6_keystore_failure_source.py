@@ -51,7 +51,8 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
             BACKEND,
         )
         self.assertIn('KeyStore.getInstance("AndroidKeyStore")', BACKEND)
-        self.assertIn("return keyStoreReader.load()", BACKEND)
+        self.assertIn("private fun loadKeyStore(): KeyStore? = keyStoreReader.load()", BACKEND)
+        self.assertIn("store.load(null)", BACKEND)
         self.assertIn("keyStoreReader.aliases(store)", BACKEND)
         self.assertIn("AndroidAuthorityTrustCrypto()", BACKEND)
 
