@@ -270,12 +270,11 @@ def _sdk_package_components(packages: list[dict], sdk_root: Path, required: set[
         source_digest = None
         revision = item["version"]
         if source_path.is_file() and not source_path.is_symlink():
-            source_text = read_regular(source_path)
-            props = parse_properties(source_text)
+            props = parse_properties(read_regular(source_path))
             source_revision = props.get("Pkg.Revision")
             if source_revision:
-                if source_revision != item["version"]:
-                    raise ValueError(f"sdkmanager/source.properties version mismatch for {package_id}")
+                if package_id in required and source_revision != item["version"]:
+                    raise ValueError(f"sdkmanager/source.properties version mismatch for required package {package_id}")
                 revision = source_revision
             source_digest = sha256_file(source_path)
         elif package_id in required:
@@ -288,17 +287,52 @@ def _sdk_package_components(packages: list[dict], sdk_root: Path, required: set[
             "purl": f"pkg:generic/android-sdk/{purl_path}@{_purl_segment(revision)}",
             "sha256": source_digest,
         })
-    cmdline = by_id.get("cmdline-tools;latest")
     required_build_tools = [package_id for package_id in required if package_id.startswith("build-tools;")]
-    if not cmdline or len(required_build_tools) != 1:
-        raise ValueError("CI-003 requires cmdline-tools;latest and exactly one workflow-pinned build-tools package")
+    if len(required_build_tools) != 1:
+        raise ValueError("CI-003 requires exactly one workflow-pinned build-tools package")
     build_tools = by_id.get(required_build_tools[0])
     if not build_tools:
         raise ValueError("workflow-pinned Android build-tools package is not installed")
-    cmdline_props = parse_properties(read_regular(sdk_root / "cmdline-tools" / "latest" / "source.properties"))
+
+    cmdline_path = sdk_root / "cmdline-tools" / "latest" / "source.properties"
+    cmdline_props = parse_properties(read_regular(cmdline_path))
     sdkmanager_version = cmdline_props.get("Pkg.Revision")
     if not sdkmanager_version:
         raise ValueError("Android command-line tools revision is missing")
+    cmdline_digest = sha256_file(cmdline_path)
+    cmdline_names = {"cmdline-tools;latest", f"cmdline-tools;{sdkmanager_version}"}
+    cmdline_component = next((item for item in components if item["name"] in cmdline_names), None)
+    if cmdline_component:
+        cmdline_component["version"] = sdkmanager_version
+        cmdline_component["sha256"] = cmdline_digest
+    else:
+        package_id = f"cmdline-tools;{sdkmanager_version}"
+        components.append({
+            "kind": "android-sdk-package",
+            "name": package_id,
+            "version": sdkmanager_version,
+            "purl": f"pkg:generic/android-sdk/cmdline-tools/{_purl_segment(sdkmanager_version)}@{_purl_segment(sdkmanager_version)}",
+            "sha256": cmdline_digest,
+        })
+
+    platform_tools_path = sdk_root / "platform-tools" / "source.properties"
+    platform_tools_props = parse_properties(read_regular(platform_tools_path))
+    platform_tools_version = platform_tools_props.get("Pkg.Revision")
+    if not platform_tools_version:
+        raise ValueError("Android platform-tools revision is missing")
+    platform_tools_digest = sha256_file(platform_tools_path)
+    platform_component = next((item for item in components if item["name"] == "platform-tools"), None)
+    if platform_component:
+        platform_component["version"] = platform_tools_version
+        platform_component["sha256"] = platform_tools_digest
+    else:
+        components.append({
+            "kind": "android-sdk-package",
+            "name": "platform-tools",
+            "version": platform_tools_version,
+            "purl": f"pkg:generic/android-sdk/platform-tools@{_purl_segment(platform_tools_version)}",
+            "sha256": platform_tools_digest,
+        })
     return components, build_tools["version"], sdkmanager_version
 
 
@@ -329,7 +363,7 @@ def collect_inventory(args) -> dict:
     java = parse_java_properties(read_regular(args.java_properties_file))
     python_version = parse_python_version(args.python_version)
     sdk_required = set(gradle_inputs["sdk_packages_required"]) | {
-        f"platforms;android-{gradle_inputs['compile_sdk']}", "cmdline-tools;latest", "platform-tools"
+        f"platforms;android-{gradle_inputs['compile_sdk']}"
     }
     sdk_components, build_tools_version, sdkmanager_version = _sdk_package_components(
         sdk_packages, args.sdk_root, sdk_required

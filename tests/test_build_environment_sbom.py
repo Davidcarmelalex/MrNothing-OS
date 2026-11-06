@@ -240,6 +240,22 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "required Android SDK packages"):
             collect_inventory(self.args)
 
+
+    def test_cmdline_tools_and_platform_tools_are_inventoried_when_list_omits_them(self):
+        self.sdk_packages.write_text(
+            "Installed packages:\\n"
+            "build-tools;35.0.0 | 35.0.0 | Build Tools\\n"
+            "platforms;android-35 | 2 | Android Platform\\n",
+            encoding="utf-8",
+        )
+        inventory = collect_inventory(self.args)
+        sdk_names = {
+            item["name"] for item in inventory["components"]
+            if item["kind"] == "android-sdk-package"
+        }
+        self.assertIn("cmdline-tools;12.0", sdk_names)
+        self.assertIn("platform-tools", sdk_names)
+
     def test_workflow_negative_control_rejects_mutable_action(self):
         result = run_negative_control(self.workflow)
         self.assertEqual(result["negative_control"], "passed")
