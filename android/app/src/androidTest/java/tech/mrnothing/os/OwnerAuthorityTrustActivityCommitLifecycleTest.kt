@@ -55,7 +55,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         try {
             // A headless emulator may be non-interactive after boot. Wake it and,
             // only if the disposable emulator is actually keyguard-locked, enter
-            // the synthetic test PIN through the visible SystemUI PIN field.
+            // the synthetic test PIN through the visible SystemUI credential surface.
             // Never dismiss/bypass Keyguard or type into an app-owned field.
             prepareInteractiveUnlockedEmulator()
 
@@ -197,11 +197,17 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             if (!hasVisibleSystemCredentialInput()) {
                 lastCredentialPreflightDiagnostics = tapSystemDeviceEntryIconToRevealCredentialEntry()
             } else {
-                lastCredentialPreflightDiagnostics = "exact SystemUI credential field was already visible"
+                lastCredentialPreflightDiagnostics = "exact SystemUI credential surface was already visible"
             }
-            awaitSystemCredentialUi("locked emulator did not expose the SystemUI PIN field")
-            // Enter the synthetic PIN only after the exact SystemUI field
-            // and its expected Android view class have been observed.
+            awaitSystemCredentialUi("locked emulator did not expose a recognized SystemUI credential surface")
+            val identity = shell("id")
+            assertTrue(
+                "synthetic PIN entry requires ordinary adb shell identity; refusing privileged execution",
+                identity.contains("uid=2000(shell)")
+            )
+            lastCredentialPreflightDiagnostics += "; synthetic-pin-entry-identity=" + identity.trim()
+            // Android 15 exposes the PIN bouncer as a SystemUI keypad hierarchy,
+            // not necessarily as an accessible PasswordTextView/EditText node.
             shell("input text $TEST_PIN")
             shell("input keyevent KEYCODE_ENTER")
         }
@@ -438,10 +444,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
 
         val allowedPackages = setOf("com.android.systemui", "com.android.settings")
-        // Android 15 AOSP's PIN screen exposes pinEntry as a custom
-        // PasswordTextView, not an EditText. Its password screen uses
-        // passwordEntry as an EditText. Keep exact ID/class pairs so a
-        // generic or app-owned text field can never authorize PIN entry.
+        // Android 15's PIN bouncer is not guaranteed to expose its custom
+        // PasswordTextView as an accessibility node. The observed API 35
+        // hierarchy instead exposes keyguard_pin_view, pin_container and the
+        // ten clickable key0..key9 controls. Require that complete structure;
+        // a lone keypad-like node or an app-owned field is never sufficient.
         val credentialInputSelectors = listOf(
             "com.android.systemui:id/auth_credential_input" to "android.widget.EditText",
             "com.android.systemui:id/lockPassword" to "android.widget.EditText",
@@ -450,7 +457,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         )
         try {
             for (root in roots) {
-                if (root.packageName?.toString() !in allowedPackages) continue
+                val packageName = root.packageName?.toString()
+                if (packageName !in allowedPackages) continue
+                if (packageName == "com.android.systemui" && hasVisibleSystemPinPad(root)) {
+                    return true
+                }
                 for ((viewId, expectedClassName) in credentialInputSelectors) {
                     val matches = try {
                         root.findAccessibilityNodeInfosByViewId(viewId)
@@ -472,6 +483,74 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             roots.forEach { it.recycle() }
         }
         return false
+    }
+
+    /**
+     * Recognize only the complete Android 15 SystemUI PIN bouncer. The exact
+     * root package, bouncer/container classes, message area and all ten visible
+     * clickable digit controls must be present before the synthetic PIN is sent.
+     */
+    private fun hasVisibleSystemPinPad(root: AccessibilityNodeInfo): Boolean {
+        if (root.packageName?.toString() != "com.android.systemui") return false
+        if (!hasVisibleSystemUiNode(
+                root,
+                "com.android.systemui:id/keyguard_pin_view",
+                "android.widget.LinearLayout"
+            )
+        ) return false
+        if (!hasVisibleSystemUiNode(
+                root,
+                "com.android.systemui:id/pin_container",
+                "android.view.ViewGroup"
+            )
+        ) return false
+        if (!hasVisibleSystemUiNode(
+                root,
+                "com.android.systemui:id/bouncer_primary_message_area",
+                "android.widget.TextView"
+            )
+        ) return false
+
+        val digitIds = (0..9).map { "com.android.systemui:id/key$it" }
+        return digitIds.all { viewId ->
+            hasVisibleSystemUiNode(
+                root,
+                viewId,
+                "android.view.ViewGroup",
+                requireClickable = true
+            )
+        }
+    }
+
+    private fun hasVisibleSystemUiNode(
+        root: AccessibilityNodeInfo,
+        viewId: String,
+        expectedClassName: String,
+        requireClickable: Boolean = false
+    ): Boolean {
+        val matches = try {
+            root.findAccessibilityNodeInfosByViewId(viewId)
+        } catch (_: RuntimeException) {
+            emptyList()
+        }
+        try {
+            return matches.any { node ->
+                if (node.viewIdResourceName != viewId ||
+                    node.className?.toString() != expectedClassName ||
+                    !node.isVisibleToUser ||
+                    !node.isEnabled ||
+                    (requireClickable && !node.isClickable)
+                ) {
+                    false
+                } else {
+                    val bounds = Rect()
+                    node.getBoundsInScreen(bounds)
+                    bounds.width() > 0 && bounds.height() > 0
+                }
+            }
+        } finally {
+            matches.forEach { it.recycle() }
+        }
     }
 
     private fun awaitCredentialRevalidation(activity: OwnerAuthorityTrustActivityTestHost) {

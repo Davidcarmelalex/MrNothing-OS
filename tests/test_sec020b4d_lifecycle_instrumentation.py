@@ -75,6 +75,60 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             source,
         )
 
+    def test_android_15_pin_pad_requires_complete_systemui_keypad(self):
+        source = TEST.read_text(encoding="utf-8")
+        pin_start = source.index("private fun hasVisibleSystemPinPad")
+        node_start = source.index("private fun hasVisibleSystemUiNode", pin_start)
+        pin_pad = source[pin_start:node_start]
+
+        self.assertIn(
+            'root.packageName?.toString() != "com.android.systemui"',
+            pin_pad,
+        )
+        self.assertIn(
+            '"com.android.systemui:id/keyguard_pin_view"',
+            pin_pad,
+        )
+        self.assertIn(
+            '"com.android.systemui:id/pin_container"',
+            pin_pad,
+        )
+        self.assertIn(
+            '"com.android.systemui:id/bouncer_primary_message_area"',
+            pin_pad,
+        )
+        self.assertIn(
+            'val digitIds = (0..9).map { "com.android.systemui:id/key$it" }',
+            pin_pad,
+        )
+        self.assertIn("digitIds.all { viewId ->", pin_pad)
+        self.assertIn("requireClickable = true", pin_pad)
+
+        node_gate = source[node_start:source.index(
+            "private fun awaitCredentialRevalidation", node_start
+        )]
+        self.assertIn("node.isVisibleToUser", node_gate)
+        self.assertIn("node.isEnabled", node_gate)
+        self.assertIn("node.isClickable", node_gate)
+        self.assertIn("bounds.width() > 0 && bounds.height() > 0", node_gate)
+        self.assertIn("matches.forEach { it.recycle() }", node_gate)
+
+        prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
+        tap_start = source.index(
+            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()",
+            prepare_start,
+        )
+        prepare = source[prepare_start:tap_start]
+        self.assertLess(
+            prepare.index("awaitSystemCredentialUi"),
+            prepare.index('val identity = shell("id")'),
+        )
+        self.assertLess(
+            prepare.index('val identity = shell("id")'),
+            prepare.index('shell("input text $TEST_PIN")'),
+        )
+        self.assertIn('"uid=2000(shell)"', prepare)
+
     def test_locked_keyguard_taps_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
