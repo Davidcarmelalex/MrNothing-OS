@@ -42,12 +42,18 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed > "$RUNNER_TEMP/ci003-sdk-packages.txt"
+          dpkg-query -W -f='${db:Status-Abbrev}\t${binary:Package}\t${Version}\n' > "$RUNNER_TEMP/ci003-dpkg-packages.tsv"
+          python3 -m pip list --format=json > "$RUNNER_TEMP/ci003-python-packages.json"
+          python3 --version > "$RUNNER_TEMP/ci003-python-version.txt"
+          java -version 2>&1 | head -n 1 | tr -d '"' > "$RUNNER_TEMP/ci003-jdk-version.txt"
+          java -XshowSettings:properties -version > "$RUNNER_TEMP/ci003-java-properties.txt" 2>&1
       - name: Download and checksum-verify Gradle 8.9
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
           echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
           unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --version > "$RUNNER_TEMP/ci003-gradle-version.txt"
       - name: Run release unit tests and build unsigned release APK
         run: |
           set -euo pipefail
@@ -101,7 +107,35 @@ jobs:
           cp app/build/reports/ci003/release-variant-metadata.json "$OUT/release-variant-metadata.json"
           python3 ../scripts/ci003_artifacts.py sbom --inventory "$INVENTORY" --commit "$SOURCE_COMMIT" --app-version "0.1.0-dev" --created-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/sbom.spdx.json"
           python3 ../scripts/ci003_artifacts.py provenance --apk "$APK" --sbom "$OUT/sbom.spdx.json" --commit "$SOURCE_COMMIT" --created-epoch "$SOURCE_DATE_EPOCH" --release-variant-metadata "$VARIANT_METADATA" --output "$OUT/provenance.json" --operating-system "ubuntu-24.04" --jdk-distribution "Temurin" --jdk-version "$JAVA_VERSION" --gradle-version "8.9" --gradle-sha256 "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab" --agp-version "8.7.3" --kotlin-version "2.0.21" --compile-sdk "35" --build-tools "35.0.0" --sdkmanager-version "$SDKMANAGER_VERSION"
-          sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" "$OUT/release-manifest-security.json" "$OUT/release-packaged-manifest-security.json" "$OUT/release-variant-metadata.json" > "$OUT/SHA256SUMS.txt"
+          PYTHON_VERSION="$(cat "$RUNNER_TEMP/ci003-python-version.txt")"
+          python3 ../scripts/build_environment_sbom.py generate \
+            --commit "$SOURCE_COMMIT" \
+            --created-epoch "$SOURCE_DATE_EPOCH" \
+            --runner-label "ubuntu-24.04" \
+            --runner-image-os "${ImageOS:?GitHub runner image OS metadata missing}" \
+            --runner-image-version "${ImageVersion:?GitHub runner image version metadata missing}" \
+            --jdk-version "$JAVA_VERSION" \
+            --python-version "$PYTHON_VERSION" \
+            --os-release-file /etc/os-release \
+            --dpkg-packages-file "$RUNNER_TEMP/ci003-dpkg-packages.tsv" \
+            --python-packages-file "$RUNNER_TEMP/ci003-python-packages.json" \
+            --sdk-packages-file "$RUNNER_TEMP/ci003-sdk-packages.txt" \
+            --sdk-root "$ANDROID_HOME" \
+            --gradle-zip "$RUNNER_TEMP/gradle-8.9-bin.zip" \
+            --gradle-version-file "$RUNNER_TEMP/ci003-gradle-version.txt" \
+            --java-properties-file "$RUNNER_TEMP/ci003-java-properties.txt" \
+            --workflow-file ../.github/workflows/ci003-reproducibility.yml \
+            --root-gradle-file ../build.gradle.kts \
+            --app-gradle-file app/build.gradle.kts \
+            --output-inventory "$OUT/build-environment.inventory.json" \
+            --output-sbom "$OUT/build-environment.spdx.json"
+          python3 ../scripts/build_environment_sbom.py attach \
+            --inventory "$OUT/build-environment.inventory.json" \
+            --sbom "$OUT/build-environment.spdx.json" \
+            --provenance "$OUT/provenance.json" \
+            --expected-commit "$SOURCE_COMMIT"
+          python3 ../scripts/build_environment_sbom.py negative-control --workflow ../.github/workflows/ci003-reproducibility.yml
+          sha256sum "$APK" "$OUT/sbom.spdx.json" "$OUT/provenance.json" "$OUT/release-manifest-security.json" "$OUT/release-packaged-manifest-security.json" "$OUT/release-variant-metadata.json" "$OUT/build-environment.inventory.json" "$OUT/build-environment.spdx.json" > "$OUT/SHA256SUMS.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci003-unsigned-release-${{ matrix.builder }}
@@ -114,6 +148,8 @@ jobs:
             android/app/build/outputs/apk/release/release-manifest-security.json
             android/app/build/outputs/apk/release/release-packaged-manifest-security.json
             android/app/build/outputs/apk/release/release-variant-metadata.json
+            android/app/build/outputs/apk/release/build-environment.inventory.json
+            android/app/build/outputs/apk/release/build-environment.spdx.json
           if-no-files-found: error
           retention-days: 7
 
@@ -145,10 +181,13 @@ jobs:
           cmp runner-a/release-manifest-security.json runner-b/release-manifest-security.json
           cmp runner-a/release-packaged-manifest-security.json runner-b/release-packaged-manifest-security.json
           cmp runner-a/release-variant-metadata.json runner-b/release-variant-metadata.json
+          python3 scripts/build_environment_sbom.py verify --first runner-a --second runner-b --expected-commit "$(git rev-parse HEAD)" --output build-environment-verification.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ci003-independent-runner-verification
-          path: ci003-verification.json
+          path: |
+            ci003-verification.json
+            build-environment-verification.json
           if-no-files-found: warn
           retention-days: 7

@@ -78,3 +78,11 @@ For the PR CI-003 run, both independent builders produced the same unsigned APK 
 The Phase 1 Python job ran 370 tests successfully. QA-011 remained a read-only preflight and reported the TalkBack service disabled; QA-012 was structural semantics only and did not test spoken TalkBack. The emulator workflow success is not physical Pixel evidence.
 
 CI-003 acceptance is verified for this exact unsigned artifact and recorded GitHub-hosted runner/toolchain pair. It does not make the artifact installable, signed, release-ready or production-ready.
+
+## CI-006 build-environment inventory extension — 2026-11-06
+
+The runtime SPDX-2.3 SBOM above remains scoped to `releaseRuntimeClasspath`. CI-006 adds a separate `build-environment.inventory.json` and `build-environment.spdx.json` to each independent runner artifact. The scoped inventory includes installed Debian/Ubuntu and Python packages, installed Android SDK packages, the verified Gradle distribution, actual JDK/Python runtimes, direct AGP/Kotlin plugin declarations, immutable GitHub Action SHAs, and hosted runner image/OS identity.
+
+The new SPDX document's namespace binds the canonical inventory SHA-256. Provenance v2 records both file hashes. The cross-runner verifier checks inventory/SBOM equality and provenance bindings in addition to the existing APK/runtime SBOM/toolchain checks. CI also includes a negative control that rejects a mutable GitHub Action tag.
+
+This is not a complete hosted-runner image SBOM: it does not enumerate all toolcache files, every transitive Gradle plugin dependency or every file in each SDK package. See [CI-006 build-environment SBOM](CI-006-BUILD-ENVIRONMENT-SBOM.md). Release remains unsigned and `release_ready=false`.
