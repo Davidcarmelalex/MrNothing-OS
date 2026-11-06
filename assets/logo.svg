@@ -1,0 +1,36 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="120" x2="904" y2="904" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#05050A"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="220" y1="220" x2="804" y2="804" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00E5FF"/>
+      <stop offset="0.5" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#FFD54F"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="312" y1="292" x2="712" y2="732" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+    <filter id="glow" x="120" y="120" width="784" height="784" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="240" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="320" fill="none" stroke="url(#ring)" stroke-width="18" filter="url(#glow)"/>
+  <circle cx="512" cy="512" r="386" fill="none" stroke="url(#ring)" stroke-width="3" opacity="0.2" stroke-dasharray="2 18"/>
+  <path d="M512 236L720 356V608L512 728L304 608V356L512 236Z" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+  <path d="M512 236L720 356L512 476L304 356L512 236Z" fill="url(#mark)"/>
+  <path d="M304 356L512 476V728L304 608V356Z" fill="#1E293B"/>
+  <path d="M720 356L512 476V728L720 608V356Z" fill="#0F172A"/>
+  <path d="M404 402L512 340L620 402V522L512 584L404 522V402Z" fill="none" stroke="url(#ring)" stroke-width="18" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M404 402L512 340L620 402V522L512 584L404 522V402Z" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M512 340V584" stroke="rgba(255,255,255,0.7)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M404 402L512 462L620 402" stroke="rgba(255,255,255,0.7)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M404 522L512 584L620 522" stroke="rgba(255,255,255,0.7)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

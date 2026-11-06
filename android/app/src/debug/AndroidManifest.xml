@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only probe. DUMP restricts launch to shell/system callers; never merged into release. -->
+        <activity
+            android:name=".OwnerCredentialPromptProbeActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+    
+        <!-- Debug-only cancellation control for QA-020B3; shell/system callers only. -->
+        <receiver
+            android:name=".OwnerCredentialPromptProbeCancelReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="tech.mrnothing.os.debug.CANCEL_CREDENTIAL_PROMPT" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

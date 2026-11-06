@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# MrNothing OS
+mrnothing/logs/
+mrnothing/reports/
+mrnothing/models/*.gguf
+mrnothing/models/*.bin
+mrnothing/wallet/*.json
+mrnothing/config.json
+*.log
+
+# Termux
+.termux/
+*.deb
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
