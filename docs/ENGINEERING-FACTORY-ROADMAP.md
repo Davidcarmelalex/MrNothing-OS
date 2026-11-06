@@ -808,4 +808,25 @@ Marker retrieval failures must make the trust store `Unavailable`, make marker v
 
 **Milestones:** M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised physical Pixel 9 Pro access; M8 BLOCKED. No milestone is complete. Independent human security review, spoken TalkBack acceptance, physical StrongBox/reboot recovery, signed release, OTA rollback and production deployment remain outstanding.
 
-**Next task after SEC-020B6C exact-head acceptance:** stop adding emulator-only trust-store abstractions and prepare the supervised Pixel 9 Pro M7 StrongBox/key persistence/reboot/recovery validation, while separately closing the TalkBack service and spoken-navigation acceptance gap.
+**SEC-020B6C exact-head acceptance:** completed at `893b8cdadab035439eefe62aeb4d42409b6d47ef`; see `docs/SEC-020B6-ANDROID-KEYSTORE-FAIL-CLOSED.md`. The next unblocked task is to prepare the supervised Pixel 9 Pro M7 validation protocol, then execute it only when an exact Pixel 9 Pro (`caiman`) and explicit operator consent are available. TalkBack spoken-navigation acceptance remains a separate consented gate.
+
+
+## Engineering Factory run — 2026-11-06, SEC-020B6C exact-head acceptance and M7 preparation
+
+**Audit:** `feat/phase1-agentic-phone` at `893b8cdadab035439eefe62aeb4d42409b6d47ef`; recursive tree 282 entries, not truncated; latest 20 commits inspected; 224 commits ahead of `main`, 0 behind. `PROJECT-ADAPTER.md` and this roadmap are present. Repository `SKILL.md` is absent; upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed. Six PRs (#1, #3, #4, #5, #6, #7) are open/draft. PR #1 targets `main`, has 224 commits/218 changed files, matches the authorized head and has no submitted reviews or inline review threads. No other PR branch was changed. Repository rulesets collection is empty.
+
+### SEC-020B6B/B6C exact-head verification
+
+- Phase 1 push [42244248208](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244248208) and PR [42244257688](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257688): both passed; each Python policy job ran 530 tests. Android debug unit tests/build, repeat debug APK comparison, dependency verification and negative control, manifest gate and provenance passed.
+- CI-003 push [42244248205](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244248205) and PR [42244257705](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257705): both independent builders and verifiers passed. Unsigned APKs were byte-identical (7,831,964 bytes; SHA-256 `a8acfc839d7de40d21cf6452989056953060e24eb8dd12f766408f3b029e30f9`; normalized entries `4cc2150f1d66384508ab181236d233b7abec5eeebcbeed855a45b43be3aab8b4`). Runtime inventory and SPDX runtime SBOM matched; `reproducible=true`, `release_ready=false`.
+- CI-006 matched its scoped 1,260-component build-environment inventory/SBOM; it is not a complete hosted-runner image SBOM.
+- QA-005 [42244257673](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257673) passed every step on API 35 x86_64. Downloaded JUnit XML: 28 tests, 0 failures, 0 errors, 0 skipped. This includes 3 lifecycle, 5 AtomicFile and 20 SEC-020B6-family cases, including all four B6C key-retrieval tests. Artifact [13516679629](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257673/artifacts/13516679629), digest `sha256:57dfa4349aef3a1db93a8f523f240d6b0589ded6c11cf27051405fbd0a3940b9`.
+- QA-011 remains blocked because the TalkBack service is disabled; QA-012 verifies structural semantics only, not speech or spoken navigation.
+
+**SEC-020B6B and SEC-020B6C are accepted for emulator-injected failure behavior only.** No physical Pixel 9 Pro, StrongBox durability, reboot persistence, spoken TalkBack or signed production release is claimed.
+
+### Next bounded task — M7 validation protocol
+
+The previous emulator-only trust-store failure-injection slice is closed. The next unblocked task is a detailed, non-executing Pixel 9 Pro hardware validation protocol. It must define exact-model/boot-state preflight, reviewed test-artifact provenance, StrongBox feature and `KeyInfo.securityLevel` checks, disposable-alias key operations, process-death/reboot persistence, marker-first recovery, owner-credential prompt/cancellation, HOME-role recovery, accessibility/TalkBack, SIM/VoLTE/Wi-Fi/Bluetooth, battery/thermal observation, privacy-redacted evidence and independent signoff. The protocol is prepared at `docs/M7-PIXEL9PRO-HARDWARE-VALIDATION.md`; actual hardware execution remains BLOCKED until the exact device and explicit operator consent are available.
+
+**Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending physical Pixel 9 Pro; M8 BLOCKED. No milestone is complete. Human security review, spoken TalkBack, physical StrongBox/reboot recovery, signed release, OTA rollback and production deployment remain outstanding.

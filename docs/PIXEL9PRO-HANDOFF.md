@@ -23,3 +23,8 @@
 
 ## Safety
 No universal access claims; banking, DRM, secure screens and accessibility limits apply. Do not publish secret keys, SIM identifiers or transcripts. Avoid distributing autonomous AccessibilityService automation via Google Play without a current policy review.
+
+
+## Detailed M7 acceptance protocol
+
+See [M7 — Pixel 9 Pro supervised hardware validation protocol](M7-PIXEL9PRO-HARDWARE-VALIDATION.md). The protocol is prepared but has not been executed; physical-device access, owner consent and independent review remain required.

@@ -1,6 +1,6 @@
 # SEC-020B6 — Android Keystore fail-closed negative-path verification
 
-**Status:** SEC-020B6 base instrumentation is accepted on the API 35 x86_64 disposable emulator at `83a3aa2e90e89b29bae4f9c2b14cd402f084ebc7`. SEC-020B6A is accepted at exact head `f6e4099ae991eba9b7e8a56a674b08efd479c7ed` (11 combined SEC-020B6/B6A instrumentation cases; Phase 1, CI-003 and QA-005 all passed). SEC-020B6B load/alias-enumeration failure injection is implemented in the current change; exact-head validation is pending. Independent human security review and Pixel 9 Pro hardware gates remain open.
+**Status:** SEC-020B6 base, B6A, B6B and B6C are accepted for the exact API 35 x86_64 disposable-emulator failure-path coverage recorded below. The current accepted head is `893b8cdadab035439eefe62aeb4d42409b6d47ef`. This does not establish physical StrongBox behavior, Pixel 9 Pro compatibility, Keystore persistence across reboot/reset, spoken TalkBack acceptance, independent human security approval or production readiness. Those remain separate M5/M6/M7/M8 gates.
 
 ## Scope
 
@@ -111,3 +111,18 @@ Five new isolated instrumentation cases inject:
 Each case requires the trust store to report `Unavailable`, refuses generation-marker creation, and verifies that no isolated marker or AES alias was created. Alias enumeration failures use a real disposable AndroidKeyStore instance but inject the failure at the narrow reader boundary. No process-wide JCA provider is registered, and only UUID-scoped test aliases are eligible for cleanup.
 
 **SEC-020B6B status:** implementation committed; exact-head Phase 1, CI-003 and QA-005 validation pending. These deterministic seam tests verify fail-closed handling at the injected boundary; they do not prove that a Pixel 9 Pro's real AndroidKeyStore provider will exhibit the same failures or establish StrongBox hardware behavior.
+
+
+## Exact-head acceptance — SEC-020B6B and SEC-020B6C (2026-11-06)
+
+**Accepted source head:** `893b8cdadab035439eefe62aeb4d42409b6d47ef`.
+
+- Phase 1 push [42244248208](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244248208) and PR [42244257688](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257688) passed. Each Python-policy job ran **530 tests**. Android `:app:testDebugUnitTest`, `:app:assembleDebug`, same-run repeat debug-APK byte comparison, strict Gradle dependency verification, modified-dependency negative control, Android source-manifest gate and debug artifact provenance passed.
+- CI-003 push [42244248205](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244248205) and PR [42244257705](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257705) passed both independent builders and the verifier. Unsigned release APKs were byte-identical: **7,831,964 bytes**, SHA-256 `a8acfc839d7de40d21cf6452989056953060e24eb8dd12f766408f3b029e30f9`; normalized-entry SHA-256 `4cc2150f1d66384508ab181236d233b7abec5eeebcbeed855a45b43be3aab8b4`. Runtime inventory, SPDX runtime SBOM, release variant and toolchain matched. The verifier reported `reproducible=true`, `release_ready=false`.
+- CI-006 independently matched a **1,260-component scoped build-environment inventory**. It covers the declared OS packages, Python packages, Android SDK packages, Gradle distribution/plugins, JDK/Python runtimes and pinned GitHub Actions. It does not claim to enumerate every transitive Gradle plugin-resolution dependency, every runner toolcache file or the complete hosted-runner image.
+- QA-005 [42244257673](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257673) passed every workflow step on a disposable **API 35 x86_64 emulator**. The downloaded JUnit XML reports **28 tests, 0 failures, 0 errors and 0 skipped**: three SEC-020B4D lifecycle tests, five SEC-020B5 AtomicFile tests and twenty SEC-020B6-family tests. The twenty include the base/B6A cases, five B6B load/alias cases and all four B6C key-retrieval cases. Evidence artifact [13516679629](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42244257673/artifacts/13516679629), digest `sha256:57dfa4349aef3a1db93a8f523f240d6b0589ded6c11cf27051405fbd0a3940b9`.
+- QA-005 also completed launcher runtime/recovery, QA-006 large-font, QA-007 HOME cancellation, QA-008 explicit HOME acceptance, QA-009 stock-launcher restoration, QA-010 keyboard navigation, QA-011 read-only TalkBack preflight, QA-012 structural semantics, QA-013 insecure-enrollment denial and QA-020B2/B3 emulator checks. QA-011 reported `blocked_service_disabled`; QA-012 passed structural checks only. Neither is spoken TalkBack acceptance.
+
+**SEC-020B6B and SEC-020B6C are accepted only for the injected failure paths exercised on this API 35 x86_64 emulator.** The four B6C tests cover marker/AES `UnrecoverableKeyException` and `ProviderException`; they verify fail-closed outcomes and no generation advancement/fallback. Test metadata doubles are not StrongBox hardware evidence.
+
+Independent human security review remains pending. Physical Pixel 9 Pro StrongBox/key persistence/reboot/recovery, spoken TalkBack, SIM/VoLTE hardware checks, signed release, OTA rollback and production deployment remain unverified. Unsigned CI-003 artifacts are not for installation or release.
