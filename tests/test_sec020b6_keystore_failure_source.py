@@ -14,6 +14,7 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
         self.assertIn('private const val DEFAULT_AES_ALIAS = "mrnothing_authority_record_aes_v1"', BACKEND)
         self.assertIn('private const val DEFAULT_MARKER_PREFIX = "mrnothing_authority_marker_v1_"', BACKEND)
         self.assertIn("AndroidAuthorityTrustCrypto()", BACKEND)
+        self.assertIn('KeyPairGenerator.getInstance("Ed25519", BouncyCastleProvider())', INSTRUMENTATION)
 
     def test_both_generation_marker_and_aes_keys_require_strongbox(self):
         self.assertEqual(2, BACKEND.count(".setIsStrongBoxBacked(true)"))

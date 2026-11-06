@@ -475,3 +475,10 @@ The test is corrected to assert that two-layer behavior using a synthetic marker
 **Safety/evidence:** no production authority was enrolled, no user device or production alias was touched, no permission was granted, and no root/flashing/deployment occurred. Emulator StrongBox behavior, physical Pixel 9 Pro, spoken TalkBack, actual process-kill/power-loss durability, independent human security approval and production release remain unverified. QA-011/012 are not spoken TalkBack acceptance. No milestone is complete.
 
 **Next bounded task:** after SEC-020B6 exact-head CI, add deterministic KeyInfo/Keystore provider-failure injection for metadata exceptions and missing AES-key-with-valid-marker states; actual StrongBox/reboot/recovery remains a supervised M7 Pixel 9 Pro hardware gate.
+
+
+## SEC-020B6 emulator fixture correction — 2026-11-06
+
+At head `28065d7416c2aa89ffc17ed3dcf4614f2a34e733`, Phase 1 push/PR passed with 524 Python tests each and Android unit/build/dependency gates. CI-003 push/PR passed independent-runner verification; unsigned APKs were byte-identical (7,829,728 bytes; SHA-256 `09623ce52db112aab99a23b08196b260e9fab02456e76a41d970c14edbc69510`). QA-005 run [42220218287](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42220218287) started 16 instrumentation tests; two SEC-020B6 tests failed before crypto assertions because the synthetic Ed25519 helper selected the uninitialized AndroidKeyStore provider. The other 14 tests reported no failures; fail-fast skipped later QA stages. Diagnostics uploaded and synthetic lock credential cleanup reported success.
+
+The fixture now selects an explicit Bouncy Castle provider instance for the in-memory Ed25519 key pair. This is test-only; production Keystore policy and aliases are unchanged. SEC-020B6 remains unaccepted until exact-head QA-005 and all Phase 1/CI-003 reruns pass.

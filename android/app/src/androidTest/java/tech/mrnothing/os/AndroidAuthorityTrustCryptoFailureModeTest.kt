@@ -12,6 +12,7 @@ import java.util.UUID
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /**
  * SEC-020B6: exercises emulator-verifiable AndroidKeyStore failure paths.
@@ -114,7 +115,7 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
         }
 
     private fun validRecord(): AuthorityTrustRecord {
-        val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val pair = KeyPairGenerator.getInstance("Ed25519", BouncyCastleProvider()).generateKeyPair()
         val spki = pair.public.encoded
         val fingerprint = OwnerAuthorityTrustCeremony.fingerprintForOwner(spki)
         assertNotNull("synthetic Ed25519 public key must be accepted by the policy parser", fingerprint)

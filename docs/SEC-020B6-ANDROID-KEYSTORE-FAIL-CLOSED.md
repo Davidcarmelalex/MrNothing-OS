@@ -1,6 +1,6 @@
 # SEC-020B6 — Android Keystore fail-closed negative-path verification
 
-**Status:** implementation and emulator instrumentation added; exact-head CI acceptance pending.
+**Status:** implementation added; first exact-head emulator run exposed a test-fixture provider-selection defect; corrected fixture is committed and rerun is pending.
 
 ## Scope
 
@@ -47,3 +47,10 @@ No production key is created or deleted by the instrumentation tests. No root, d
 - Physical Pixel 9 Pro StrongBox and recovery validation remain M7 gates.
 
 Release state remains release_ready=false; unsigned artifacts are not for release.
+
+
+## First exact-head run and fixture correction — 2026-11-06
+
+QA-005 run [42220218287](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42220218287) compiled the instrumentation and started all 16 tests (three SEC-020B4D, five SEC-020B5 and eight SEC-020B6). Two SEC-020B6 cases failed before reaching their crypto assertions: the synthetic record helper requested Ed25519 from the default Android provider, which resolved to the AndroidKeyStore key-pair generator and raised `IllegalStateException: Not initialized`. The other 14 tests reported no failures. The workflow stopped before QA-006 onward; emulator diagnostics were captured and the workflow's synthetic lock-credential cleanup reported `Lock credential cleared`.
+
+The test fixture now requests an explicit local Bouncy Castle provider instance, matching the provider-isolation approach used by OwnerAuthorityTrustCeremony. This creates only an in-memory synthetic Ed25519 key pair and does not register or mutate a process-wide provider. No production trust-store, Keystore alias policy, credential flow or Android permission changed. The exact-head QA-005 rerun is required before SEC-020B6 can be accepted.
