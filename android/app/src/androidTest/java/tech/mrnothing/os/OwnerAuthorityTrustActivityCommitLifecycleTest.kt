@@ -89,11 +89,15 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
             awaitCredentialPrompt(target)
             shell("input text $TEST_PIN")
-            shell("input keyevent 66")
+            shell("input keyevent KEYCODE_ENTER")
+            awaitCredentialRevalidation(target)
 
             val boundaryReached = if (destroyAfterClaim) fakeStore.commitEntered else fakeStore.finalInspectEntered
             assertTrue(
-                "authorized transaction did not reach the expected lifecycle boundary",
+                "authorized transaction did not reach the expected lifecycle boundary; " +
+                    "status='${activityStatus(target)}'; " +
+                    "commitEntered=${fakeStore.commitEntered.count}; " +
+                    "finalInspectEntered=${fakeStore.finalInspectEntered.count}",
                 boundaryReached.await(12, TimeUnit.SECONDS)
             )
 
@@ -222,24 +226,93 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     private fun awaitSystemCredentialUi(message: String) {
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
-            val root = getInstrumentation().uiAutomation.rootInActiveWindow
-            if (root != null) {
-                val isSystemUi = root.packageName?.toString() == "com.android.systemui"
-                val matches = try {
-                    root.findAccessibilityNodeInfosByViewId(
-                        "com.android.systemui:id/lockPassword"
-                    )
-                } catch (_: RuntimeException) {
-                    emptyList()
-                }
-                val visible = isSystemUi && matches.isNotEmpty()
-                matches.forEach { it.recycle() }
-                root.recycle()
-                if (visible) return
-            }
+            if (hasVisibleSystemCredentialInput()) return
             SystemClock.sleep(100)
         }
-        fail(message)
+        fail(
+            "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
+                "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}"
+        )
+    }
+
+    /**
+     * BiometricPrompt credential UI differs across Android releases and can be
+     * hosted in more than the active window. Inspect all accessible windows,
+     * but accept an input field only from the system credential packages and
+     * known credential-input resource IDs. Never type into an app-owned field.
+     */
+    private fun hasVisibleSystemCredentialInput(): Boolean {
+        val automation = getInstrumentation().uiAutomation
+        val roots = try {
+            automation.windows.mapNotNull { it.root }.toMutableList()
+        } catch (_: RuntimeException) {
+            mutableListOf()
+        }
+        if (roots.isEmpty()) {
+            automation.rootInActiveWindow?.let(roots::add)
+        }
+
+        val allowedPackages = setOf("com.android.systemui", "com.android.settings")
+        val credentialInputIds = listOf(
+            "com.android.systemui:id/auth_credential_input",
+            "com.android.systemui:id/lockPassword"
+        )
+        try {
+            for (root in roots) {
+                if (root.packageName?.toString() !in allowedPackages) continue
+                for (viewId in credentialInputIds) {
+                    val matches = try {
+                        root.findAccessibilityNodeInfosByViewId(viewId)
+                    } catch (_: RuntimeException) {
+                        emptyList()
+                    }
+                    try {
+                        if (matches.any {
+                                it.isVisibleToUser &&
+                                    it.className?.toString() == "android.widget.EditText"
+                            }
+                        ) return true
+                    } finally {
+                        matches.forEach { it.recycle() }
+                    }
+                }
+            }
+        } finally {
+            roots.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    private fun awaitCredentialRevalidation(activity: OwnerAuthorityTrustActivityTestHost) {
+        val deadline = SystemClock.elapsedRealtime() + 10_000L
+        var status = ""
+        while (SystemClock.elapsedRealtime() < deadline) {
+            getInstrumentation().runOnMainSync {
+                status = (privateField(activity, "status") as TextView).text.toString()
+            }
+            if (status.startsWith("Revalidating trust state before the authorized transaction")) {
+                return
+            }
+            if (status.startsWith("Device credential canceled") ||
+                status.startsWith("Credential-only system prompt") ||
+                status.startsWith("Device became unsafe")
+            ) {
+                break
+            }
+            SystemClock.sleep(50)
+        }
+        fail(
+            "credential callback did not reach final trust revalidation; status='$status'; " +
+                safetySnapshot(activity)
+        )
+    }
+
+    private fun activityStatus(activity: OwnerAuthorityTrustActivityTestHost): String {
+        var status = ""
+        getInstrumentation().runOnMainSync {
+            status = (privateField(activity, "status") as TextView).text.toString()
+        }
+        return status
     }
 
     private fun safetySnapshot(context: Context): String {

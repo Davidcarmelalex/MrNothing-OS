@@ -43,6 +43,12 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("locksettings set-pin", source)
         self.assertNotIn("locksettings clear --old", source)
         self.assertIn("rootInActiveWindow", source)
+        self.assertIn("automation.windows", source)
+        self.assertIn("com.android.systemui:id/auth_credential_input", source)
+        self.assertIn("com.android.systemui:id/lockPassword", source)
+        self.assertIn('setOf("com.android.systemui", "com.android.settings")', source)
+        self.assertIn("isVisibleToUser", source)
+        self.assertIn("awaitCredentialRevalidation(target)", source)
         self.assertIn("findAccessibilityNodeInfosByViewId", source)
         self.assertNotIn("uiautomator dump", source)
         for forbidden in ("AndroidOwnerAuthorityTrustStore(", "AndroidAuthorityTrustCrypto(",

@@ -71,6 +71,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("android.test.base.jar", gradle)
         self.assertIn("android.test.runner.jar", gradle)
 
+    def test_android_instrumentation_reports_and_full_logcat_are_always_uploaded(self):
+        self.assertIn("android-test-report", self.workflow)
+        self.assertIn("outputs/androidTest-results/connected/debug", self.workflow)
+        self.assertIn("reports/androidTests/connected/debug", self.workflow)
+        self.assertIn("logcat -b all -d -t 2000", self.workflow)
+
     def test_no_physical_device_target(self):
         self.assertIn("ANDROID_SERIAL: emulator-5554", self.workflow)
         script = (WORKFLOW.parents[2] / "scripts/qa005_emulator_smoke.sh").read_text(encoding="utf-8")

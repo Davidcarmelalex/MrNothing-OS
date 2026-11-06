@@ -192,7 +192,16 @@ jobs:
           mkdir -p "$QA005_OUTPUT"
           cp "$RUNNER_TEMP/qa005-emulator.log" "$QA005_OUTPUT/emulator.log" 2>/dev/null || true
           timeout 15s adb devices -l > "$QA005_OUTPUT/adb-devices.txt" 2>&1 || true
-          timeout 15s adb -s "$ANDROID_SERIAL" logcat -d -t 300 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
+          for report in \
+            android/app/build/reports/androidTests/connected/debug \
+            android/app/build/outputs/androidTest-results/connected/debug; do
+            if [ -d "$report" ]; then
+              name="$(basename "$(dirname "$report")")-$(basename "$report")"
+              mkdir -p "$QA005_OUTPUT/android-test-report/$name"
+              cp -R "$report/." "$QA005_OUTPUT/android-test-report/$name/"
+            fi
+          done
+          timeout 15s adb -s "$ANDROID_SERIAL" logcat -b all -d -t 2000 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
           df -h > "$QA005_OUTPUT/disk.txt" || true
           free -h > "$QA005_OUTPUT/memory.txt" || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
