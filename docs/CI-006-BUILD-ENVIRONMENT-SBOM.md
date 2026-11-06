@@ -53,3 +53,12 @@ The release remains unsigned and `release_ready=false`. No signing key, producti
 - Provenance links match both inventory/SBOM digests.
 - The independent-runner verifier passes exact-byte comparisons.
 - A separate independent security review remains required; CI success is not self-approval.
+
+
+## CI-006A — canonical SPDX integrity validation
+
+The verifier now validates inventory component identity fields, lowercase SHA-256 values, unique package URLs, canonical component ordering and exact per-kind counts. It then regenerates the expected SPDX-2.3 document from the digest-bound inventory and requires full object equality.
+
+This closes ambiguity that a package-URL set comparison alone would permit: duplicate SPDX package records, changed package names or versions, ungrounded checksums, altered SPDX identifiers, missing or extra relationships, and modified document metadata now fail validation. The CI-006 schema remains intentionally strict; an intentional SPDX shape change must update the generator, validator and tests together.
+
+Five adversarial regression tests cover duplicate SPDX package records, package metadata tampering, relationship-graph tampering, duplicate inventory package URLs and inconsistent component counts. Exact-head Phase 1 and CI-003 push/PR validation remains required; this is not independent security approval or a complete hosted-runner SBOM.

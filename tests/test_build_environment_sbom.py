@@ -310,6 +310,60 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
             verify_bundles(first, second, COMMIT, self.root / "verification.json")
 
 
+    def test_duplicate_spdx_package_record_is_rejected(self):
+        bundle = self.write_bundle(self.root / "duplicate-package")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+        sbom["packages"].append(dict(sbom["packages"][1]))
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+    def test_spdx_package_name_and_version_must_match_inventory(self):
+        bundle = self.write_bundle(self.root / "package-metadata")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+        sbom["packages"][0]["name"] += "-tampered"
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+    def test_spdx_relationship_graph_must_match_inventory(self):
+        bundle = self.write_bundle(self.root / "relationship-graph")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+        sbom["relationships"].pop()
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+    def test_duplicate_inventory_package_url_is_rejected(self):
+        bundle = self.write_bundle(self.root / "duplicate-purl")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        duplicate = json.loads(json.dumps(inventory["components"][0]))
+        inventory["components"].append(duplicate)
+        inventory["counts"][duplicate["kind"]] += 1
+        inventory["components"].sort(key=lambda item: (item["kind"], item["purl"]))
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "duplicate package URL"):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+    def test_inventory_component_counts_must_match_records(self):
+        bundle = self.write_bundle(self.root / "component-counts")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        inventory["counts"]["python-package"] += 1
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "counts do not match"):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+
 class WorkflowIntegrationTests(unittest.TestCase):
     def test_ci003_workflow_generates_attaches_and_verifies_build_environment_sbom(self):
         root = Path(__file__).resolve().parents[1]

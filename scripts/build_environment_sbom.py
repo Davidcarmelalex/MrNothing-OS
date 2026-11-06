@@ -527,48 +527,57 @@ def make_spdx(inventory: dict, inventory_sha256: str) -> dict:
 
 
 def validate_inventory_and_sbom(inventory_path: Path, sbom_path: Path, expected_commit: str) -> tuple[dict, dict]:
+    if not COMMIT_RE.fullmatch(expected_commit):
+        raise ValueError("expected full lowercase Git commit SHA")
     inventory = load_json(inventory_path)
     sbom = load_json(sbom_path)
     if inventory.get("schema") != "mrnothing-ci006-build-environment-v1":
         raise ValueError("unknown build environment inventory schema")
     if inventory.get("source_commit") != expected_commit:
         raise ValueError("build environment inventory source commit mismatch")
+    if not isinstance(inventory.get("created"), str) or not re.fullmatch(
+        r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z", inventory["created"]
+    ):
+        raise ValueError("build environment inventory creation time is malformed")
+
+    components = inventory.get("components")
+    if not isinstance(components, list) or not components:
+        raise ValueError("build environment inventory components must be a non-empty array")
+    seen_purls = set()
+    observed_counts = {}
+    for index, component in enumerate(components):
+        if not isinstance(component, dict):
+            raise ValueError(f"build environment component {index} must be an object")
+        for field in ("kind", "name", "version", "purl"):
+            value = component.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"build environment component {index} has an invalid {field}")
+        if not component["purl"].startswith("pkg:"):
+            raise ValueError(f"build environment component {index} has an invalid package URL")
+        if component["purl"] in seen_purls:
+            raise ValueError("build environment inventory contains a duplicate package URL")
+        seen_purls.add(component["purl"])
+        digest = component.get("sha256")
+        if digest is not None and (
+            not isinstance(digest, str) or not SHA256_RE.fullmatch(digest)
+        ):
+            raise ValueError(f"build environment component {index} checksum must be lowercase SHA-256")
+        observed_counts[component["kind"]] = observed_counts.get(component["kind"], 0) + 1
+
+    if components != sorted(components, key=lambda item: (item["kind"], item["purl"])):
+        raise ValueError("build environment inventory components are not in canonical order")
+    if inventory.get("counts") != dict(sorted(observed_counts.items())):
+        raise ValueError("build environment inventory component counts do not match its records")
+
     if sbom.get("spdxVersion") != "SPDX-2.3":
         raise ValueError("build environment SBOM must be SPDX-2.3")
     inventory_digest = sha256_file(inventory_path)
-    expected_namespace = f"https://spdx.org/spdxdocs/mrnothing-ci003-build-environment-{expected_commit}-{inventory_digest}"
-    if sbom.get("documentNamespace") != expected_namespace:
-        raise ValueError("build environment SBOM namespace does not bind the inventory digest")
-    expected_purls = {item.get("purl") for item in inventory.get("components", [])}
-    package_records = sbom.get("packages", [])
-    actual_purls = {
-        reference.get("referenceLocator")
-        for package in package_records
-        for reference in package.get("externalRefs", [])
-        if reference.get("referenceType") == "purl"
-    }
-    root_purl = f"pkg:generic/mrnothing-ci003-build-environment@{expected_commit[:12]}"
-    if actual_purls != expected_purls | {root_purl}:
-        raise ValueError("build environment SBOM package URLs do not exactly match inventory")
-    by_purl = {
-        reference.get("referenceLocator"): package
-        for package in package_records
-        for reference in package.get("externalRefs", [])
-        if reference.get("referenceType") == "purl"
-    }
-    for component in inventory.get("components", []):
-        package = by_purl[component["purl"]]
-        checksums = package.get("checksums", [])
-        expected_digest = component.get("sha256")
-        if expected_digest:
-            if not any(item.get("algorithm") == "SHA256" and item.get("checksumValue") == expected_digest for item in checksums):
-                raise ValueError("build environment SBOM checksum does not match inventory")
-        elif checksums:
-            raise ValueError("build environment SBOM has an ungrounded component checksum")
-    if len(expected_purls) != len(inventory.get("components", [])):
-        raise ValueError("build environment inventory contains duplicate package URLs")
+    expected_sbom = make_spdx(inventory, inventory_digest)
+    if sbom != expected_sbom:
+        raise ValueError(
+            "build environment SPDX document does not exactly match the canonical inventory-derived document"
+        )
     return inventory, sbom
-
 
 def _provenance_link(inventory_path: Path, sbom_path: Path) -> dict:
     return {
