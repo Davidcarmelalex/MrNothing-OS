@@ -301,6 +301,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertIn("build_environment_sbom.py generate", workflow)
         self.assertIn('cat /etc/os-release > "$RUNNER_TEMP/ci003-os-release.txt"', workflow)
         self.assertIn('--os-release-file "$RUNNER_TEMP/ci003-os-release.txt"', workflow)
+        self.assertIn("--root-gradle-file build.gradle.kts", workflow)
         self.assertIn("build_environment_sbom.py attach", workflow)
         self.assertIn("build_environment_sbom.py negative-control", workflow)
         self.assertIn("build_environment_sbom.py verify", workflow)

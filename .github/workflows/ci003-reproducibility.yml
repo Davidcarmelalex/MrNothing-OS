@@ -126,7 +126,7 @@ jobs:
             --gradle-version-file "$RUNNER_TEMP/ci003-gradle-version.txt" \
             --java-properties-file "$RUNNER_TEMP/ci003-java-properties.txt" \
             --workflow-file ../.github/workflows/ci003-reproducibility.yml \
-            --root-gradle-file ../build.gradle.kts \
+            --root-gradle-file build.gradle.kts \
             --app-gradle-file app/build.gradle.kts \
             --output-inventory "$OUT/build-environment.inventory.json" \
             --output-sbom "$OUT/build-environment.spdx.json"
