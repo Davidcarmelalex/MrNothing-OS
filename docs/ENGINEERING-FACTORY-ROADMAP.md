@@ -871,3 +871,34 @@ Local command executed in a clean temporary test workspace: `python3 -m unittest
 **Validation boundary:** The 548-test audit-head suite passed before this patch. The three added regression tests and full suite must pass on the new exact head. No local test execution is claimed because the container could not resolve github.com; exact-head GitHub Actions is the available reproducible test environment. No physical device or ADB connection was used; no installation, permission change, reboot, root, flashing or device mutation occurred.
 
 **Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised physical Pixel 9 Pro evidence and independent review; M8 BLOCKED. No milestone is complete.
+
+
+
+## Engineering Factory run — 2026-11-07, M7 evidence-bundle validator
+
+**Audit baseline:** `feat/phase1-agentic-phone` at `cdd35777796e9933e2fd85c8f878286bb7c17bb7`. Recursive tree: 285 entries, not truncated. Latest 20 commits inspected. Six open PRs (#1, #3, #4, #5, #6, #7); PR #1 remains open/draft against `main`, head matches the authorized branch, 227 commits ahead/0 behind, 221 changed files, and no submitted reviews or inline review threads. `PROJECT-ADAPTER.md` and this roadmap exist; repository `SKILL.md` is absent. The authorized shared-library folder is empty and Library title search found no upstream package. The upstream shared factory package remains unverified and is not claimed as installed. No other PR branch was modified.
+
+### Exact-head CI accepted at audit head
+
+- Phase 1 push [42266632947](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266632947) and PR [42266642211](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266642211): PASS. Both Python policy jobs ran **551 tests**, Python compilation/static checks and Android source-manifest security gate passed. Android `:app:testDebugUnitTest`, `:app:assembleDebug`, repeat debug-APK byte comparison, strict Gradle dependency verification, modified-dependency negative control and debug artifact provenance passed.
+- CI-003 push [42266632949](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266632949) and PR [42266642177](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266642177): PASS. Both independent builders completed release unit tests, unsigned release APK assembly, merged/packaged manifest security gates, dependency negative control, SPDX runtime SBOM/provenance and independent-runner APK/normalized-content/SBOM/toolchain verification.
+- QA-005 disposable API 35 x86_64 emulator PR [42266642270](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266642270): PASS. All workflow steps passed, including launcher/stock recovery, large text, HOME consent, keyboard, QA-020B2 owner-authority UI and QA-020B3 debug credential-prompt probe. Evidence artifact [13527891460](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42266642270/artifacts/13527891460). QA-011 is still only a read-only TalkBack service preflight; QA-012 is structural semantics only. Neither proves spoken TalkBack navigation.
+- No physical Pixel 9 Pro was accessed. No StrongBox key-level hardware proof, reboot persistence, signed release or production readiness is claimed.
+
+### Implementation
+
+Added `scripts/m7_pixel9pro_evidence.py` and `tests/test_m7_pixel9pro_evidence.py`. The offline validator checks the M7 evidence schema, exact device/boot identity, test APK provenance, owner consent for every disruptive stage, exact StrongBox security levels, process-death/reboot persistence, marker-first recovery classifications, system credential prompt, launcher restoration, spoken TalkBack, connectivity, battery/thermal limits, disposable alias cleanup and absence of stop conditions/deviations.
+
+The manifest requires 14 redacted evidence categories and verifies every artifact SHA-256 from a bounded evidence directory. It rejects unknown fields, duplicate JSON keys, non-finite values, excessive JSON depth/size, symlinks, raw alias values, incorrect device/security results and reviewer self-approval. Independent review uses Ed25519 over a canonicalized bundle; the public-key fingerprint must be supplied and pinned out of band. A complete bundle remains `evidence_bundle_verified_pending_supervisor`; the validator hardcodes `m7_milestone_complete=false` because it cannot prove the truth of observations or replace the human supervisor.
+
+No device access, ADB, shell, installation, permission grant, reboot, root, flashing, production key handling or network listener was added. No new dependency was introduced; `cryptography==50.0.2` was already pinned for CI.
+
+### Local validation before commit
+
+- `python -m py_compile scripts/m7_pixel9pro_evidence.py tests/test_m7_pixel9pro_evidence.py`: PASS.
+- `python -m unittest discover -s tests -p 'test_*.py' -v` in an isolated test workspace containing the new module/test: **30 tests passed**. These are synthetic validator tests, including Ed25519 signature verification, reviewer-key pin mismatch, self-review rejection, evidence hash tampering/missing/symlink cases, consent/security/StrongBox/recovery/accessibility/connectivity/thermal negatives, duplicate JSON keys, non-finite numbers, depth limits and offline CLI behavior.
+- The repository-wide suite and Android workflows must pass again on the new exact commit before this slice is accepted.
+
+**Next bounded task:** exact-head CI for this validator, then prepare a synthetic M7 bundle template/generator that emits only schema-approved fields and opaque artifact IDs. Physical M7 remains BLOCKED until exact Pixel 9 Pro access, separate owner consent for each disruptive stage and an independent reviewer are available.
+
+**Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete.

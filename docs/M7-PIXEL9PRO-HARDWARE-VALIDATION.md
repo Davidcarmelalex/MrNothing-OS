@@ -173,3 +173,32 @@ The input schema is `mrnothing-m7-pixel9pro-preflight-v1` and contains only `adb
 The example is synthetic, not a device observation. The validator blocks wrong model/codename, unauthorized/disconnected ADB, unlocked/unknown boot state, emulator indication, unsupported API baseline or missing StrongBox feature. It emits only allowlisted model/build fields and named pass/fail checks; unknown input fields are not copied into the report.
 
 A passing report is `ready_for_supervised_hardware_session` only. It always sets `acceptance_passed=false` and `strongbox_key_security_level_verified=false`. PackageManager feature advertisement does not prove a generated key is StrongBox-backed; only the separately approved instrumentation check of `KeyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX` can establish that key-level property. This offline preflight cannot install, grant permissions, reboot, alter settings or complete M7.
+
+
+
+## 2.2 Offline evidence-bundle validator
+
+The companion validator is `scripts/m7_pixel9pro_evidence.py`, with synthetic regression coverage in `tests/test_m7_pixel9pro_evidence.py`. It performs no ADB, shell, fastboot, Settings, installation, reboot, permission or device operation.
+
+The JSON schema is `mrnothing-m7-pixel9pro-evidence-v1`. It requires exact Pixel 9 Pro/`caiman` identity; locked bootloader, green Verified Boot and locked vbmeta; a redacted build-fingerprint SHA-256; a reviewed debug-test APK checksum, signer-certificate fingerprint and source commit; explicit owner approval timestamps for each disruptive stage; HMAC and AES-GCM keys reporting exactly `STRONGBOX`; process-death and owner-approved reboot persistence; all five marker-first recovery cases; genuine platform credential prompt cancellation/success; HOME cancellation/acceptance and stock-launcher restoration; spoken TalkBack navigation and revocation; SIM/Wi-Fi/Bluetooth/local audio; a bounded 15-minute battery/thermal observation; and disposable-alias cleanup with production state untouched.
+
+The evidence manifest requires one redacted SHA-256 entry for each of 14 categories. Files are named only by opaque `ev_<12-32 lowercase hex>.json` IDs and must be present in the evidence directory with matching hashes. The validator rejects unknown fields, raw alias names, duplicate JSON keys, non-finite numbers, excessive JSON depth/size, unsafe symlink paths, wrong device/build values, TEE/software fallback, missing consent, failed recovery, recordings, severe thermal conditions and self-review.
+
+### Independent review signature
+
+The reviewer signs the canonical UTF-8 JSON payload (sorted keys, compact separators, with only `review.signature` omitted) using Ed25519. The verifier must receive both a PEM public key and its SHA-256 SPKI-DER fingerprint through a trusted out-of-band channel. A public key or fingerprint embedded only in the evidence bundle is not trusted. The reviewer ID must differ from the operator ID and the signature binds the complete evidence manifest and all claims.
+
+Example validation command:
+
+```bash
+python3 scripts/m7_pixel9pro_evidence.py \
+  --bundle /secure/evidence/m7-bundle.json \
+  --evidence-dir /secure/evidence/artifacts \
+  --reviewer-public-key /secure/reviewer/reviewer-ed25519-public.pem \
+  --expected-reviewer-key-sha256 <out-of-band-pinned-spki-sha256> \
+  --output /secure/evidence/m7-validation-report.json
+```
+
+Without a trusted reviewer key and its independently pinned fingerprint, the report remains `pending_independent_verification`. A structurally valid, hash-verified, signed bundle is reported as `evidence_bundle_verified_pending_supervisor`; `m7_milestone_complete` remains **false**. The tool verifies file digests but does not semantically inspect attachment contents or prove the truth of operator observations. The reviewer must inspect every redacted artifact, and the independent human supervisor must make the final milestone decision. Do not store reviewer private keys in the repository, device or evidence bundle.
+
+The validator uses the already-pinned `cryptography==50.0.2` CI dependency. Its fixtures use ephemeral synthetic Ed25519 keys and synthetic evidence only. They are not physical-device evidence.
