@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase() {
     private var lastCredentialPreflightDiagnostics = "not-started"
+    private var lastCredentialEntryDiagnostics = "not-started"
 
     fun testDestroyBeforeCommitClaimPreventsFakeStoreMutation() {
         runScenario(destroyAfterClaim = false)
@@ -92,8 +93,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             }
 
             awaitCredentialPrompt(target)
-            shell("input text $TEST_PIN")
-            shell("input keyevent KEYCODE_ENTER")
+            enterSyntheticSystemPin()
             awaitCredentialRevalidation(target)
 
             val boundaryReached = if (destroyAfterClaim) fakeStore.commitEntered else fakeStore.finalInspectEntered
@@ -206,10 +206,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                 identity.contains("uid=2000(shell)")
             )
             lastCredentialPreflightDiagnostics += "; synthetic-pin-entry-identity=" + identity.trim()
-            // Android 15 exposes the PIN bouncer as a SystemUI keypad hierarchy,
-            // not necessarily as an accessible PasswordTextView/EditText node.
-            shell("input text $TEST_PIN")
-            shell("input keyevent KEYCODE_ENTER")
+            enterSyntheticSystemPin(identity)
         }
 
         val deadline = SystemClock.elapsedRealtime() + 10_000L
@@ -218,6 +215,82 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             SystemClock.sleep(50)
         }
         fail("emulator is not secure, unlocked and interactive: ${safetySnapshot(context)}")
+    }
+
+    /**
+     * Enter only the workflow's synthetic PIN by tapping exact, visible,
+     * clickable SystemUI keypad resource IDs. This avoids input-text/IME
+     * ambiguity and never targets an app-owned field or guesses coordinates.
+     */
+    private fun enterSyntheticSystemPin(identityFromCaller: String? = null) {
+        lastCredentialEntryDiagnostics = "starting"
+        val identity = identityFromCaller ?: shell("id")
+        assertTrue(
+            "synthetic PIN entry requires ordinary adb shell identity; refusing privileged execution",
+            identity.contains("uid=2000(shell)")
+        )
+        assertTrue("exact SystemUI credential keypad is not visible", hasVisibleSystemCredentialInput())
+        SystemClock.sleep(250)
+        var tappedDigits = 0
+        for (digit in TEST_PIN) {
+            val viewId = "com.android.systemui:id/key$digit"
+            assertTrue(
+                "exact clickable SystemUI PIN key was not available: key$digit",
+                tapVisibleSystemUiNode(viewId, "android.view.ViewGroup")
+            )
+            tappedDigits += 1
+            SystemClock.sleep(120)
+        }
+        assertTrue(
+            "exact clickable SystemUI PIN submit key was not available",
+            tapVisibleSystemUiNode("com.android.systemui:id/key_enter")
+        )
+        lastCredentialEntryDiagnostics = "systemUiDigitKeysTapped=$tappedDigits; submitKeyTapped=true"
+        SystemClock.sleep(250)
+    }
+
+    private fun tapVisibleSystemUiNode(
+        viewId: String,
+        expectedClassName: String? = null
+    ): Boolean {
+        val automation = getInstrumentation().uiAutomation
+        val roots = try {
+            automation.windows.mapNotNull { it.root }.toMutableList()
+        } catch (_: RuntimeException) {
+            mutableListOf()
+        }
+        if (roots.isEmpty()) automation.rootInActiveWindow?.let(roots::add)
+        try {
+            for (root in roots) {
+                if (root.packageName?.toString() != "com.android.systemui") continue
+                val matches = try {
+                    root.findAccessibilityNodeInfosByViewId(viewId)
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                try {
+                    for (node in matches) {
+                        if (node.viewIdResourceName != viewId ||
+                            !node.isVisibleToUser ||
+                            !node.isEnabled ||
+                            !node.isClickable ||
+                            (expectedClassName != null && node.className?.toString() != expectedClassName)
+                        ) continue
+                        val bounds = Rect()
+                        node.getBoundsInScreen(bounds)
+                        if (bounds.width() <= 0 || bounds.height() <= 0) continue
+                        val output = shell("input tap ${bounds.centerX()} ${bounds.centerY()}")
+                        return !output.contains("usage", ignoreCase = true) &&
+                            !output.contains("error", ignoreCase = true)
+                    }
+                } finally {
+                    matches.forEach { it.recycle() }
+                }
+            }
+        } finally {
+            roots.forEach { it.recycle() }
+        }
+        return false
     }
 
     /**
@@ -573,7 +646,8 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
         fail(
             "credential callback did not reach final trust revalidation; status='$status'; " +
-                safetySnapshot(activity)
+                "pinEntry=$lastCredentialEntryDiagnostics; " + safetySnapshot(activity) +
+                "; ui=${credentialUiSnapshot()}
         )
     }
 

@@ -902,3 +902,13 @@ No device access, ADB, shell, installation, permission grant, reboot, root, flas
 **Next bounded task:** exact-head CI for this validator, then prepare a synthetic M7 bundle template/generator that emits only schema-approved fields and opaque artifact IDs. Physical M7 remains BLOCKED until exact Pixel 9 Pro access, separate owner consent for each disruptive stage and an independent reviewer are available.
 
 **Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
+
+
+
+## QA-005 regression — exact SystemUI PIN-key interaction (2026-11-07)
+
+The exact-head QA-005 run [42278932746](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42278932746) executed 28 instrumentation tests: 27 passed and `testDestroyBeforeCommitClaimPreventsFakeStoreMutation` failed. The failure was in the test harness's synthetic credential entry, not the production trust backend. SystemUI logged `AuthController.showAuthenticationDialog`; the final diagnostic showed the emulator remained secure/interactive, but the Activity never received the credential callback. The captured pre-cleanup screen was the launcher, confirming that the prompt had already disappeared. The workflow successfully cleared its disposable emulator PIN.
+
+The test helper previously sent `input text 2468` and `KEYCODE_ENTER` after recognizing the Android 15 SystemUI PIN keypad. That input-text path is ambiguous for a custom keypad. The test now taps only the exact visible, enabled, clickable SystemUI resource IDs `key0`–`key9` and `key_enter`, using bounds returned by AccessibilityNodeInfo and ordinary UID 2000 shell input. It refuses app-owned nodes, missing nodes, non-clickable controls, zero-sized bounds and non-shell execution. It does not bypass Keyguard, use root, or alter production code. Failure diagnostics now include the bounded resource-ID/class/bounds-only UI snapshot; no credential text or PIN digits are logged.
+
+The keypad resource IDs and `key_enter` control correspond to the AOSP Keyguard PIN view hierarchy. This is a test-harness correction only. Exact-head QA-005 must pass before the credential lifecycle gate is accepted; no result is assumed from this patch.
