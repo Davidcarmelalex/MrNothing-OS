@@ -2,10 +2,15 @@ package tech.mrnothing.os
 
 import android.app.Activity
 import android.app.Application
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
+import android.hardware.biometrics.BiometricManager
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.SystemClock
+import android.os.UserManager
 import android.test.InstrumentationTestCase
 import android.widget.Button
 import android.widget.CheckBox
@@ -44,6 +49,12 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
         try {
+            // A headless emulator may be non-interactive after boot. Wake it and,
+            // only if the disposable emulator is actually keyguard-locked, enter
+            // the synthetic test PIN through the visible SystemUI PIN field.
+            // Never dismiss/bypass Keyguard or type into an app-owned field.
+            prepareInteractiveUnlockedEmulator()
+
             val intent = Intent(
                 getInstrumentation().targetContext,
                 OwnerAuthorityTrustActivityTestHost::class.java
@@ -160,10 +171,55 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
     }
 
-    private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
-        awaitMainCondition("credential confirmation was not initiated") {
-            privateField(activity, "pendingBinding") != null
+    private fun prepareInteractiveUnlockedEmulator() {
+        val context = getInstrumentation().targetContext
+        val keyguard = context.getSystemService(KeyguardManager::class.java)
+            ?: throw AssertionError("KeyguardManager unavailable")
+        assertTrue(
+            "synthetic test PIN was not configured on the disposable emulator",
+            keyguard.isDeviceSecure
+        )
+
+        shell("input keyevent KEYCODE_WAKEUP")
+        if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
+            awaitSystemCredentialUi("locked emulator did not expose the SystemUI PIN field")
+            shell("input text $TEST_PIN")
+            shell("input keyevent KEYCODE_ENTER")
         }
+
+        val deadline = SystemClock.elapsedRealtime() + 10_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (OwnerCredentialSafetyGate.isSafe(context)) return
+            SystemClock.sleep(50)
+        }
+        fail("emulator is not secure, unlocked and interactive: ${safetySnapshot(context)}")
+    }
+
+    private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
+        val deadline = SystemClock.elapsedRealtime() + 10_000L
+        var status = ""
+        var bindingPresent = false
+        while (SystemClock.elapsedRealtime() < deadline) {
+            getInstrumentation().runOnMainSync {
+                bindingPresent = privateField(activity, "pendingBinding") != null
+                status = (privateField(activity, "status") as TextView).text.toString()
+            }
+            if (bindingPresent) break
+            SystemClock.sleep(50)
+        }
+        if (!bindingPresent) {
+            fail(
+                "credential confirmation was not initiated; status='$status'; " +
+                    safetySnapshot(activity)
+            )
+        }
+        awaitSystemCredentialUi(
+            "credential-only SystemUI prompt did not become visible; " +
+                "status='$status'; " + safetySnapshot(activity)
+        )
+    }
+
+    private fun awaitSystemCredentialUi(message: String) {
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
             val root = getInstrumentation().uiAutomation.rootInActiveWindow
@@ -183,7 +239,23 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             }
             SystemClock.sleep(100)
         }
-        fail("credential-only SystemUI prompt did not become visible")
+        fail(message)
+    }
+
+    private fun safetySnapshot(context: Context): String {
+        val keyguard = context.getSystemService(KeyguardManager::class.java)
+        val power = context.getSystemService(PowerManager::class.java)
+        val user = context.getSystemService(UserManager::class.java)
+        val biometric = context.getSystemService(BiometricManager::class.java)
+        val canAuthenticate = biometric?.canAuthenticate(
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        ) ?: -1
+        return "secure=${keyguard?.isDeviceSecure}, " +
+            "deviceLocked=${keyguard?.isDeviceLocked}, " +
+            "keyguardLocked=${keyguard?.isKeyguardLocked}, " +
+            "userUnlocked=${user?.isUserUnlocked}, " +
+            "interactive=${power?.isInteractive}, " +
+            "deviceCredentialCanAuthenticate=$canAuthenticate"
     }
 
     private fun awaitMainCondition(message: String, condition: () -> Boolean) {

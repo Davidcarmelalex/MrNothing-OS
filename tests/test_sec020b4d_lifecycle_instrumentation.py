@@ -57,6 +57,18 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("AndroidOwnerAuthorityTrustStore(context)", source)
         self.assertEqual(source.count("createTrustStore(appContext)"), 3)
 
+    def test_emulator_preflight_wakes_and_uses_only_visible_systemui_credential(self):
+        source = TEST.read_text(encoding="utf-8")
+        self.assertIn("prepareInteractiveUnlockedEmulator()", source)
+        self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', source)
+        self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
+        self.assertIn("awaitSystemCredentialUi", source)
+        self.assertIn('shell("input text $TEST_PIN")', source)
+        self.assertIn("OwnerCredentialSafetyGate.isSafe(context)", source)
+        self.assertIn("deviceCredentialCanAuthenticate", source)
+        self.assertNotIn("wm dismiss-keyguard", source)
+        self.assertNotIn("adb root", source)
+
 
 if __name__ == "__main__":
     unittest.main()
