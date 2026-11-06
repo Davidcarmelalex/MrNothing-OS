@@ -1,6 +1,6 @@
 # SEC-020B6 — Android Keystore fail-closed negative-path verification
 
-**Status:** SEC-020B6 base instrumentation accepted on API 35 x86_64 disposable emulator at `83a3aa2e90e89b29bae4f9c2b14cd402f084ebc7`. SEC-020B6A provider-failure extension is implemented; exact-head CI is pending. Independent human security review and Pixel 9 Pro hardware gates remain open.
+**Status:** SEC-020B6 base instrumentation is accepted on the API 35 x86_64 disposable emulator at `83a3aa2e90e89b29bae4f9c2b14cd402f084ebc7`. SEC-020B6A is accepted at exact head `f6e4099ae991eba9b7e8a56a674b08efd479c7ed` (11 combined SEC-020B6/B6A instrumentation cases; Phase 1, CI-003 and QA-005 all passed). SEC-020B6B load/alias-enumeration failure injection is implemented in the current change; exact-head validation is pending. Independent human security review and Pixel 9 Pro hardware gates remain open.
 
 ## Scope
 
@@ -84,3 +84,30 @@ Three isolated instrumentation cases were added:
 The metadata test double is scoped to one instrumentation instance and does not register a global JCA provider. The missing-AES case uses an isolated test alias and synthetic StrongBox metadata only to exercise coordinator behavior; it does not claim a StrongBox key exists. Test aliases are cleaned in `finally`.
 
 **SEC-020B6A status:** implementation committed; exact-head Phase 1, CI-003 and QA-005 acceptance pending. No production alias, key, authority, permission, trust transition or executor connection was changed.
+
+
+## Exact-head acceptance — SEC-020B6A (2026-11-06)
+
+At head `f6e4099ae991eba9b7e8a56a674b08efd479c7ed`:
+
+- Phase 1 push [42223971396](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223971396) and PR [42223981107](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223981107) passed. The Python policy job ran **526 tests**; Android unit tests, debug APK assembly, repeat-build comparison, strict dependency verification, modified-dependency negative control and manifest gate passed.
+- CI-003 push [42223971449](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223971449) and PR [42223981151](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223981151) passed both independent builders and the verifier. Unsigned APKs were byte-identical: 7,830,680 bytes, SHA-256 `60f0df5a92ebed50e1ddf1885e56e5b12ceb25c19263f8910943d832d53fb53f`; normalized-entry SHA-256 `1c08ed89586bad608133bbcc4521c440895e10bef1dc78f4cc757501e5228405`. Runtime inventory, SPDX runtime SBOM and the scoped 1,260-component CI-006 build-environment inventory matched. CI-003 reports `reproducible=true`, `release_ready=false`; the inventory is not a complete hosted-runner image SBOM.
+- QA-005 PR [42223981189](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223981189) passed all workflow steps on a disposable API 35 x86_64 emulator. The downloaded JUnit XML reports **19 tests, 0 failures, 0 errors, 0 skipped**: three SEC-020B4D lifecycle tests, five SEC-020B5 AtomicFile tests and eleven SEC-020B6/B6A Keystore tests. QA-006 through QA-013 and QA-020B2/B3 passed; the synthetic emulator lock credential was cleared. Evidence artifact [13505691330](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42223981189/artifacts/13505691330), digest `sha256:35ee53f42519f688d0e65ad422b1d2e3fd1a235aa8e4511b5e2ac736e9ebc569`.
+- QA-011 remains a read-only TalkBack availability preflight and reported the service disabled. QA-012 is structural semantics only, not spoken TalkBack acceptance.
+
+SEC-020B6A is accepted only for its tested API 35 x86_64 emulator failure-path scope. The conditional StrongBox test does not establish physical StrongBox behavior, Pixel 9 Pro compatibility, Keystore persistence across reboot/reset, spoken TalkBack, independent human security approval or production readiness.
+
+## SEC-020B6B — deterministic Keystore load and alias-enumeration failure injection
+
+A narrow internal `AndroidAuthorityKeyStoreReader` seam now isolates AndroidKeyStore loading and marker-alias enumeration. The production default delegates directly to `KeyStore.getInstance("AndroidKeyStore")`, `load(null)` and `store.aliases()`; the production `AndroidOwnerAuthorityTrustStore` still constructs `AndroidAuthorityTrustCrypto()` with the default platform readers and original aliases.
+
+Five new isolated instrumentation cases inject:
+1. `GeneralSecurityException` during AndroidKeyStore load.
+2. `IOException` during AndroidKeyStore load.
+3. Runtime provider failure during AndroidKeyStore load.
+4. `GeneralSecurityException` during marker-alias enumeration.
+5. Runtime provider failure during marker-alias enumeration.
+
+Each case requires the trust store to report `Unavailable`, refuses generation-marker creation, and verifies that no isolated marker or AES alias was created. Alias enumeration failures use a real disposable AndroidKeyStore instance but inject the failure at the narrow reader boundary. No process-wide JCA provider is registered, and only UUID-scoped test aliases are eligible for cleanup.
+
+**SEC-020B6B status:** implementation committed; exact-head Phase 1, CI-003 and QA-005 validation pending. These deterministic seam tests verify fail-closed handling at the injected boundary; they do not prove that a Pixel 9 Pro's real AndroidKeyStore provider will exhibit the same failures or establish StrongBox hardware behavior.

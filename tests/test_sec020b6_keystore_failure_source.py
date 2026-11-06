@@ -45,6 +45,29 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
             BACKEND,
         )
 
+    def test_platform_keystore_reader_remains_the_production_default(self):
+        self.assertIn(
+            "private val keyStoreReader: AndroidAuthorityKeyStoreReader = PlatformAndroidAuthorityKeyStoreReader",
+            BACKEND,
+        )
+        self.assertIn('KeyStore.getInstance("AndroidKeyStore")', BACKEND)
+        self.assertIn("return keyStoreReader.load()", BACKEND)
+        self.assertIn("keyStoreReader.aliases(store)", BACKEND)
+        self.assertIn("AndroidAuthorityTrustCrypto()", BACKEND)
+
+    def test_keystore_load_and_alias_enumeration_failures_are_injected(self):
+        for name in (
+            "testKeyStoreLoadGeneralSecurityExceptionMakesTrustStoreUnavailable",
+            "testKeyStoreLoadIOExceptionMakesTrustStoreUnavailable",
+            "testKeyStoreLoadRuntimeExceptionMakesTrustStoreUnavailable",
+            "testKeyStoreAliasEnumerationGeneralSecurityExceptionMakesTrustStoreUnavailable",
+            "testKeyStoreAliasEnumerationRuntimeExceptionMakesTrustStoreUnavailable",
+        ):
+            self.assertIn(name, INSTRUMENTATION)
+        self.assertIn("throwingKeyStoreLoadReader", INSTRUMENTATION)
+        self.assertIn("throwingKeyStoreAliasReader", INSTRUMENTATION)
+        self.assertNotIn("Security.addProvider", INSTRUMENTATION)
+
     def test_marker_aliases_must_be_positive_canonical_decimal(self):
         self.assertIn("suffix.toLongOrNull() ?: return null", BACKEND)
         self.assertIn("generation <= 0L || generation.toString() != suffix", BACKEND)

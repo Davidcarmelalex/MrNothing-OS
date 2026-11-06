@@ -8,10 +8,12 @@ import android.security.keystore.KeyProperties
 import android.test.InstrumentationTestCase
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.util.Enumeration
 import java.util.UUID
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -140,6 +142,86 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             )
         }
 
+    fun testKeyStoreLoadGeneralSecurityExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReader = throwingKeyStoreLoadReader(
+                GeneralSecurityException("injected AndroidKeyStore load failure")
+            )
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(validRecord()))
+            assertFalse(store.containsAlias(markerPrefix + "1"))
+            assertFalse(store.containsAlias(aesAlias))
+        }
+
+    fun testKeyStoreLoadIOExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReader = throwingKeyStoreLoadReader(
+                IOException("injected AndroidKeyStore I/O failure")
+            )
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(validRecord()))
+            assertFalse(store.containsAlias(markerPrefix + "1"))
+            assertFalse(store.containsAlias(aesAlias))
+        }
+
+    fun testKeyStoreLoadRuntimeExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReader = throwingKeyStoreLoadReader(
+                IllegalStateException("injected AndroidKeyStore provider failure")
+            )
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(validRecord()))
+            assertFalse(store.containsAlias(markerPrefix + "1"))
+            assertFalse(store.containsAlias(aesAlias))
+        }
+
+    fun testKeyStoreAliasEnumerationGeneralSecurityExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReader = throwingKeyStoreAliasReader(
+                GeneralSecurityException("injected AndroidKeyStore alias enumeration failure")
+            )
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(validRecord()))
+            assertFalse(store.containsAlias(markerPrefix + "1"))
+            assertFalse(store.containsAlias(aesAlias))
+        }
+
+    fun testKeyStoreAliasEnumerationRuntimeExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReader = throwingKeyStoreAliasReader(
+                IllegalStateException("injected AndroidKeyStore enumeration provider failure")
+            )
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(validRecord()))
+            assertFalse(store.containsAlias(markerPrefix + "1"))
+            assertFalse(store.containsAlias(aesAlias))
+        }
+
     fun testMissingAesKeyWithGenerationMarkerRequiresRecovery() =
         withIsolatedCrypto(SyntheticStrongBoxKeyInfoReader) {
                 crypto, store, markerPrefix, aesAlias, _ ->
@@ -218,15 +300,19 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
 
     private fun withIsolatedCrypto(
         keyInfoReader: AndroidAuthorityKeyInfoReader? = null,
+        keyStoreReader: AndroidAuthorityKeyStoreReader? = null,
         block: (AndroidAuthorityTrustCrypto, KeyStore, String, String, Context) -> Unit
     ) {
         val context = getInstrumentation().targetContext
         val token = UUID.randomUUID().toString().replace("-", "")
         val markerPrefix = "mrnothing_sec020b6_${token}_marker_"
         val aesAlias = "mrnothing_sec020b6_${token}_aes"
-        val crypto = keyInfoReader?.let {
-            AndroidAuthorityTrustCrypto(markerPrefix, aesAlias, it)
-        } ?: AndroidAuthorityTrustCrypto(markerPrefix, aesAlias)
+        val crypto = AndroidAuthorityTrustCrypto(
+            markerPrefix,
+            aesAlias,
+            keyInfoReader ?: PlatformAndroidAuthorityKeyInfoReader,
+            keyStoreReader ?: PlatformAndroidAuthorityKeyStoreReader
+        )
         val store = KeyStore.getInstance(ANDROID_KEYSTORE)
         store.load(null)
         try {
@@ -242,6 +328,24 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             if (cleanup.containsAlias(aesAlias)) cleanup.deleteEntry(aesAlias)
         }
     }
+
+    private fun throwingKeyStoreLoadReader(failure: Exception): AndroidAuthorityKeyStoreReader =
+        object : AndroidAuthorityKeyStoreReader {
+            override fun load(): KeyStore = throw failure
+
+            override fun aliases(store: KeyStore): Enumeration<String> = store.aliases()
+        }
+
+    private fun throwingKeyStoreAliasReader(failure: Exception): AndroidAuthorityKeyStoreReader =
+        object : AndroidAuthorityKeyStoreReader {
+            override fun load(): KeyStore {
+                val store = KeyStore.getInstance(ANDROID_KEYSTORE)
+                store.load(null)
+                return store
+            }
+
+            override fun aliases(store: KeyStore): Enumeration<String> = throw failure
+        }
 
     private fun throwingKeyInfoReader(failure: Exception): AndroidAuthorityKeyInfoReader =
         object : AndroidAuthorityKeyInfoReader {

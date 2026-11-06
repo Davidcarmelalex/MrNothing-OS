@@ -48,13 +48,36 @@ internal object PlatformAndroidAuthorityKeyInfoReader : AndroidAuthorityKeyInfoR
 }
 
 /**
+ * Narrow test seam for Android Keystore loading and alias enumeration.
+ * Production delegates directly to the platform AndroidKeyStore implementation.
+ */
+internal interface AndroidAuthorityKeyStoreReader {
+    @Throws(GeneralSecurityException::class, IOException::class)
+    fun load(): KeyStore
+
+    @Throws(GeneralSecurityException::class)
+    fun aliases(store: KeyStore): Enumeration<String>
+}
+
+internal object PlatformAndroidAuthorityKeyStoreReader : AndroidAuthorityKeyStoreReader {
+    override fun load(): KeyStore {
+        val store = KeyStore.getInstance("AndroidKeyStore")
+        store.load(null)
+        return store
+    }
+
+    override fun aliases(store: KeyStore): Enumeration<String> = store.aliases()
+}
+
+/**
  * Alias overrides are a test-isolation seam only. Production construction uses
  * the original defaults; instrumentation tests supply a unique disposable namespace.
  */
 internal class AndroidAuthorityTrustCrypto(
     private val markerPrefix: String = DEFAULT_MARKER_PREFIX,
     private val aesAlias: String = DEFAULT_AES_ALIAS,
-    private val keyInfoReader: AndroidAuthorityKeyInfoReader = PlatformAndroidAuthorityKeyInfoReader
+    private val keyInfoReader: AndroidAuthorityKeyInfoReader = PlatformAndroidAuthorityKeyInfoReader,
+    private val keyStoreReader: AndroidAuthorityKeyStoreReader = PlatformAndroidAuthorityKeyStoreReader
 ) : AuthorityTrustCrypto {
     init {
         require(markerPrefix.isNotBlank())
@@ -187,7 +210,7 @@ internal class AndroidAuthorityTrustCrypto(
         // KeyInfo.securityLevel is required to distinguish StrongBox from TEE.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
         var highest = 0L
-        val aliases: Enumeration<String> = store.aliases()
+        val aliases: Enumeration<String> = keyStoreReader.aliases(store)
         while (aliases.hasMoreElements()) {
             val alias = aliases.nextElement()
             if (!alias.startsWith(markerPrefix)) continue
@@ -231,11 +254,7 @@ internal class AndroidAuthorityTrustCrypto(
         return keyInfoReader.securityLevel(key) == KeyProperties.SECURITY_LEVEL_STRONGBOX
     }
 
-    private fun loadKeyStore(): KeyStore? {
-        val store = KeyStore.getInstance(ANDROID_KEYSTORE)
-        store.load(null)
-        return store
-    }
+    private fun loadKeyStore(): KeyStore? = keyStoreReader.load()
 
     private fun validRecord(record: AuthorityTrustRecord): Boolean =
         record.generation > 0L &&
