@@ -39,8 +39,9 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
     def test_both_generation_marker_and_aes_keys_require_strongbox(self):
         self.assertEqual(2, BACKEND.count(".setIsStrongBoxBacked(true)"))
         self.assertNotIn(".setIsStrongBoxBacked(false)", BACKEND)
+        self.assertIn("return info.securityLevel", BACKEND)
         self.assertIn(
-            "info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX",
+            "return keyInfoReader.securityLevel(key) == KeyProperties.SECURITY_LEVEL_STRONGBOX",
             BACKEND,
         )
 
