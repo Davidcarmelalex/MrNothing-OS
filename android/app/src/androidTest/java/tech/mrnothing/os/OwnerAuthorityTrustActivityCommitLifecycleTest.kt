@@ -5,6 +5,8 @@ import android.app.Application
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.hardware.biometrics.BiometricManager
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -17,6 +19,8 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import android.view.accessibility.AccessibilityNodeInfo
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -294,11 +298,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         for ((windowIndex, root) in roots.withIndex()) {
             val pending = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
             pending.addLast(root to 0)
-            while (pending.isNotEmpty() && visited < 80) {
+            while (pending.isNotEmpty() && visited < 96) {
                 val (node, depth) = pending.removeFirst()
                 output.append("\nwindow[").append(windowIndex).append("] ")
                     .append("  ".repeat(depth.coerceAtMost(8)))
-                    .append(node.toString().take(350))
+                    .append(credentialNodeSummary(node, depth))
                 visited += 1
                 if (depth < 7) {
                     val childCount = try { node.childCount } catch (_: RuntimeException) { 0 }
@@ -328,7 +332,64 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             "window-dump-error=${error.javaClass.simpleName}"
         }
         output.append("\nwindowFocus=").append(focusSummary.take(1800))
-        return output.toString().take(9000)
+        return output.toString().take(14_000)
+    }
+
+    /**
+     * Emit structural SystemUI metadata without copying lockscreen text or
+     * notification content into CI artifacts. Resource IDs and bounds let QA
+     * distinguish a lockscreen surface from a credential-entry surface.
+     */
+    private fun credentialNodeSummary(node: AccessibilityNodeInfo, depth: Int): String {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        val resourceId = try {
+            node.viewIdResourceName ?: "-"
+        } catch (_: RuntimeException) {
+            "unavailable"
+        }
+        return "  ".repeat(depth.coerceAtMost(8)) +
+            "id=" + resourceId +
+            " class=" + (node.className?.toString() ?: "-") +
+            " visible=" + node.isVisibleToUser +
+            " enabled=" + node.isEnabled +
+            " focusable=" + node.isFocusable +
+            " focused=" + node.isFocused +
+            " clickable=" + node.isClickable +
+            " password=" + node.isPassword +
+            " children=" + node.childCount +
+            " bounds=" + bounds
+    }
+
+    /**
+     * Capture only the disposable emulator's screen when the exact
+     * SystemUI credential field cannot be found. The screenshot is written
+     * to this debuggable test target's private files directory and extracted
+     * by QA-005 with run-as; no storage permission or production API is added.
+     */
+    private fun captureCredentialUiScreenshot(): String {
+        val context = getInstrumentation().targetContext
+        val screenshot = try {
+            getInstrumentation().uiAutomation.takeScreenshot()
+        } catch (error: RuntimeException) {
+            return "capture-error=" + error.javaClass.simpleName
+        } ?: return "capture-unavailable"
+
+        val file = File(context.filesDir, "qa005-credential-ui.png")
+        return try {
+            val encoded = FileOutputStream(file).use { output ->
+                screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)
+            }
+            if (encoded) {
+                "files/qa005-credential-ui.png bytes=" + file.length()
+            } else {
+                "encode-failed"
+            }
+        } catch (error: Exception) {
+            "write-error=" + error.javaClass.simpleName
+        } finally {
+            screenshot.recycle()
+        }
     }
 
     private fun awaitSystemCredentialUi(message: String) {
@@ -341,6 +402,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
                 "preflight=$lastCredentialPreflightDiagnostics; " +
                 "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}; " +
+                "screenshot=${captureCredentialUiScreenshot()}; " +
                 "ui=${credentialUiSnapshot()}"
         )
     }

@@ -84,6 +84,23 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("reports/androidTests/connected/debug", self.workflow)
         self.assertIn("logcat -b all -d -t 2000", self.workflow)
 
+    def test_credential_preflight_failure_captures_structural_ui_and_screenshot(self):
+        instrumentation_path = (WORKFLOW.parents[2] /
+            "android/app/src/androidTest/java/tech/mrnothing/os/OwnerAuthorityTrustActivityCommitLifecycleTest.kt")
+        instrumentation = instrumentation_path.read_text(encoding="utf-8")
+        self.assertIn("viewIdResourceName", instrumentation)
+        self.assertIn("getBoundsInScreen", instrumentation)
+        self.assertIn("takeScreenshot()", instrumentation)
+        self.assertIn("qa005-credential-ui.png", instrumentation)
+        start = instrumentation.index("private fun awaitSystemCredentialUi")
+        end = instrumentation.index("private fun hasVisibleSystemCredentialInput", start)
+        self.assertIn("captureCredentialUiScreenshot()", instrumentation[start:end])
+
+    def test_failure_screenshot_is_extracted_without_root(self):
+        self.assertIn("run-as tech.mrnothing.os test -s files/qa005-credential-ui.png", self.workflow)
+        self.assertIn("exec-out run-as tech.mrnothing.os cat files/qa005-credential-ui.png", self.workflow)
+        self.assertNotIn("adb root", self.workflow)
+
     def test_no_physical_device_target(self):
         self.assertIn("ANDROID_SERIAL: emulator-5554", self.workflow)
         script = (WORKFLOW.parents[2] / "scripts/qa005_emulator_smoke.sh").read_text(encoding="utf-8")
