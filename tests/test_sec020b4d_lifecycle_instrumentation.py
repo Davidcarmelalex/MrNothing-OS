@@ -106,30 +106,38 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("fieldClass?.contains", prompt_gate)
         self.assertNotIn("com.android.settings", prompt_gate)
 
-    def test_android_15_keyguard_pad_uses_aosp_resource_classes(self):
+    def test_android_15_keyguard_pad_uses_exact_systemui_resource_hierarchy(self):
         source = TEST.read_text(encoding="utf-8")
         pin_start = source.index("private fun hasVisibleSystemPinPad")
         node_start = source.index("private fun hasVisibleSystemUiNode", pin_start)
         pin_pad = source[pin_start:node_start]
 
         self.assertIn('root.packageName?.toString() != "com.android.systemui"', pin_pad)
-        self.assertIn('"com.android.systemui:id/keyguard_pin_view"', pin_pad)
-        self.assertIn('"com.android.keyguard.KeyguardPINView"', pin_pad)
-        self.assertIn('"com.android.systemui:id/pin_container"', pin_pad)
-        self.assertIn('"androidx.constraintlayout.widget.ConstraintLayout"', pin_pad)
-        self.assertIn('val digitIds = (0..9).map { "com.android.systemui:id/key$it" }', pin_pad)
-        self.assertIn('"com.android.keyguard.NumPadKey"', pin_pad)
-        self.assertIn("digitIds.all { viewId ->", pin_pad)
+        self.assertIn('val pinViewId = "com.android.systemui:id/keyguard_pin_view"', pin_pad)
+        self.assertIn('val containerId = "com.android.systemui:id/pin_container"', pin_pad)
+        self.assertIn("pinView.findAccessibilityNodeInfosByViewId(containerId)", pin_pad)
+        self.assertIn('val controlIds = (0..9).map {', pin_pad)
+        self.assertIn('"com.android.systemui:id/key$it"', pin_pad)
+        self.assertIn('"com.android.systemui:id/key_enter"', pin_pad)
+        self.assertIn("hasVisibleSystemUiNode(", pin_pad)
         self.assertIn("requireClickable = true", pin_pad)
+        self.assertNotIn("className", pin_pad)
+        self.assertNotIn("KeyguardPINView", pin_pad)
+        self.assertNotIn("ConstraintLayout", pin_pad)
+        self.assertNotIn("NumPadKey", pin_pad)
 
         node_gate = source[node_start:source.index(
             "private fun awaitCredentialRevalidation", node_start
         )]
+        self.assertIn("parent.findAccessibilityNodeInfosByViewId(viewId)", node_gate)
+        self.assertIn('node.packageName?.toString() != "com.android.systemui"', node_gate)
+        self.assertIn("node.viewIdResourceName != viewId", node_gate)
         self.assertIn("node.isVisibleToUser", node_gate)
         self.assertIn("node.isEnabled", node_gate)
         self.assertIn("node.isClickable", node_gate)
         self.assertIn("bounds.width() > 0 && bounds.height() > 0", node_gate)
         self.assertIn("matches.forEach { it.recycle() }", node_gate)
+        self.assertNotIn("expectedClassName", node_gate)
 
     def test_locked_keyguard_taps_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
@@ -180,32 +188,48 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("KEYCODE_MENU", source)
         self.assertNotIn("adb root", source)
 
-    def test_synthetic_keyguard_pin_entry_uses_exact_visible_systemui_key_controls(self):
+    def test_synthetic_keyguard_pin_entry_uses_exact_systemui_hierarchy_controls(self):
         source = TEST.read_text(encoding="utf-8")
         pin_start = source.index("private fun enterSyntheticKeyguardPin")
         biometric_start = source.index("private fun enterSyntheticBiometricPromptPin", pin_start)
         tap_start = source.index("private fun tapVisibleSystemUiNode", biometric_start)
-        keyguard_helper = source[pin_start:biometric_start]
-        node_tap = source[tap_start:source.index(
+        device_entry_start = source.index(
             "private fun tapSystemDeviceEntryIconToRevealCredentialEntry", tap_start
-        )]
+        )
+        keyguard_helper = source[pin_start:biometric_start]
+        node_tap = source[tap_start:device_entry_start]
 
         self.assertIn('identity.contains("uid=2000(shell)")', keyguard_helper)
         self.assertIn("hasVisibleKeyguardPinPad()", keyguard_helper)
         self.assertIn("for (digit in TEST_PIN)", keyguard_helper)
         self.assertIn('com.android.systemui:id/key$digit', keyguard_helper)
-        self.assertIn('"com.android.keyguard.NumPadKey"', keyguard_helper)
-        self.assertIn('"com.android.systemui:id/key_enter"', keyguard_helper)
-        self.assertIn('"com.android.keyguard.NumPadButton"', keyguard_helper)
+        self.assertIn("tapVisibleSystemUiNode(viewId)", keyguard_helper)
+        self.assertIn('tapVisibleSystemUiNode("com.android.systemui:id/key_enter")', keyguard_helper)
+        self.assertNotIn("NumPadKey", keyguard_helper)
+        self.assertNotIn("NumPadButton", keyguard_helper)
+
+        self.assertIn("val allowedViewIds = (0..9).map", node_tap)
+        self.assertIn('"com.android.systemui:id/key_enter"', node_tap)
         self.assertIn('root.packageName?.toString() != "com.android.systemui"', node_tap)
+        self.assertIn('val pinViewId = "com.android.systemui:id/keyguard_pin_view"', node_tap)
+        self.assertIn('val containerId = "com.android.systemui:id/pin_container"', node_tap)
+        self.assertIn("pinView.findAccessibilityNodeInfosByViewId(containerId)", node_tap)
+        self.assertIn("container.findAccessibilityNodeInfosByViewId(viewId)", node_tap)
         self.assertIn("node.viewIdResourceName != viewId", node_tap)
         self.assertIn("!node.isVisibleToUser", node_tap)
         self.assertIn("!node.isEnabled", node_tap)
         self.assertIn("!node.isClickable", node_tap)
         self.assertIn("node.getBoundsInScreen(bounds)", node_tap)
-        self.assertIn('shell("input tap ${bounds.centerX()} ${bounds.centerY()}")', node_tap)
+        self.assertIn("bounds.right > metrics.widthPixels", node_tap)
+        self.assertIn("bounds.bottom > metrics.heightPixels", node_tap)
+        self.assertIn('shell("input tap', node_tap)
         self.assertIn("matches.forEach { it.recycle() }", node_tap)
+        self.assertIn("containers.forEach { it.recycle() }", node_tap)
+        self.assertIn("pinViews.forEach { it.recycle() }", node_tap)
         self.assertIn("roots.forEach { it.recycle() }", node_tap)
+        self.assertNotIn("expectedClassName", node_tap)
+        self.assertNotIn("NumPadKey", node_tap)
+        self.assertNotIn("NumPadButton", node_tap)
 
     def test_biometric_prompt_pin_entry_targets_only_focused_systemui_ime_field(self):
         source = TEST.read_text(encoding="utf-8")

@@ -218,7 +218,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     /**
      * Unlock only the disposable emulator's actual Keyguard PIN pad. Each digit
-     * is sent as a bounded tap to an exact visible SystemUI NumPadKey node.
+     * is sent as a bounded tap to an exact visible SystemUI resource-ID control.
      */
     private fun enterSyntheticKeyguardPin(identityFromCaller: String? = null) {
         val identity = identityFromCaller ?: shell("id")
@@ -233,17 +233,14 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             val viewId = "com.android.systemui:id/key$digit"
             assertTrue(
                 "exact clickable SystemUI Keyguard PIN key was not available: key$digit",
-                tapVisibleSystemUiNode(viewId, "com.android.keyguard.NumPadKey")
+                tapVisibleSystemUiNode(viewId)
             )
             tappedDigits += 1
             SystemClock.sleep(120)
         }
         assertTrue(
             "exact clickable SystemUI Keyguard PIN submit key was not available",
-            tapVisibleSystemUiNode(
-                "com.android.systemui:id/key_enter",
-                "com.android.keyguard.NumPadButton"
-            )
+            tapVisibleSystemUiNode("com.android.systemui:id/key_enter")
         )
         lastCredentialPreflightDiagnostics += "; keyguardDigitKeysTapped=$tappedDigits; submitKeyTapped=true"
         SystemClock.sleep(250)
@@ -284,10 +281,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         SystemClock.sleep(250)
     }
 
-    private fun tapVisibleSystemUiNode(
-        viewId: String,
-        expectedClassName: String? = null
-    ): Boolean {
+    private fun tapVisibleSystemUiNode(viewId: String): Boolean {
+        val allowedViewIds = (0..9).map { "com.android.systemui:id/key$it" } +
+            "com.android.systemui:id/key_enter"
+        if (viewId !in allowedViewIds) return false
+
         val automation = getInstrumentation().uiAutomation
         val roots = try {
             automation.windows.mapNotNull { it.root }.toMutableList()
@@ -295,31 +293,74 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             mutableListOf()
         }
         if (roots.isEmpty()) automation.rootInActiveWindow?.let(roots::add)
+
+        val pinViewId = "com.android.systemui:id/keyguard_pin_view"
+        val containerId = "com.android.systemui:id/pin_container"
+        val metrics = getInstrumentation().targetContext.resources.displayMetrics
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) {
+            roots.forEach { it.recycle() }
+            return false
+        }
+
         try {
             for (root in roots) {
                 if (root.packageName?.toString() != "com.android.systemui") continue
-                val matches = try {
-                    root.findAccessibilityNodeInfosByViewId(viewId)
+                val pinViews = try {
+                    root.findAccessibilityNodeInfosByViewId(pinViewId)
                 } catch (_: RuntimeException) {
                     emptyList()
                 }
                 try {
-                    for (node in matches) {
-                        if (node.viewIdResourceName != viewId ||
-                            !node.isVisibleToUser ||
-                            !node.isEnabled ||
-                            !node.isClickable ||
-                            (expectedClassName != null && node.className?.toString() != expectedClassName)
+                    for (pinView in pinViews) {
+                        if (pinView.viewIdResourceName != pinViewId ||
+                            !pinView.isVisibleToUser || !pinView.isEnabled
                         ) continue
-                        val bounds = Rect()
-                        node.getBoundsInScreen(bounds)
-                        if (bounds.width() <= 0 || bounds.height() <= 0) continue
-                        val output = shell("input tap ${bounds.centerX()} ${bounds.centerY()}")
-                        return !output.contains("usage", ignoreCase = true) &&
-                            !output.contains("error", ignoreCase = true)
+                        val containers = try {
+                            pinView.findAccessibilityNodeInfosByViewId(containerId)
+                        } catch (_: RuntimeException) {
+                            emptyList()
+                        }
+                        try {
+                            for (container in containers) {
+                                if (container.viewIdResourceName != containerId ||
+                                    !container.isVisibleToUser || !container.isEnabled
+                                ) continue
+                                val matches = try {
+                                    container.findAccessibilityNodeInfosByViewId(viewId)
+                                } catch (_: RuntimeException) {
+                                    emptyList()
+                                }
+                                try {
+                                    for (node in matches) {
+                                        if (node.packageName?.toString() != "com.android.systemui" ||
+                                            node.viewIdResourceName != viewId ||
+                                            !node.isVisibleToUser ||
+                                            !node.isEnabled ||
+                                            !node.isClickable
+                                        ) continue
+                                        val bounds = Rect()
+                                        node.getBoundsInScreen(bounds)
+                                        if (bounds.width() <= 0 || bounds.height() <= 0 ||
+                                            bounds.left < 0 || bounds.top < 0 ||
+                                            bounds.right > metrics.widthPixels ||
+                                            bounds.bottom > metrics.heightPixels
+                                        ) continue
+                                        val output = shell(
+                                            "input tap ${bounds.centerX()} ${bounds.centerY()}"
+                                        )
+                                        return !output.contains("usage", ignoreCase = true) &&
+                                            !output.contains("error", ignoreCase = true)
+                                    }
+                                } finally {
+                                    matches.forEach { it.recycle() }
+                                }
+                            }
+                        } finally {
+                            containers.forEach { it.recycle() }
+                        }
                     }
                 } finally {
-                    matches.forEach { it.recycle() }
+                    pinViews.forEach { it.recycle() }
                 }
             }
         } finally {
@@ -328,12 +369,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         return false
     }
 
-    /**
-     * Reveal the credential pad through the exact clickable lockscreen entry
-     * control observed in the API 35 SystemUI hierarchy. This is an ordinary
-     * user tap from shell UID 2000; it cannot authenticate. PIN entry uses
-     * only exact visible, clickable SystemUI keypad controls.
-     */
     private fun tapSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels
@@ -647,45 +682,68 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     private fun hasVisibleSystemPinPad(root: AccessibilityNodeInfo): Boolean {
         if (root.packageName?.toString() != "com.android.systemui") return false
-        if (!hasVisibleSystemUiNode(
-                root,
-                "com.android.systemui:id/keyguard_pin_view",
-                "com.android.keyguard.KeyguardPINView"
-            )
-        ) return false
-        if (!hasVisibleSystemUiNode(
-                root,
-                "com.android.systemui:id/pin_container",
-                "androidx.constraintlayout.widget.ConstraintLayout"
-            )
-        ) return false
 
-        val digitIds = (0..9).map { "com.android.systemui:id/key$it" }
-        return digitIds.all { viewId ->
-            hasVisibleSystemUiNode(
-                root,
-                viewId,
-                "com.android.keyguard.NumPadKey",
-                requireClickable = true
-            )
+        val pinViewId = "com.android.systemui:id/keyguard_pin_view"
+        val containerId = "com.android.systemui:id/pin_container"
+        val pinViews = try {
+            root.findAccessibilityNodeInfosByViewId(pinViewId)
+        } catch (_: RuntimeException) {
+            emptyList()
         }
+        try {
+            for (pinView in pinViews) {
+                if (pinView.viewIdResourceName != pinViewId ||
+                    !pinView.isVisibleToUser || !pinView.isEnabled
+                ) continue
+                val containers = try {
+                    pinView.findAccessibilityNodeInfosByViewId(containerId)
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                try {
+                    for (container in containers) {
+                        if (container.viewIdResourceName != containerId ||
+                            !container.isVisibleToUser || !container.isEnabled
+                        ) continue
+                        // UIAutomator may report a platform View's superclass rather than
+                        // its custom AOSP class. Exact SystemUI IDs and ancestor containment
+                        // are the stable identity; visibility/clickability remain mandatory.
+                        val controlIds = (0..9).map {
+                            "com.android.systemui:id/key$it"
+                        } + "com.android.systemui:id/key_enter"
+                        if (controlIds.all { viewId ->
+                                hasVisibleSystemUiNode(
+                                    container,
+                                    viewId,
+                                    requireClickable = true
+                                )
+                            }
+                        ) return true
+                    }
+                } finally {
+                    containers.forEach { it.recycle() }
+                }
+            }
+        } finally {
+            pinViews.forEach { it.recycle() }
+        }
+        return false
     }
 
     private fun hasVisibleSystemUiNode(
-        root: AccessibilityNodeInfo,
+        parent: AccessibilityNodeInfo,
         viewId: String,
-        expectedClassName: String,
         requireClickable: Boolean = false
     ): Boolean {
         val matches = try {
-            root.findAccessibilityNodeInfosByViewId(viewId)
+            parent.findAccessibilityNodeInfosByViewId(viewId)
         } catch (_: RuntimeException) {
             emptyList()
         }
         try {
             return matches.any { node ->
-                if (node.viewIdResourceName != viewId ||
-                    node.className?.toString() != expectedClassName ||
+                if (node.packageName?.toString() != "com.android.systemui" ||
+                    node.viewIdResourceName != viewId ||
                     !node.isVisibleToUser ||
                     !node.isEnabled ||
                     (requireClickable && !node.isClickable)
