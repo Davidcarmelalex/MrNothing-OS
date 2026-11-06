@@ -11,6 +11,11 @@ import stat
 import zipfile
 from urllib.parse import quote
 
+try:
+    from .release_variant_metadata import load_release_variant_metadata
+except ImportError:  # Direct script execution from CI.
+    from release_variant_metadata import load_release_variant_metadata
+
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 NOASSERTION = "NOASSERTION"
@@ -177,7 +182,7 @@ def generate_sbom(inventory: Path, commit: str, app_version: str, created_epoch:
     return document
 
 def generate_provenance(apk: Path, sbom: Path, commit: str, created_epoch: int,
-                        environment: dict, output: Path) -> dict:
+                        environment: dict, release_variant_metadata: Path, output: Path) -> dict:
     if not COMMIT_RE.fullmatch(commit):
         raise ValueError("expected full lowercase Git commit SHA")
     apk_info = inspect_unsigned_apk(apk)
@@ -196,9 +201,17 @@ def generate_provenance(apk: Path, sbom: Path, commit: str, created_epoch: int,
         raise ValueError("build environment is missing a required toolchain input")
     if not SHA256_RE.fullmatch(environment["gradle_sha256"]):
         raise ValueError("invalid Gradle distribution SHA-256")
+    variant = load_release_variant_metadata(release_variant_metadata)
+    release_variant = {
+        "application_id": variant["application_id"],
+        "variant_name": variant["variant_name"],
+        "build_type": variant["build_type"],
+        "metadata_sha256": variant["sha256"],
+    }
     record = {
-        "schema": "mrnothing-ci003-provenance-v1", "source_commit": commit,
+        "schema": "mrnothing-ci003-provenance-v2", "source_commit": commit,
         "created": created_utc(created_epoch), "build_environment": environment,
+        "release_variant": release_variant,
         "artifact": {
             "filename": apk.name, "bytes": apk_info["bytes"], "sha256": apk_info["sha256"],
             "signature_status": "unsigned", "entry_count": apk_info["entry_count"],
@@ -220,12 +233,22 @@ def verify_bundles(first: Path, second: Path, expected_commit: str) -> dict:
     for directory in (first, second):
         apk, sbom = directory / "app-release-unsigned.apk", directory / "sbom.spdx.json"
         inventory, provenance_path = directory / "release-runtime-dependencies.tsv", directory / "provenance.json"
-        if not all(path.is_file() for path in (apk, sbom, inventory, provenance_path)):
+        variant_metadata_path = directory / "release-variant-metadata.json"
+        if not all(path.is_file() for path in (apk, sbom, inventory, provenance_path, variant_metadata_path)):
             raise ValueError(f"bundle is incomplete: {directory}")
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
         sbom_document = json.loads(sbom.read_text(encoding="utf-8"))
-        if provenance.get("schema") != "mrnothing-ci003-provenance-v1":
+        if provenance.get("schema") != "mrnothing-ci003-provenance-v2":
             raise ValueError("unknown provenance schema")
+        variant = load_release_variant_metadata(variant_metadata_path)
+        expected_variant = {
+            "application_id": variant["application_id"],
+            "variant_name": variant["variant_name"],
+            "build_type": variant["build_type"],
+            "metadata_sha256": variant["sha256"],
+        }
+        if provenance.get("release_variant") != expected_variant:
+            raise ValueError("release variant metadata does not match provenance")
         if provenance.get("source_commit") != expected_commit:
             raise ValueError("bundle source commit does not match expected commit")
         if provenance.get("release_ready") is not False or provenance.get("provenance_signed") is not False:
@@ -243,14 +266,19 @@ def verify_bundles(first: Path, second: Path, expected_commit: str) -> dict:
             raise ValueError("bundle does not contain an SPDX-2.3 SBOM")
         parse_runtime_inventory(inventory)
         bundles.append({"apk": apk, "sbom": sbom, "inventory": inventory,
-                        "provenance": provenance, "sbom_sha256": sha256_file(sbom),
+                        "provenance": provenance, "release_variant": expected_variant,
+                        "sbom_sha256": sha256_file(sbom),
                         "inventory_sha256": sha256_file(inventory)})
     comparison = compare_apks(bundles[0]["apk"], bundles[1]["apk"])
     sbom_equal = bundles[0]["sbom"].read_bytes() == bundles[1]["sbom"].read_bytes()
     inventory_equal = bundles[0]["inventory"].read_bytes() == bundles[1]["inventory"].read_bytes()
     environment_equal = bundles[0]["provenance"]["build_environment"] == bundles[1]["provenance"]["build_environment"]
     commit_equal = bundles[0]["provenance"]["source_commit"] == bundles[1]["provenance"]["source_commit"]
-    reproducible = comparison["reproducible"] and sbom_equal and inventory_equal and environment_equal and commit_equal
+    release_variant_equal = bundles[0]["release_variant"] == bundles[1]["release_variant"]
+    reproducible = (
+        comparison["reproducible"] and sbom_equal and inventory_equal and
+        environment_equal and commit_equal and release_variant_equal
+    )
     return {
         "schema": "mrnothing-ci003-verification-v1", "source_commit": expected_commit,
         "reproducible": reproducible, "release_ready": False,
@@ -259,7 +287,9 @@ def verify_bundles(first: Path, second: Path, expected_commit: str) -> dict:
             "normalized_apk_contents_identical": comparison["normalized_content_identical"],
             "sbom_identical": sbom_equal, "runtime_inventory_identical": inventory_equal,
             "toolchain_identical": environment_equal, "source_commit_identical": commit_equal,
+            "release_variant_identical": release_variant_equal,
         },
+        "release_variant": bundles[0]["release_variant"],
         "apk_comparison": comparison,
         "sbom_sha256": [item["sbom_sha256"] for item in bundles],
         "runtime_inventory_sha256": [item["inventory_sha256"] for item in bundles],
@@ -287,6 +317,7 @@ def main() -> None:
     p = sub.add_parser("provenance")
     p.add_argument("--apk", type=Path, required=True); p.add_argument("--sbom", type=Path, required=True)
     p.add_argument("--commit", required=True); p.add_argument("--created-epoch", type=int, required=True)
+    p.add_argument("--release-variant-metadata", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     for name in ("operating-system", "jdk-distribution", "jdk-version", "gradle-version", "gradle-sha256",
                  "agp-version", "kotlin-version", "compile-sdk", "build-tools", "sdkmanager-version"):
@@ -309,7 +340,10 @@ def main() -> None:
             "kotlin_version": args.kotlin_version, "compile_sdk": args.compile_sdk,
             "build_tools": args.build_tools, "sdkmanager_version": args.sdkmanager_version,
         }
-        generate_provenance(args.apk, args.sbom, args.commit, args.created_epoch, environment, args.output)
+        generate_provenance(
+            args.apk, args.sbom, args.commit, args.created_epoch, environment,
+            args.release_variant_metadata, args.output
+        )
         print(f"Generated unsigned, non-release provenance: {args.output}")
     elif args.command == "compare":
         result = compare_apks(args.first, args.second); write_result(result, args.output)

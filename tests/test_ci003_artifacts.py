@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import warnings
@@ -15,6 +16,15 @@ ENVIRONMENT = {
     "agp_version": "8.7.3", "kotlin_version": "2.0.21", "compile_sdk": "35",
     "build_tools": "35.0.0", "sdkmanager_version": "19.0",
 }
+
+def make_variant_metadata(path: Path, application_id="tech.mrnothing.os"):
+    path.write_text(json.dumps({
+        "schema": "mrnothing-gradle-release-variant-v1",
+        "applicationId": application_id,
+        "variantName": "release",
+        "buildType": "release",
+    }, sort_keys=True) + "\\n", encoding="utf-8")
+    return path
 
 def make_apk(path: Path, entries=None, timestamp=(2026, 1, 1, 0, 0, 0)):
     entries = entries or {"AndroidManifest.xml": b"manifest", "classes.dex": b"dex"}
@@ -106,7 +116,12 @@ class CI003ArtifactTests(unittest.TestCase):
             inventory = root / "inventory.tsv"; inventory.write_text("", encoding="utf-8")
             sbom = root / "sbom.spdx.json"
             generate_sbom(inventory, COMMIT, "0.1.0-dev", 1760000000, sbom)
-            record = generate_provenance(apk, sbom, COMMIT, 1760000000, ENVIRONMENT, root / "provenance.json")
+            variant_metadata = make_variant_metadata(root / "release-variant-metadata.json")
+            record = generate_provenance(
+                apk, sbom, COMMIT, 1760000000, ENVIRONMENT, variant_metadata, root / "provenance.json"
+            )
+            self.assertEqual(record["schema"], "mrnothing-ci003-provenance-v2")
+            self.assertEqual(record["release_variant"]["application_id"], "tech.mrnothing.os")
             self.assertEqual(record["artifact"]["signature_status"], "unsigned")
             self.assertFalse(record["release_ready"]); self.assertFalse(record["provenance_signed"])
 
@@ -118,9 +133,14 @@ class CI003ArtifactTests(unittest.TestCase):
                 inventory = bundle / "release-runtime-dependencies.tsv"; inventory.write_text("", encoding="utf-8")
                 sbom = bundle / "sbom.spdx.json"
                 generate_sbom(inventory, COMMIT, "0.1.0-dev", 1760000000, sbom)
-                generate_provenance(apk, sbom, COMMIT, 1760000000, ENVIRONMENT, bundle / "provenance.json")
+                variant_metadata = make_variant_metadata(bundle / "release-variant-metadata.json")
+                generate_provenance(
+                    apk, sbom, COMMIT, 1760000000, ENVIRONMENT, variant_metadata, bundle / "provenance.json"
+                )
             report = verify_bundles(bundles[0], bundles[1], COMMIT)
             self.assertTrue(report["reproducible"]); self.assertFalse(report["release_ready"])
+            self.assertTrue(report["checks"]["release_variant_identical"])
+            self.assertEqual(report["release_variant"]["application_id"], "tech.mrnothing.os")
 
     def test_two_runner_bundle_commit_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -130,9 +150,28 @@ class CI003ArtifactTests(unittest.TestCase):
                 inventory = bundle / "release-runtime-dependencies.tsv"; inventory.write_text("", encoding="utf-8")
                 sbom = bundle / "sbom.spdx.json"
                 generate_sbom(inventory, COMMIT, "0.1.0-dev", 1760000000, sbom)
-                generate_provenance(apk, sbom, COMMIT, 1760000000, ENVIRONMENT, bundle / "provenance.json")
+                variant_metadata = make_variant_metadata(bundle / "release-variant-metadata.json")
+                generate_provenance(
+                    apk, sbom, COMMIT, 1760000000, ENVIRONMENT, variant_metadata, bundle / "provenance.json"
+                )
             with self.assertRaisesRegex(ValueError, "source commit"):
                 verify_bundles(bundles[0], bundles[1], "c" * 40)
+
+    def test_bundle_variant_metadata_must_match_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); bundles = [root / "runner-a", root / "runner-b"]
+            for bundle in bundles:
+                bundle.mkdir(); apk = bundle / "app-release-unsigned.apk"; make_apk(apk)
+                inventory = bundle / "release-runtime-dependencies.tsv"; inventory.write_text("", encoding="utf-8")
+                sbom = bundle / "sbom.spdx.json"
+                generate_sbom(inventory, COMMIT, "0.1.0-dev", 1760000000, sbom)
+                variant_metadata = make_variant_metadata(bundle / "release-variant-metadata.json")
+                generate_provenance(
+                    apk, sbom, COMMIT, 1760000000, ENVIRONMENT, variant_metadata, bundle / "provenance.json"
+                )
+            make_variant_metadata(bundles[1] / "release-variant-metadata.json", "tech.mrnothing.other")
+            with self.assertRaisesRegex(ValueError, "does not match provenance"):
+                verify_bundles(bundles[0], bundles[1], COMMIT)
 
 if __name__ == "__main__":
     unittest.main()

@@ -56,3 +56,50 @@ tasks.register("writeReleaseRuntimeInventory") {
         output.writeText(rows.joinToString("\n") + if (rows.isEmpty()) "" else "\n", Charsets.UTF_8)
     }
 }
+
+
+// CI-004C: derive release identity from the actual AGP release variant.
+val releaseVariantApplicationId = objects.property<String>()
+val releaseVariantName = objects.property<String>()
+var releaseVariantCount = 0
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        releaseVariantCount += 1
+        check(releaseVariantCount == 1) {
+            "CI-003 requires exactly one release variant; review flavor identity policy before adding more"
+        }
+        releaseVariantApplicationId.set(variant.applicationId)
+        releaseVariantName.set(variant.name)
+    }
+}
+
+tasks.register("writeReleaseVariantMetadata") {
+    val metadataFile = layout.buildDirectory.file("reports/ci003/release-variant-metadata.json")
+    inputs.property("applicationId", releaseVariantApplicationId)
+    inputs.property("variantName", releaseVariantName)
+    outputs.file(metadataFile)
+    doLast {
+        val applicationId = releaseVariantApplicationId.get()
+        val variantName = releaseVariantName.get()
+        val segments = applicationId.split('.')
+        val validApplicationId = segments.size >= 2 && segments.all { segment ->
+            segment.isNotEmpty() &&
+                (segment[0] in 'A'..'Z' || segment[0] in 'a'..'z') &&
+                segment.all { character ->
+                    character in 'A'..'Z' || character in 'a'..'z' ||
+                        character in '0'..'9' || character == '_'
+                }
+        }
+        require(validApplicationId) { "Gradle release variant produced an invalid applicationId" }
+        require(variantName == "release") {
+            "CI-003 currently accepts only the single unflavored release variant"
+        }
+        val output = metadataFile.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(
+            """{"schema":"mrnothing-gradle-release-variant-v1","applicationId":"$applicationId","variantName":"$variantName","buildType":"release"}""" + "\n",
+            Charsets.UTF_8
+        )
+    }
+}

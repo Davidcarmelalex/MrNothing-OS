@@ -11,11 +11,13 @@ import xml.etree.ElementTree as ET
 
 try:
     from .release_manifest_gate import find_release_manifest, inspect_manifest
+    from .release_variant_metadata import load_release_variant_metadata
 except ImportError:  # Direct execution from android/ in CI.
     from release_manifest_gate import find_release_manifest, inspect_manifest
+    from release_variant_metadata import load_release_variant_metadata
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
-SCHEMA = "mrnothing-packaged-apk-manifest-security-v1"
+SCHEMA = "mrnothing-packaged-apk-manifest-security-v2"
 PRESENTATION_ATTRIBUTES = frozenset({
     "label", "icon", "roundIcon", "logo", "banner", "description", "theme",
 })
@@ -182,12 +184,14 @@ def _load_manifest(path: Path, label: str) -> tuple[bytes, ET.Element]:
 def compare_manifests(
     merged_path: Path,
     packaged_path: Path,
-    expected_package: str,
+    variant_metadata_path: Path,
     decoder_revision: str,
     merged_root: Path,
 ) -> dict:
-    if not expected_package or any(character.isspace() for character in expected_package):
-        raise ValueError("expected application package must be a non-empty package identifier")
+    variant = load_release_variant_metadata(variant_metadata_path)
+    expected_package = variant["application_id"]
+    if not decoder_revision or any(character.isspace() for character in decoder_revision):
+        raise ValueError("Android SDK decoder revision must be a non-empty token")
 
     merged_raw, merged_xml = _load_manifest(merged_path, "Gradle-merged")
     packaged_raw, packaged_xml = _load_manifest(packaged_path, "Packaged APK")
@@ -225,13 +229,21 @@ def compare_manifests(
     checks = {
         "merged_manifest_policy_pass": not merged_problems,
         "packaged_manifest_policy_pass": not packaged_problems,
-        "packaged_package_matches_expected": packaged_package == expected_package,
+        "merged_package_matches_gradle_variant": merged_package == expected_package,
+        "packaged_package_matches_gradle_variant": packaged_package == expected_package,
+        "gradle_variant_metadata_valid": True,
         "security_projection_matches": not mismatched_sections,
     }
     return {
         "schema": SCHEMA,
         "result": "PASS" if not problems else "FAIL",
         "expected_package": expected_package,
+        "gradle_release_variant": {
+            "application_id": variant["application_id"],
+            "variant_name": variant["variant_name"],
+            "build_type": variant["build_type"],
+            "metadata_sha256": variant["sha256"],
+        },
         "decoder": {
             "tool": "apkanalyzer manifest print",
             "cmdline_tools_revision": decoder_revision,
@@ -256,7 +268,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--merged-manifest-root", type=Path, required=True)
     parser.add_argument("--packaged-manifest", type=Path, required=True)
-    parser.add_argument("--expected-package", required=True)
+    parser.add_argument("--variant-metadata", type=Path, required=True)
     parser.add_argument("--decoder-revision", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -266,7 +278,7 @@ def main() -> int:
         report = compare_manifests(
             merged_path,
             args.packaged_manifest,
-            args.expected_package,
+            args.variant_metadata,
             args.decoder_revision,
             args.merged_manifest_root,
         )
