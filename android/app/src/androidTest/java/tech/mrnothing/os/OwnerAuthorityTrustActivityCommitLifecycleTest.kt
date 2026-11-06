@@ -253,14 +253,20 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
 
         val allowedPackages = setOf("com.android.systemui", "com.android.settings")
-        val credentialInputIds = listOf(
-            "com.android.systemui:id/auth_credential_input",
-            "com.android.systemui:id/lockPassword"
+        // Android 15 AOSP's PIN screen exposes pinEntry as a custom
+        // PasswordTextView, not an EditText. Its password screen uses
+        // passwordEntry as an EditText. Keep exact ID/class pairs so a
+        // generic or app-owned text field can never authorize PIN entry.
+        val credentialInputSelectors = listOf(
+            "com.android.systemui:id/auth_credential_input" to "android.widget.EditText",
+            "com.android.systemui:id/lockPassword" to "android.widget.EditText",
+            "com.android.systemui:id/pinEntry" to "com.android.keyguard.PasswordTextView",
+            "com.android.systemui:id/passwordEntry" to "android.widget.EditText"
         )
         try {
             for (root in roots) {
                 if (root.packageName?.toString() !in allowedPackages) continue
-                for (viewId in credentialInputIds) {
+                for ((viewId, expectedClassName) in credentialInputSelectors) {
                     val matches = try {
                         root.findAccessibilityNodeInfosByViewId(viewId)
                     } catch (_: RuntimeException) {
@@ -269,7 +275,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                     try {
                         if (matches.any {
                                 it.isVisibleToUser &&
-                                    it.className?.toString() == "android.widget.EditText"
+                                    it.className?.toString() == expectedClassName
                             }
                         ) return true
                     } finally {

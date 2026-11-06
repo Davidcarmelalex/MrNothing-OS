@@ -517,3 +517,18 @@ At branch head 2299b723621f654bb3782f8fa0371a13f8b37122, Phase 1 push [421685976
 The next correction broadens credential UI detection to inspect accessible Android windows and recognize the known auth_credential_input and lockPassword fields only when hosted by com.android.systemui or com.android.settings. The test now waits for the Activity's explicit final-revalidation status after submitting the synthetic emulator PIN, then reports the Activity status and both boundary latch states if the fake backend is not reached. This narrows the failure signal between system credential UI detection, credential callback acceptance and the trust I/O boundary; it does not relax credential-only authentication or the device safety gate.
 
 The QA-005 always-run evidence step now preserves Android connected-test XML/HTML reports from both Gradle report/output locations and captures a larger 2,000-line all-buffer logcat tail. These diagnostics are needed to distinguish a test assertion from an instrumentation-process crash. No production credential, trust mutation, Android permission, agent execution, privileged shell, physical device or production release is involved. Exact-head Phase 1, CI-003 and QA-005 reruns remain required; upstream shared SKILL.md remains unverified and is not claimed as installed.
+
+
+## SEC-020B4D — Android 15 Keyguard PIN selector correction
+
+Audit baseline: `23993daed4e213b95cda115ca8700b4b92211174`; recursive tree 276 entries, not truncated; 15 latest branch commits and all six open PRs inspected. `PROJECT-ADAPTER.md` and roadmap exist; repository `SKILL.md` absent; upstream shared package remains unverified.
+
+**Failure evidence:** QA-005 [42174961897](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42174961897) built the debug APK, passed the dependency negative control, booted API 35 emulator and compiled instrumentation. Both SEC-020B4D cases then failed before trust transaction boundaries because the lockscreen PIN field was not recognized. The assertion's safety signals were secure=true, deviceLocked=true, keyguardLocked=true, userUnlocked=true, interactive=true and deviceCredentialCanAuthenticate=0. Subsequent QA steps were skipped. This was a selector mismatch, not evidence that the trust-store commit gate itself failed.
+
+**Verified root cause:** Android 15 AOSP `keyguard_pin_view.xml` declares `pinEntry` as `com.android.keyguard.PasswordTextView`, not EditText; `keyguard_password_view.xml` declares `passwordEntry` as EditText. The previous detector knew only the BiometricPrompt-oriented IDs and required EditText for every candidate.
+
+**Implementation:** add exact SystemUI selectors for `pinEntry/PasswordTextView` and `passwordEntry/EditText`, retaining `auth_credential_input/EditText` and `lockPassword/EditText`. Continue requiring visible nodes in `com.android.systemui` or `com.android.settings`. Add a Python source regression for the exact ID/class pairs and package restriction. No app-owned input or Keyguard bypass is allowed.
+
+**Acceptance:** both SEC-020B4D instrumentation tests must reach their intended pre-claim and post-claim boundaries; both Phase 1 push/PR and CI-003 push/PR must pass at the same commit; QA-005 must complete all remaining checks; synthetic PIN cleanup must succeed. Until then SEC-020B4D is NOT ACCEPTED. No real trust mutation, StrongBox/AtomicFile hardware claim, physical Pixel 9 Pro, production signing or deployment is claimed. Independent human security review remains pending.
+
+Milestones unchanged: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED; M8 BLOCKED.

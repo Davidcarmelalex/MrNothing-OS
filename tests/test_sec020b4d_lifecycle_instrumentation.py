@@ -57,6 +57,24 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
                           "requestPermissions(", "store.commit(real"):
             self.assertNotIn(forbidden, source)
 
+
+    def test_android_15_systemui_keyguard_fields_use_exact_view_classes(self):
+        source = TEST.read_text(encoding="utf-8")
+        self.assertIn(
+            '"com.android.systemui:id/pinEntry" to "com.android.keyguard.PasswordTextView"',
+            source,
+        )
+        self.assertIn(
+            '"com.android.systemui:id/passwordEntry" to "android.widget.EditText"',
+            source,
+        )
+        self.assertIn("it.className?.toString() == expectedClassName", source)
+        self.assertIn("root.packageName?.toString() !in allowedPackages", source)
+        self.assertNotIn(
+            'it.className?.toString() == "android.widget.EditText"',
+            source,
+        )
+
     def test_activity_default_factory_remains_android_backend(self):
         source = (MAIN / "java/tech/mrnothing/os/OwnerAuthorityTrustActivity.kt").read_text()
         self.assertIn("internal open fun createTrustStore(context: Context)", source)
