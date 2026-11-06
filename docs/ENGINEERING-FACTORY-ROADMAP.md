@@ -912,3 +912,11 @@ The exact-head QA-005 run [42278932746](https://github.com/Davidcarmelalex/MrNot
 The test helper previously sent `input text 2468` and `KEYCODE_ENTER` after recognizing the Android 15 SystemUI PIN keypad. That input-text path is ambiguous for a custom keypad. The test now taps only the exact visible, enabled, clickable SystemUI resource IDs `key0`–`key9` and `key_enter`, using bounds returned by AccessibilityNodeInfo and ordinary UID 2000 shell input. It refuses app-owned nodes, missing nodes, non-clickable controls, zero-sized bounds and non-shell execution. It does not bypass Keyguard, use root, or alter production code. Failure diagnostics now include the bounded resource-ID/class/bounds-only UI snapshot; no credential text or PIN digits are logged.
 
 The keypad resource IDs and `key_enter` control correspond to the AOSP Keyguard PIN view hierarchy. This is a test-harness correction only. Exact-head QA-005 must pass before the credential lifecycle gate is accepted; no result is assumed from this patch.
+
+
+
+### SEC-020B4D test-harness update — 2026-11-07
+
+The first exact-head run after replacing IME text injection with visible SystemUI keypad taps exposed three stale Python source-gate assertions: two searched for the removed `shell("input text $TEST_PIN")` call and one expected the old method boundary. The application tests did not run in that Python job; the failure was in static test expectations. Updated `tests/test_sec020b4d_lifecycle_instrumentation.py` to require the new `key0`–`key9` and `key_enter` resource-ID path, ordinary UID 2000, exact SystemUI package/resource checks, visible/enabled/clickable nodes, non-zero bounds, and node/root recycling. The obsolete input-text expectation is now explicitly rejected. A new static regression test covers the helper.
+
+The corresponding Android instrumentation patch is commit `c43985a87cd7dfc2efe12dff8f3b4f0ae3afd2b8`. The Python policy workflow on that commit reported 581 tests with 1 failure and 2 errors, all three in the stale SEC-020B4D source-gate assertions. The updated static suite must pass on the next exact head; QA-005's Android credential callback result is still pending and must not be inferred from the static checks.

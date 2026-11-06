@@ -296,8 +296,8 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     /**
      * Reveal the credential pad through the exact clickable lockscreen entry
      * control observed in the API 35 SystemUI hierarchy. This is an ordinary
-     * user tap from shell UID 2000; it cannot authenticate. PIN entry remains
-     * separately gated on an exact visible SystemUI credential field.
+     * user tap from shell UID 2000; it cannot authenticate. PIN entry uses
+     * only exact visible, clickable SystemUI keypad controls.
      */
     private fun tapSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics

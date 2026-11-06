@@ -116,29 +116,27 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("matches.forEach { it.recycle() }", node_gate)
 
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
-        tap_start = source.index(
-            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()",
-            prepare_start,
-        )
-        prepare = source[prepare_start:tap_start]
+        pin_helper_start = source.index("private fun enterSyntheticSystemPin", prepare_start)
+        prepare = source[prepare_start:pin_helper_start]
         self.assertLess(
             prepare.index("awaitSystemCredentialUi"),
             prepare.index('val identity = shell("id")'),
         )
         self.assertLess(
             prepare.index('val identity = shell("id")'),
-            prepare.index('shell("input text $TEST_PIN")'),
+            prepare.index("enterSyntheticSystemPin(identity)"),
         )
         self.assertIn('"uid=2000(shell)"', prepare)
 
     def test_locked_keyguard_taps_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
+        pin_helper_start = source.index("private fun enterSyntheticSystemPin", prepare_start)
         tap_start = source.index(
-            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()", prepare_start
+            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()", pin_helper_start
         )
         prompt_start = source.index("private fun awaitCredentialPrompt", tap_start)
-        prepare = source[prepare_start:tap_start]
+        prepare = source[prepare_start:pin_helper_start]
         tap = source[tap_start:prompt_start]
 
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', prepare)
@@ -151,7 +149,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         )
         self.assertLess(
             prepare.index("awaitSystemCredentialUi"),
-            prepare.index('shell("input text $TEST_PIN")'),
+            prepare.index("enterSyntheticSystemPin(identity)"),
         )
 
         self.assertIn("resources.displayMetrics", tap)
@@ -178,6 +176,30 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("wm dismiss-keyguard", source)
         self.assertNotIn("KEYCODE_MENU", source)
         self.assertNotIn("adb root", source)
+
+
+    def test_synthetic_pin_entry_uses_only_exact_visible_systemui_key_controls(self):
+        source = TEST.read_text(encoding="utf-8")
+        pin_start = source.index("private fun enterSyntheticSystemPin")
+        tap_start = source.index("private fun tapVisibleSystemUiNode", pin_start)
+        device_entry_start = source.index("private fun tapSystemDeviceEntryIconToRevealCredentialEntry", tap_start)
+        pin_helper = source[pin_start:tap_start]
+        node_tap = source[tap_start:device_entry_start]
+
+        self.assertIn('identity.contains("uid=2000(shell)")', pin_helper)
+        self.assertIn("hasVisibleSystemCredentialInput()", pin_helper)
+        self.assertIn("for (digit in TEST_PIN)", pin_helper)
+        self.assertIn('com.android.systemui:id/key$digit', pin_helper)
+        self.assertIn('com.android.systemui:id/key_enter', pin_helper)
+        self.assertIn('root.packageName?.toString() != "com.android.systemui"', node_tap)
+        self.assertIn("node.viewIdResourceName != viewId", node_tap)
+        self.assertIn("!node.isVisibleToUser", node_tap)
+        self.assertIn("!node.isEnabled", node_tap)
+        self.assertIn("!node.isClickable", node_tap)
+        self.assertIn("node.getBoundsInScreen(bounds)", node_tap)
+        self.assertIn('shell("input tap ${bounds.centerX()} ${bounds.centerY()}")', node_tap)
+        self.assertIn("matches.forEach { it.recycle() }", node_tap)
+        self.assertIn("roots.forEach { it.recycle() }", node_tap)
 
     def test_missing_credential_ui_failure_captures_bounded_window_evidence(self):
         source = TEST.read_text(encoding="utf-8")
@@ -213,7 +235,10 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("tapSystemDeviceEntryIconToRevealCredentialEntry()", source)
         self.assertIn("com.android.systemui:id/device_entry_icon_view", source)
         self.assertIn("awaitSystemCredentialUi", source)
-        self.assertIn('shell("input text $TEST_PIN")', source)
+        self.assertIn("private fun enterSyntheticSystemPin", source)
+        self.assertIn('val viewId = "com.android.systemui:id/key$digit"', source)
+        self.assertIn('tapVisibleSystemUiNode("com.android.systemui:id/key_enter")', source)
+        self.assertNotIn('shell("input text $TEST_PIN")', source)
         self.assertIn("OwnerCredentialSafetyGate.isSafe(context)", source)
         self.assertIn("deviceCredentialCanAuthenticate", source)
         self.assertNotIn("wm dismiss-keyguard", source)
