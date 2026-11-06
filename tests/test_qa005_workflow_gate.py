@@ -93,12 +93,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("credentialNodeSummary", instrumentation)
         self.assertNotIn("takeScreenshot()", instrumentation)
         self.assertIn("credential-ui-pre-cleanup.png", self.workflow)
-        for helper_name, end_marker in (
-            ("private fun awaitKeyguardPinPad", "private fun hasVisibleKeyguardPinPad"),
-            ("private fun awaitBiometricPromptCredentialField", "private fun hasVisibleSystemPinPad"),
+        for helper_name in (
+            "private fun awaitKeyguardPinPad",
+            "private fun awaitBiometricPromptCredentialField",
         ):
             start = instrumentation.index(helper_name)
-            end = instrumentation.index(end_marker, start)
+            end = instrumentation.index("\n    private fun ", start + len(helper_name))
             self.assertIn("credentialUiSnapshot()", instrumentation[start:end])
         self.assertIn("hasVisibleBiometricPromptCredentialField", instrumentation)
         self.assertIn("hasVisibleKeyguardPinPad", instrumentation)

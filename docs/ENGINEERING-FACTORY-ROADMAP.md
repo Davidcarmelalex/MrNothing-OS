@@ -967,3 +967,8 @@ The first exact-head run for `8b3d10a2dc073ad698b8304bcbffb2fd62f0b451` exposed 
 - `test_qa005_workflow_gate.py` still referenced the removed generic `awaitSystemCredentialUi` / `hasVisibleSystemCredentialInput` helpers.
 
 The run executed 583 Python tests; 581 passed and these two source-gate tests errored before assertions. Android build, CI-003 and QA-005 were still in progress at the time of this correction. This commit only aligns the static test boundaries with the two distinct credential surfaces and requires both bounded diagnostic helpers to retain structural evidence. No Kotlin runtime source or production application code changes in this follow-up. Exact-head CI must rerun before acceptance.
+
+
+## QA-005 static range boundary correction — 2026-11-07
+
+The follow-up exact-head run exposed one further static-test boundary assumption: `awaitKeyguardPinPad` is defined after the `hasVisibleKeyguardPinPad` detector, so using the detector as the end marker produced a reversed range. The QA-005 source gate now locates the next Kotlin helper declaration after each bounded diagnostic function instead of assuming helper declaration order. This is a test-only correction; the runtime credential-surface separation is unchanged. The current-head Python suite must pass before this gate is accepted.
