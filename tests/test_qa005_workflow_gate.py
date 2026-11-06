@@ -57,6 +57,13 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertLess(emulator, instrumentation)
         self.assertLess(instrumentation, launcher_smoke)
         self.assertIn(":app:connectedDebugAndroidTest", self.workflow)
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary_step = self.workflow[start:end]
+        self.assertIn("locksettings set-pin", boundary_step)
+        self.assertIn("locksettings clear --old", boundary_step)
+        self.assertIn("trap cleanup EXIT INT TERM", boundary_step)
+        self.assertIn("uid=2000(shell)", boundary_step)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")

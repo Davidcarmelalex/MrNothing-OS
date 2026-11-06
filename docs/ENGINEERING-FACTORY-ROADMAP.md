@@ -490,6 +490,6 @@ Added API-35 emulator instrumentation for the actual OwnerAuthorityTrustActivity
 
 - Destruction during final trust-state inspection, before `claimCommit()`, must prevent any fake-store mutation.
 - Destruction while fake `commit()` is blocked after `claimCommit()` must not pretend to roll back the already-authorized transaction; exactly one fake commit may finish, while the destroyed Activity receives no result callback.
-- Each case uses a synthetic Ed25519 authority and sets/clears a disposable emulator-only PIN to exercise the platform DEVICE_CREDENTIAL callback. No real trust material, Keystore/StrongBox, AtomicFile, permissions, agent execution or physical device is involved.
+- Each case uses a synthetic Ed25519 authority and reuses a disposable emulator-only PIN provisioned and cleared by the QA-005 workflow's ordinary ADB-shell cleanup trap to exercise the platform DEVICE_CREDENTIAL callback. No real trust material, Keystore/StrongBox, AtomicFile, permissions, agent execution or physical device is involved.
 
 This is a lifecycle-boundary test, not evidence of physical StrongBox/AtomicFile crash consistency. Exact-head CI and emulator results are required before acceptance; independent security review remains pending.

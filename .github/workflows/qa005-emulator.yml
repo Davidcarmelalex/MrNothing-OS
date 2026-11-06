@@ -118,6 +118,30 @@ jobs:
         working-directory: android
         run: |
           set -euo pipefail
+          TEST_PIN=2468
+          PIN_CONFIGURED=0
+          cleanup() {
+            local rc=$?
+            trap - EXIT INT TERM
+            if [[ "$PIN_CONFIGURED" == 1 ]]; then
+              if adb -s "$ANDROID_SERIAL" shell locksettings clear --old "$TEST_PIN"; then
+                PIN_CONFIGURED=0
+              else
+                echo "Failed to clear SEC-020B4D disposable emulator PIN" >&2
+                rc=1
+              fi
+            fi
+            exit "$rc"
+          }
+          trap cleanup EXIT INT TERM
+          shell_identity="$(adb -s "$ANDROID_SERIAL" shell id | tr -d '\r')"
+          [[ "$shell_identity" == *"uid=2000(shell)"* ]] || {
+            echo "Expected ordinary adb shell identity; refusing privileged execution" >&2
+            exit 1
+          }
+          adb -s "$ANDROID_SERIAL" shell locksettings set-pin "$TEST_PIN" \
+            > "$RUNNER_TEMP/sec020b4d-pin-set.txt" 2>&1
+          PIN_CONFIGURED=1
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh

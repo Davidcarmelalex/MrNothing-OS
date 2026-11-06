@@ -43,16 +43,8 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         var activity: OwnerAuthorityTrustActivityTestHost? = null
         var application: Application? = null
         var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
-        var pinConfigured = false
 
         try {
-            assertTrue(
-                "could not configure disposable emulator PIN",
-                shell("locksettings set-pin $TEST_PIN && echo SEC020B4D_PIN_SET")
-                    .contains("SEC020B4D_PIN_SET")
-            )
-            pinConfigured = true
-
             val intent = Intent(
                 getInstrumentation().targetContext,
                 OwnerAuthorityTrustActivityTestHost::class.java
@@ -162,13 +154,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                 application!!.unregisterActivityLifecycleCallbacks(lifecycleCallbacks!!)
             }
             OwnerAuthorityTrustTestBackend.store = null
-            if (pinConfigured) {
-                assertTrue(
-                    "disposable emulator PIN was not cleared",
-                    shell("locksettings clear --old $TEST_PIN && echo SEC020B4D_PIN_CLEARED")
-                        .contains("SEC020B4D_PIN_CLEARED")
-                )
-            }
         }
     }
 
@@ -274,6 +259,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     }
 
     private companion object {
-        const val TEST_PIN = "246810"
+        const val TEST_PIN = "2468"
     }
 }
