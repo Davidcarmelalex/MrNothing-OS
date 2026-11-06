@@ -647,7 +647,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         fail(
             "credential callback did not reach final trust revalidation; status='$status'; " +
                 "pinEntry=$lastCredentialEntryDiagnostics; " + safetySnapshot(activity) +
-                "; ui=${credentialUiSnapshot()}
+                "; ui=${credentialUiSnapshot()}";
         )
     }
 
