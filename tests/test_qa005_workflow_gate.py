@@ -50,6 +50,13 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("/dev/kvm", self.workflow)
         self.assertIn("-accel on", self.workflow)
 
+    def test_emulator_resources_support_instrumentation_startup(self):
+        self.assertIn("-memory 3072 -cores 4", self.workflow)
+
+    def test_anr_and_app_memory_diagnostics_are_always_captured(self):
+        self.assertIn("dumpsys activity lastanr", self.workflow)
+        self.assertIn("dumpsys meminfo tech.mrnothing.os", self.workflow)
+
     def test_activity_lifecycle_instrumentation_runs_after_emulator_boot(self):
         instrumentation = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         emulator = self.workflow.index("Start disposable x86_64 emulator")
