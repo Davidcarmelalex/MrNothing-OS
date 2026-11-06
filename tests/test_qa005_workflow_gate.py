@@ -16,6 +16,14 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("pull_request:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
 
+    def test_newer_pr_head_does_not_cancel_active_emulator_cleanup(self):
+        self.assertIn(
+            "group: qa005-${{ github.event.pull_request.number || github.ref }}",
+            self.workflow,
+        )
+        self.assertIn("cancel-in-progress: false", self.workflow)
+        self.assertNotIn("cancel-in-progress: true", self.workflow)
+
     def test_adb_wait_has_deadline(self):
         self.assertIn('timeout 180s adb -s "$ANDROID_SERIAL" wait-for-device', self.workflow)
         self.assertIn("Emulator boot timed out", self.workflow)

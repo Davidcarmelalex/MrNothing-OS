@@ -32,9 +32,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Let an active emulator run finish its EXIT cleanup, including disposable PIN removal.
+# GitHub retains one running and at most one pending run per concurrency group.
 concurrency:
   group: qa005-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   emulator-smoke:
     runs-on: ubuntu-24.04
