@@ -958,3 +958,12 @@ AOSP references used to ground the correction:
 The new source gates enforce that the two platform surfaces cannot be confused. Exact-head GitHub Actions must recompile and execute instrumentation before accepting the credential-lifecycle gate. Local Gradle/emulator execution was not performed in this environment.
 
 **Milestones:** M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED on supervised physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is complete. Independent human security review remains pending.
+
+
+## QA-005 static-gate follow-up — 2026-11-07
+
+The first exact-head run for `8b3d10a2dc073ad698b8304bcbffb2fd62f0b451` exposed two stale static-test range markers after the credential helpers were split:
+- `test_sec020b4d_lifecycle_instrumentation.py` searched for the Keyguard helper after the BiometricPrompt helper even though the source intentionally defines them separately.
+- `test_qa005_workflow_gate.py` still referenced the removed generic `awaitSystemCredentialUi` / `hasVisibleSystemCredentialInput` helpers.
+
+The run executed 583 Python tests; 581 passed and these two source-gate tests errored before assertions. Android build, CI-003 and QA-005 were still in progress at the time of this correction. This commit only aligns the static test boundaries with the two distinct credential surfaces and requires both bounded diagnostic helpers to retain structural evidence. No Kotlin runtime source or production application code changes in this follow-up. Exact-head CI must rerun before acceptance.

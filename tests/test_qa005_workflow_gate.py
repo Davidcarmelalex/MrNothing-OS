@@ -93,9 +93,15 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("credentialNodeSummary", instrumentation)
         self.assertNotIn("takeScreenshot()", instrumentation)
         self.assertIn("credential-ui-pre-cleanup.png", self.workflow)
-        start = instrumentation.index("private fun awaitSystemCredentialUi")
-        end = instrumentation.index("private fun hasVisibleSystemCredentialInput", start)
-        self.assertIn("credentialUiSnapshot()", instrumentation[start:end])
+        for helper_name, end_marker in (
+            ("private fun awaitKeyguardPinPad", "private fun hasVisibleKeyguardPinPad"),
+            ("private fun awaitBiometricPromptCredentialField", "private fun hasVisibleSystemPinPad"),
+        ):
+            start = instrumentation.index(helper_name)
+            end = instrumentation.index(end_marker, start)
+            self.assertIn("credentialUiSnapshot()", instrumentation[start:end])
+        self.assertIn("hasVisibleBiometricPromptCredentialField", instrumentation)
+        self.assertIn("hasVisibleKeyguardPinPad", instrumentation)
         self.assertIn("exec-out screencap -p", self.workflow)
 
     def test_failure_screenshot_is_extracted_without_root(self):

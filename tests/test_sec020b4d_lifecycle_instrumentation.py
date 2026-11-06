@@ -67,7 +67,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
     def test_android_15_biometric_prompt_uses_exact_systemui_ime_field(self):
         source = TEST.read_text(encoding="utf-8")
         prompt_start = source.index("private fun hasVisibleBiometricPromptCredentialField")
-        keyguard_start = source.index("private fun hasVisibleKeyguardPinPad", prompt_start)
+        keyguard_start = source.index("private fun hasVisibleSystemPinPad", prompt_start)
         prompt_gate = source[prompt_start:keyguard_start]
 
         self.assertIn('root.packageName?.toString() != "com.android.systemui"', prompt_gate)
