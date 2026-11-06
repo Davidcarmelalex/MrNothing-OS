@@ -451,3 +451,12 @@ This supersedes the prior stale pending note for `ceebf9fb24d46c2156d584a1b8995e
 **Next bounded task — SEC-020B5:** add API-35 instrumentation tests for the existing `AndroidAtomicAuthorityRecordPersistence` adapter using a temporary app-private test directory. Cover atomic round-trip/replacement, interrupted replacement backup restoration, interrupted first-write classification, oversized stored records and invalid write bounds. No production persistence code or trust semantics are changed. The interruption case closes an unfinished `AtomicFile.startWrite()` stream without `finishWrite()`/`failWrite()`; it is a deterministic interruption-window test, not a real process-kill or power-loss simulation. Exact-head CI is pending for the new test commit. See `docs/SEC-020B5-ATOMICFILE-RECOVERY.md`.
 
 **Milestones remain:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone is complete. Independent human security review, physical Pixel 9 Pro/StrongBox validation, spoken TalkBack, signed release, OTA and deployment remain outstanding.
+
+
+## Audit and correction — 2026-11-06, SEC-020B5 first-write semantics
+
+The exact audited branch head was 67252b5d4418bd5419a70dafea943d04f8d91c11; the recursive Git tree contained 278 entries. The local adapter and roadmap are present, repository SKILL.md is absent, and the upstream shared factory package remains unverified and is not claimed as installed. The six open PRs (#1, #3, #4, #5, #6 and #7) were reviewed; PR #1 remains the phase-1 draft. The latest exact-head Phase 1 push/PR and CI-003 push/PR workflows passed, but QA-005 run [42203152698](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203152698) failed one new SEC-020B5 instrumentation assertion.
+
+The failure was in the test's assumption, not production code: an interrupted first Android AtomicFile write has no previous base to restore. Android discards the uncommitted staging file and the persistence adapter correctly reports Missing. The trust-store coordinator has the generation marker first, so a nonzero marker with a missing active record must produce RecoveryRequired(ACTIVE_RECORD_MISSING), not Empty.
+
+The test is corrected to assert that two-layer behavior using a synthetic marker-only crypto fixture. No production Android source, permissions, Keystore policy or trust transition was changed. Exact-head CI and emulator rerun are pending. Independent human security approval, spoken TalkBack, physical Pixel 9 Pro/StrongBox and production readiness remain unverified.

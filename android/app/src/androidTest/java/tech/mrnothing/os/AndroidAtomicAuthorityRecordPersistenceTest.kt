@@ -48,21 +48,37 @@ class AndroidAtomicAuthorityRecordPersistenceTest : InstrumentationTestCase() {
         )
     }
 
-    fun testInterruptedFirstWriteIsNotReportedAsMissing() = withPersistence { persistence, directory ->
-        val partial = "partial-first-write".toByteArray(Charsets.US_ASCII)
-        val interruptedFile = AtomicFile(File(directory, RECORD_FILE_NAME))
-        val output = interruptedFile.startWrite()
-        try {
-            output.write(partial)
-            output.fd.sync()
-        } finally {
-            output.close()
-        }
+    fun testInterruptedFirstWriteLeavesNoCommittedRecordButMarkerRequiresRecovery() =
+        withPersistence { persistence, directory ->
+            val partial = "partial-first-write".toByteArray(Charsets.US_ASCII)
+            val interruptedFile = AtomicFile(File(directory, RECORD_FILE_NAME))
+            val output = interruptedFile.startWrite()
+            try {
+                output.write(partial)
+                output.fd.sync()
+            } finally {
+                // Do not finish or fail the write: AtomicFile must discard the
+                // uncommitted first-write staging file during the next openRead().
+                output.close()
+            }
 
-        val result = persistence.read()
-        assertTrue("a partial non-empty base must not be mistaken for a fresh install", result is AuthorityRecordRead.Present)
-        assertBytes(partial, presentBytes(result))
-    }
+            assertEquals(
+                "an uncommitted first write has no committed base record",
+                AuthorityRecordRead.Missing,
+                persistence.read()
+            )
+            val state = OwnerAuthorityTrustStore(
+                MarkerOnlyCrypto(highestGeneration = 1L),
+                persistence
+            ).inspect()
+            assertEquals(
+                AuthorityTrustStoreState.RecoveryRequired(
+                    1L,
+                    AuthorityRecoveryReason.ACTIVE_RECORD_MISSING
+                ),
+                state
+            )
+        }
 
     fun testOversizedStoredRecordFailsClosed() = withPersistence { persistence, directory ->
         File(directory, RECORD_FILE_NAME).writeBytes(
@@ -84,6 +100,13 @@ class AndroidAtomicAuthorityRecordPersistenceTest : InstrumentationTestCase() {
         assertBytes(previous, presentBytes(persistence.read()))
     }
 
+    private class MarkerOnlyCrypto(private val highestGeneration: Long) : AuthorityTrustCrypto {
+        override fun highestObservedGeneration(): Long = highestGeneration
+        override fun createGenerationMarker(record: AuthorityTrustRecord): ByteArray? = null
+        override fun verifyGenerationMarker(record: AuthorityTrustRecord, proof: ByteArray): Boolean = false
+        override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray? = null
+        override fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray? = null
+    }
     private fun withPersistence(
         block: (AndroidAtomicAuthorityRecordPersistence, File) -> Unit
     ) {

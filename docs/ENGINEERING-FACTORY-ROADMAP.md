@@ -677,3 +677,19 @@ The interrupted replacement is simulated by closing an unfinished `AtomicFile.st
 **Current acceptance:** source/test committed; exact-head Phase 1, CI-003 and QA-005 workflows pending. Keep SEC-020B5 IN PROGRESS until the new instrumentation suite passes on the disposable emulator and independent review examines the test's AtomicFile assumptions.
 
 **Next after SEC-020B5:** add isolated Android Keystore behavior tests that prove StrongBox absence and alias/metadata failures refuse without TEE/software fallback, then reserve actual StrongBox durability and recovery acceptance for supervised Pixel 9 Pro M7 hardware validation. Do not treat emulator Keystore as StrongBox evidence.
+
+
+## Engineering Factory update — SEC-020B5 first-write recovery assertion (2026-11-06)
+
+Current audited head before correction: 67252b5d4418bd5419a70dafea943d04f8d91c11. The complete recursive tree contained 278 entries; PROJECT-ADAPTER.md and this roadmap are present; repository SKILL.md and verified upstream shared package are absent/unverified. Six open PRs (#1, #3, #4, #5, #6, #7) were inspected. PR #1 remains draft and unmerged.
+
+Exact-head CI before correction:
+- Phase 1 push [42203138765](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203138765): success.
+- Phase 1 PR [42203152527](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203152527): success.
+- CI-003 push [42203138732](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203138732): success.
+- CI-003 PR [42203152420](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203152420): success.
+- QA-005 PR [42203152698](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42203152698): failed in the Android instrumentation step. The test log identifies one failure in testInterruptedFirstWriteIsNotReportedAsMissing; the other seven instrumentation tests completed without reported failure. Later QA steps were skipped. The synthetic emulator PIN cleanup succeeded.
+
+The failed assertion expected an unfinished first AtomicFile write to remain Present. That is not Android's atomic staging contract when no prior base/backup exists: the staging file is discarded and openRead() reports Missing. The corrected test asserts Missing at the persistence layer, then injects a synthetic generation high-water marker and requires the trust-store coordinator to return RecoveryRequired(ACTIVE_RECORD_MISSING), never Empty. This validates the marker-first fail-closed behavior without changing production trust code.
+
+SEC-020B5 remains IN PROGRESS until the corrected exact-head instrumentation, full QA-005 sequence and current-head CI pass. No process-kill, kernel-crash, power-loss, filesystem durability, StrongBox or physical Pixel 9 Pro evidence is claimed. No milestone is complete; independent human security review remains pending.
