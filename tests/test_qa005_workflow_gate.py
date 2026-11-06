@@ -50,6 +50,20 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("/dev/kvm", self.workflow)
         self.assertIn("-accel on", self.workflow)
 
+    def test_activity_lifecycle_instrumentation_runs_after_emulator_boot(self):
+        instrumentation = self.workflow.index("SEC-020B4C: Activity destruction invalidates queued trust I/O")
+        emulator = self.workflow.index("Start disposable x86_64 emulator")
+        launcher_smoke = self.workflow.index("Verify launcher runtime and recovery route")
+        self.assertLess(emulator, instrumentation)
+        self.assertLess(instrumentation, launcher_smoke)
+        self.assertIn(":app:connectedDebugAndroidTest", self.workflow)
+
+    def test_instrumentation_uses_compile_only_platform_test_apis(self):
+        gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn("androidTestCompileOnly(files(androidTestPlatformApiJars))", gradle)
+        self.assertIn("android.test.base.jar", gradle)
+        self.assertIn("android.test.runner.jar", gradle)
+
     def test_no_physical_device_target(self):
         self.assertIn("ANDROID_SERIAL: emulator-5554", self.workflow)
         script = (WORKFLOW.parents[2] / "scripts/qa005_emulator_smoke.sh").read_text(encoding="utf-8")

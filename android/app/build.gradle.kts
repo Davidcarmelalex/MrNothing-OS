@@ -1,3 +1,4 @@
+import java.io.File
 import java.security.MessageDigest
 
 plugins {
@@ -22,7 +23,21 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-dependencies { testImplementation("junit:junit:4.13.2") }
+val androidTestPlatformApiJars = listOf(
+    "android.test.base.jar",
+    "android.test.runner.jar"
+).map { name ->
+    File(android.sdkDirectory, "platforms/android-35/optional/$name").also { jar ->
+        check(jar.isFile) { "Missing Android SDK optional test API: ${jar.path}" }
+    }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    // Compile-only: the emulator supplies these platform test APIs at runtime.
+    // Do not package deprecated android.test libraries into the app or test APK.
+    androidTestCompileOnly(files(androidTestPlatformApiJars))
+}
 
 
 // CI-003: intentionally unsigned release output plus resolved runtime inventory.

@@ -43,10 +43,15 @@ These are static source/manifest checks. They do not prove absence of reflective
 
 ## SEC-020B4C — Android Activity lifecycle instrumentation
 
-The QA-005 API 35 emulator workflow now runs `:app:connectedDebugAndroidTest` before the launcher smoke scripts. The platform `android.test.InstrumentationTestRunner` is used without adding an external test dependency.
+The QA-005 API 35 emulator workflow now runs `:app:connectedDebugAndroidTest` before the launcher smoke scripts. The platform `android.test.InstrumentationTestRunner` is used without adding an external Maven dependency. The API-35 SDK's `android.test.base.jar` and `android.test.runner.jar` are compile-only dependencies of the instrumentation source set; they are supplied by the emulator at runtime and are not packaged into the application or test APK.
 
 `OwnerAuthorityTrustActivityLifecycleTest` occupies the process-wide trust I/O worker with a bounded latch, launches the real non-exported owner trust Activity, and observes the active token created by its initial trust-state refresh. It then finishes the Activity on the main thread and verifies that the actual `onDestroy()` path invalidates the queued token and makes it non-deliverable. The worker is released and a FIFO sentinel proves the queued task drains; because the task's first operation is the active-token check, it must return before constructing or inspecting the Android trust store.
 
 The test enters no credentials, imports no authority material, commits no trust transition and adds no permission or exported component. Reflection is limited to reading the Activity's private operation gate and the gate's active token; it does not mutate either. The existing JVM tests continue to cover the synchronized cancel/commit-claim race and the post-claim destruction semantics.
 
 **Acceptance boundary:** this proves the real Activity destruction hook invalidates queued trust I/O on the disposable API 35 x86_64 emulator. It does not exercise an in-flight StrongBox/AtomicFile transaction, actual credential cancellation, physical Pixel 9 Pro hardware, crash recovery or spoken TalkBack. Those remain separate gates.
+
+
+### SEC-020B4C compile-classpath correction
+
+The first exact-head QA-005 run reached `:app:compileDebugAndroidTestKotlin` and failed because the optional `android.test` APIs are not part of the default API-35 compile classpath. No instrumentation test executed on that attempt. The correction adds the SDK's `android.test.base.jar` and `android.test.runner.jar` as `androidTestCompileOnly` files, checks that both are present, and leaves them out of packaged artifacts. No external dependency or release manifest/library entry is introduced. Two Python workflow regression tests now require the instrumentation step to run after emulator boot and before launcher smoke, and require the platform test jars to remain compile-only.

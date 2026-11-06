@@ -270,3 +270,8 @@ The first exact-head CI-006A run executed 495 tests and exposed one stale assert
 ## Verification update — 2026-11-06, SEC-020B4C
 
 The authorized branch audit at `1aa9d1247a46d8542a0f6c97828b151b2362b945` confirmed the SEC-020B4 JVM gate and worker-serialization tests existed, but no Android instrumentation source set exercised the actual Activity `onDestroy()` path. This run adds a platform-runner instrumentation test and wires `:app:connectedDebugAndroidTest` into QA-005 after the disposable emulator boots. The test blocks the single I/O worker, launches the real owner trust Activity, captures its queued operation token, destroys the Activity, verifies the token is invalidated/non-deliverable, releases the worker and drains the FIFO queue. It does not enter credentials or mutate trust. Upstream shared `SKILL.md` remains unverified; this local adapter is not an installed upstream package. Exact-head Android instrumentation and QA-005 results are required before acceptance.
+
+
+### SEC-020B4C first-run compile correction
+
+The first exact-head QA-005 run failed at `:app:compileDebugAndroidTestKotlin` because `android.test` is an optional Android platform test API and is not exposed by the default API-35 compile classpath. The Activity instrumentation test did not execute. The correction adds the installed SDK's `android.test.base.jar` and `android.test.runner.jar` only through `androidTestCompileOnly`, with a configuration-time presence check. The jars are not packaged into the app or test APK and no external Maven dependency is added. The QA workflow and Python regression tests enforce emulator-boot → instrumentation → launcher-smoke ordering. Re-run exact-head Phase 1, CI-003 and QA-005 before acceptance.
