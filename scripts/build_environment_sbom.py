@@ -536,7 +536,7 @@ def validate_inventory_and_sbom(inventory_path: Path, sbom_path: Path, expected_
     if inventory.get("source_commit") != expected_commit:
         raise ValueError("build environment inventory source commit mismatch")
     if not isinstance(inventory.get("created"), str) or not re.fullmatch(
-        r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z", inventory["created"]
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", inventory["created"]
     ):
         raise ValueError("build environment inventory creation time is malformed")
 

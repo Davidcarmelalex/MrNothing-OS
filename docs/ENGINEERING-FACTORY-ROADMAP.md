@@ -441,3 +441,8 @@ The independent source review of CI-006 found that the previous validator compar
 Acceptance status: CI-006 build-environment inventory/SBOM and two-runner equality are verified at the audit baseline. CI-006A implementation is submitted at the new commit; its exact-head Phase 1 and CI-003 push/PR workflows are pending and must pass before CI-006A is accepted. Independent security review remains pending. PR #1 remains open/draft against unchanged main, with zero reviews and zero inline threads. No other worker branch was modified. No physical Pixel 9 Pro, StrongBox, spoken TalkBack, production signing, OTA, deployment, root escalation or main merge is claimed or performed.
 
 Milestones remain M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
+
+
+### CI-006A fixture correction
+
+The first submitted CI-006A commit over-escaped the Python date-regex and JSON fixture newline literals while generating the patch. The follow-up corrects the date regex to match the canonical UTC timestamp and writes real newline terminators in all five adversarial fixtures. No generator, inventory schema, workflow or Android runtime behavior changed. The corrected exact-head Phase 1/CI-003 runs are the acceptance evidence.

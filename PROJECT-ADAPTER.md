@@ -255,3 +255,8 @@ At this baseline, Phase 1 push/PR passed with 490 Python tests on each event and
 The CI-006 verifier previously compared package-URL sets and selected checksum values but did not enforce exact SPDX package metadata or relationship closure. CI-006A changes the verifier to validate inventory component identity, unique PURLs, digest shape, canonical ordering and exact component counts, then reconstruct the canonical SPDX-2.3 document from the inventory and require exact object equality. Five adversarial tests cover duplicate SPDX package records, package name tampering, relationship graph tampering, duplicate inventory PURLs and inconsistent counts. Exact-head Phase 1/CI-003 push/PR checks are pending; independent security review remains a separate gate.
 
 Specialist responsibilities remain Android, AI/agents, security, UX/accessibility, CI/QA, hardware/release and an independent supervisor/verifier. Roles are responsibilities, not claims of separate-agent or human approval. No Android runtime capability, permission, trust record, executor, signing key, device setting, physical device or production deployment was changed. PR #1 remains draft; no other worker branch was modified; main remains unchanged. Upstream shared SKILL.md remains unverified.
+
+
+### CI-006A fixture correction
+
+The first submitted CI-006A commit over-escaped the Python date-regex and JSON fixture newline literals while generating the patch. The follow-up corrects the date regex to match the canonical UTC timestamp and writes real newline terminators in all five adversarial fixtures. No generator, inventory schema, workflow or Android runtime behavior changed. The corrected exact-head Phase 1/CI-003 runs are the acceptance evidence.

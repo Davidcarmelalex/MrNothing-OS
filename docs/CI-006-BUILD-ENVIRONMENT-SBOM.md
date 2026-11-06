@@ -62,3 +62,8 @@ The verifier now validates inventory component identity fields, lowercase SHA-25
 This closes ambiguity that a package-URL set comparison alone would permit: duplicate SPDX package records, changed package names or versions, ungrounded checksums, altered SPDX identifiers, missing or extra relationships, and modified document metadata now fail validation. The CI-006 schema remains intentionally strict; an intentional SPDX shape change must update the generator, validator and tests together.
 
 Five adversarial regression tests cover duplicate SPDX package records, package metadata tampering, relationship-graph tampering, duplicate inventory package URLs and inconsistent component counts. Exact-head Phase 1 and CI-003 push/PR validation remains required; this is not independent security approval or a complete hosted-runner SBOM.
+
+
+### CI-006A fixture correction
+
+The first submitted CI-006A commit over-escaped the Python date-regex and JSON fixture newline literals while generating the patch. The follow-up corrects the date regex to match the canonical UTC timestamp and writes real newline terminators in all five adversarial fixtures. No generator, inventory schema, workflow or Android runtime behavior changed. The corrected exact-head Phase 1/CI-003 runs are the acceptance evidence.

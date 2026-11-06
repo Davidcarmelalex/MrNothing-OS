@@ -316,7 +316,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         sbom_path = bundle / "build-environment.spdx.json"
         sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
         sbom["packages"].append(dict(sbom["packages"][1]))
-        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
             validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
 
@@ -326,7 +326,8 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         sbom_path = bundle / "build-environment.spdx.json"
         sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
         sbom["packages"][0]["name"] += "-tampered"
-        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        sbom["packages"][0]["versionInfo"] = "tampered"
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
             validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
 
@@ -336,7 +337,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         sbom_path = bundle / "build-environment.spdx.json"
         sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
         sbom["relationships"].pop()
-        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "canonical inventory-derived"):
             validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
 
@@ -349,7 +350,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         inventory["components"].append(duplicate)
         inventory["counts"][duplicate["kind"]] += 1
         inventory["components"].sort(key=lambda item: (item["kind"], item["purl"]))
-        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "duplicate package URL"):
             validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
 
@@ -359,7 +360,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         sbom_path = bundle / "build-environment.spdx.json"
         inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
         inventory["counts"]["python-package"] += 1
-        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "counts do not match"):
             validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
 
