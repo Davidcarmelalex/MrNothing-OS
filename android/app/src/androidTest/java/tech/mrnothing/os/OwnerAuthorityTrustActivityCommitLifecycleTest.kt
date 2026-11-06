@@ -278,7 +278,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     /**
      * Bounded read-only accessibility/window snapshot for diagnosing a missing
-     * system credential surface. It records at most 80 nodes and 9 KB; every
+     * system credential surface. It records at most 96 nodes and 14 KB; every
      * AccessibilityNodeInfo acquired from UiAutomation is recycled.
      */
     private fun credentialUiSnapshot(): String {
