@@ -66,7 +66,9 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         code = (SRC / "OwnerAuthorityTrustActivity.kt").read_text()
         coordinator = (SRC / "OwnerAuthorityIoCoordinator.kt").read_text()
         self.assertIn("Executors.newSingleThreadExecutor", coordinator)
-        self.assertEqual(code.count("AndroidOwnerAuthorityTrustStore(appContext)"), 3)
+        self.assertEqual(code.count("createTrustStore(appContext)"), 3)
+        self.assertIn("protected open fun createTrustStore(context: Context)", code)
+        self.assertIn("AndroidOwnerAuthorityTrustStore(context)", code)
         self.assertNotIn("private val store by lazy", code)
         self.assertIn("executor.execute { task() }", coordinator)
         self.assertIn("OwnerAuthorityIoCoordinator.execute", code)
@@ -130,6 +132,19 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
                 with self.subTest(file=name, forbidden=marker):
                     self.assertNotIn(marker, code)
 
+    def test_fake_trust_store_host_is_debug_only_and_non_exported(self):
+        main_app = ET.parse(MANIFEST).getroot().find("application")
+        debug_app = ET.parse(ROOT / "android/app/src/debug/AndroidManifest.xml").getroot().find("application")
+        self.assertNotIn(
+            ".OwnerAuthorityTrustActivityTestHost",
+            [node.get(A + "name") for node in main_app.findall("activity")],
+        )
+        hosts = [node for node in debug_app.findall("activity")
+                 if node.get(A + "name") == ".OwnerAuthorityTrustActivityTestHost"]
+        self.assertEqual(len(hosts), 1)
+        self.assertEqual(hosts[0].get(A + "exported"), "false")
+        self.assertIsNone(hosts[0].get(A + "permission"))
+
     def test_debug_credential_probe_is_dump_protected_and_debug_only(self):
         debug_manifest = ROOT / "android/app/src/debug/AndroidManifest.xml"
         main_root = ET.parse(MANIFEST).getroot()
@@ -142,6 +157,7 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         probe_names = {
             ".OwnerCredentialPromptProbeActivity",
             ".OwnerCredentialPromptProbeCancelReceiver",
+            ".OwnerAuthorityTrustActivityTestHost",
         }
         main_names = {
             node.get(A + "name")
@@ -153,14 +169,22 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         actual = []
         for tag in ("activity", "activity-alias", "service", "receiver", "provider"):
             for node in debug_app.findall(tag):
-                actual.append((tag, node.get(A + "name")))
-                self.assertEqual(node.get(A + "exported"), "true")
-                self.assertEqual(node.get(A + "permission"), "android.permission.DUMP")
+                name = node.get(A + "name")
+                actual.append((tag, name))
+                if name == ".OwnerAuthorityTrustActivityTestHost":
+                    self.assertEqual(tag, "activity")
+                    self.assertEqual(node.get(A + "exported"), "false")
+                    self.assertIsNone(node.get(A + "permission"))
+                    self.assertEqual(node.get(A + "excludeFromRecents"), "true")
+                else:
+                    self.assertEqual(node.get(A + "exported"), "true")
+                    self.assertEqual(node.get(A + "permission"), "android.permission.DUMP")
         self.assertEqual(
             set(actual),
             {
                 ("activity", ".OwnerCredentialPromptProbeActivity"),
                 ("receiver", ".OwnerCredentialPromptProbeCancelReceiver"),
+                ("activity", ".OwnerAuthorityTrustActivityTestHost"),
             },
         )
 

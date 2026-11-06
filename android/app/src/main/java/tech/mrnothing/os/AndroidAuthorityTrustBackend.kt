@@ -326,14 +326,14 @@ internal class AndroidAtomicAuthorityRecordPersistence(
     }
 }
 
-internal class AndroidOwnerAuthorityTrustStore(context: Context) {
+internal class AndroidOwnerAuthorityTrustStore(context: Context) : OwnerAuthorityTrustStorePort {
     private val delegate = OwnerAuthorityTrustStore(
         AndroidAuthorityTrustCrypto(),
         AndroidAtomicAuthorityRecordPersistence(context)
     )
 
-    fun inspect(): AuthorityTrustStoreState = delegate.inspect()
+    override fun inspect(): AuthorityTrustStoreState = delegate.inspect()
 
-    fun commit(proposal: AuthorityTrustDecision.Ready): AuthorityTrustStoreCommit =
+    override fun commit(proposal: AuthorityTrustDecision.Ready): AuthorityTrustStoreCommit =
         delegate.commit(proposal)
 }

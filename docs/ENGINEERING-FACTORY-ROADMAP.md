@@ -482,3 +482,14 @@ The correction adds API-35 SDK optional `android.test.base.jar` and `android.tes
 At `554d19ff7e2055b3d621eada78272ed4cf919e21`, Phase 1 push [42158210891](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42158210891) and PR [42158216850](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42158216850) both passed: each Python-policy suite ran 497 tests; Android unit tests, debug assembly, repeat debug APK comparison, strict dependency verification and modified-dependency negative control passed. CI-003 push [42158210851](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42158210851) and PR [42158216867](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42158216867) both passed independent builders and cross-runner verification. Both verifiers reported byte-identical unsigned APKs, `reproducible=true`, `release_ready=false`, and identical scoped 1,260-component build-environment inventories.
 
 QA-005 PR [42158217053](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42158217053) built the debug APK, passed the modified-dependency negative control, booted the API 35 x86_64 emulator, compiled the instrumentation test using compile-only platform test jars, and launched `OwnerAuthorityTrustActivityLifecycleTest`. The test failed because it asserted `Activity.isDestroyed` immediately after calling `finish()`; Android dispatches destruction asynchronously. The test did not demonstrate a production defect. It is corrected to wait up to five seconds for `Application.ActivityLifecycleCallbacks.onActivityDestroyed` on the exact Activity instance, then assert destroyed state and gate invalidation. The observer and worker are cleaned up in `finally`. Exact-head QA-005 rerun remains required; SEC-020B4C is not yet accepted.
+
+
+## SEC-020B4D — in-flight trust transaction lifecycle (2026-11-06)
+
+Added API-35 emulator instrumentation for the actual OwnerAuthorityTrustActivity commit boundary using a debug-only non-exported host and an in-memory fake OwnerAuthorityTrustStorePort:
+
+- Destruction during final trust-state inspection, before `claimCommit()`, must prevent any fake-store mutation.
+- Destruction while fake `commit()` is blocked after `claimCommit()` must not pretend to roll back the already-authorized transaction; exactly one fake commit may finish, while the destroyed Activity receives no result callback.
+- Each case uses a synthetic Ed25519 authority and sets/clears a disposable emulator-only PIN to exercise the platform DEVICE_CREDENTIAL callback. No real trust material, Keystore/StrongBox, AtomicFile, permissions, agent execution or physical device is involved.
+
+This is a lifecycle-boundary test, not evidence of physical StrongBox/AtomicFile crash consistency. Exact-head CI and emulator results are required before acceptance; independent security review remains pending.

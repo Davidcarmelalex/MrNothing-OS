@@ -42,6 +42,20 @@ class CredentialPromptProbeTests(unittest.TestCase):
                          [n.get(ANDROID + "name") for n in app.findall("activity")])
         self.assertNotIn(".OwnerCredentialPromptProbeCancelReceiver",
                          [n.get(ANDROID + "name") for n in app.findall("receiver")])
+        self.assertNotIn(".OwnerAuthorityTrustActivityTestHost",
+                         [n.get(ANDROID + "name") for n in app.findall("activity")])
+
+    def test_commit_lifecycle_fake_host_is_debug_only_and_non_exported(self):
+        debug_app = ET.parse(DEBUG_MANIFEST).getroot().find("application")
+        hosts = [n for n in debug_app.findall("activity")
+                 if n.get(ANDROID + "name") == ".OwnerAuthorityTrustActivityTestHost"]
+        self.assertEqual(len(hosts), 1)
+        self.assertEqual(hosts[0].get(ANDROID + "exported"), "false")
+        self.assertIsNone(hosts[0].get(ANDROID + "permission"))
+        self.assertEqual(hosts[0].get(ANDROID + "excludeFromRecents"), "true")
+        main_app = ET.parse(MAIN_MANIFEST).getroot().find("application")
+        self.assertNotIn(".OwnerAuthorityTrustActivityTestHost",
+                         [n.get(ANDROID + "name") for n in main_app.findall("activity")])
 
     def test_shared_prompt_factory_allows_only_device_credential(self):
         factory = (SRC / "OwnerCredentialPromptFactory.kt").read_text()

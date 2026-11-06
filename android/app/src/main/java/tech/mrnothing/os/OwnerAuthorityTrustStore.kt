@@ -79,6 +79,12 @@ internal sealed interface AuthorityTrustStoreCommit {
     data class Failed(val reason: AuthorityStoreFailure) : AuthorityTrustStoreCommit
 }
 
+/** Narrow Activity-facing contract; debug instrumentation may supply an in-memory fake. */
+internal interface OwnerAuthorityTrustStorePort {
+    fun inspect(): AuthorityTrustStoreState
+    fun commit(proposal: AuthorityTrustDecision.Ready): AuthorityTrustStoreCommit
+}
+
 /**
  * SEC-020B1 transaction coordinator.
  *

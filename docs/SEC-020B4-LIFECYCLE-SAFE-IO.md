@@ -60,3 +60,17 @@ The first exact-head QA-005 run reached `:app:compileDebugAndroidTestKotlin` and
 ### SEC-020B4C lifecycle-observation correction
 
 The first corrected compile/run attempt successfully compiled the instrumentation source and launched the API-35 emulator test, but the assertion checked `Activity.isDestroyed` immediately after `finish()`. Android completes the destruction transition asynchronously, so that assertion raced the framework lifecycle. The test now registers an `Application.ActivityLifecycleCallbacks` observer before finishing the Activity and waits on a bounded latch for the actual `onActivityDestroyed` callback before asserting the destroyed state and invalidated operation token. The callback is always unregistered. No timeout was relaxed, no application lifecycle behavior was changed, and the worker release/FIFO drain remain in `finally`.
+
+
+## SEC-020B4D — in-flight transaction lifecycle instrumentation
+
+The Activity now depends on a narrow `OwnerAuthorityTrustStorePort`. Its default protected factory still constructs only `AndroidOwnerAuthorityTrustStore`; the only override is a debug-source-set test host registered in the debug manifest as a non-exported Activity. The fake backend slot and test host do not exist in the release source set or release manifest.
+
+Two API-35 emulator instrumentation cases exercise the real Activity's credential-confirmation callback and commit worker with a synthetic Ed25519 authority and an in-memory fake store:
+
+1. **Destroyed before commit claim:** the fake backend blocks the third inspection (the final revalidation after the credential callback). The test finishes the Activity, observes its actual `onActivityDestroyed` callback, releases inspection and verifies the operation gate prevents `commit()`; fake trust state remains empty.
+2. **Destroyed after commit claim:** the fake backend blocks inside `commit()`, which proves the synchronized commit claim has already succeeded. The test destroys the Activity, verifies the claim remains non-cancelable and UI delivery is disabled, releases the fake atomic commit, and verifies exactly one in-memory commit completes while the destroyed Activity's status view is unchanged.
+
+Each test sets and clears a fixed synthetic PIN on the disposable emulator to exercise the actual Android DEVICE_CREDENTIAL prompt. No real user credential, authority, Android Keystore alias, StrongBox key, AtomicFile, permission grant, enrollment, executor or physical device is used. The fake backend is process-memory-only.
+
+**Acceptance boundary:** this validates Activity/gate ordering around a fake backend on API 35. It does not prove StrongBox/AtomicFile hardware atomicity, crash recovery, physical Pixel 9 Pro behavior, or independent security approval. Exact-head Phase 1, CI-003 and QA-005 evidence is required.

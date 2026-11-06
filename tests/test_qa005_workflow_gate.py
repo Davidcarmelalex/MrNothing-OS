@@ -51,7 +51,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("-accel on", self.workflow)
 
     def test_activity_lifecycle_instrumentation_runs_after_emulator_boot(self):
-        instrumentation = self.workflow.index("SEC-020B4C: Activity destruction invalidates queued trust I/O")
+        instrumentation = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         emulator = self.workflow.index("Start disposable x86_64 emulator")
         launcher_smoke = self.workflow.index("Verify launcher runtime and recovery route")
         self.assertLess(emulator, instrumentation)

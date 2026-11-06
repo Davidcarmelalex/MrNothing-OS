@@ -18,5 +18,12 @@
                 <action android:name="tech.mrnothing.os.debug.CANCEL_CREDENTIAL_PROMPT" />
             </intent-filter>
         </receiver>
+
+        <!-- SEC-020B4D fake-store host; non-exported and excluded from release. -->
+        <activity
+            android:name=".OwnerAuthorityTrustActivityTestHost"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
     </application>
 </manifest>

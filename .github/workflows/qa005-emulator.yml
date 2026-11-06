@@ -114,7 +114,7 @@ jobs:
           done
           echo "Emulator boot timed out" >&2
           exit 1
-      - name: "SEC-020B4C: Activity destruction invalidates queued trust I/O"
+      - name: "SEC-020B4D: Activity destruction before/after trust commit claim"
         working-directory: android
         run: |
           set -euo pipefail

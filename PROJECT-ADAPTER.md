@@ -280,3 +280,12 @@ The first exact-head QA-005 run failed at `:app:compileDebugAndroidTestKotlin` b
 ### SEC-020B4C lifecycle assertion correction
 
 The second exact-head QA-005 attempt compiled the test source and ran it on the API-35 x86_64 emulator, but failed because `Activity.isDestroyed` was asserted immediately after `finish()`; the framework destruction callback is asynchronous. The test now observes `Application.ActivityLifecycleCallbacks.onActivityDestroyed` for the exact Activity instance using a five-second bounded latch, then verifies `isDestroyed` and gate invalidation. The observer is unregistered in `finally`; the blocked worker is also always released and drained. Exact-head rerun is required before acceptance.
+
+
+## Engineering run update — 2026-11-06, SEC-020B4D
+
+The latest audited feature head before implementation was `0a689cbdb64afd9921643116303f3924bc6509ac`; its complete recursive tree contained 272 entries. PR #1 was the only open PR whose head was the authorized branch; PRs #3–#7 target separate workstreams and were not modified. The current-head Phase 1 push/PR, CI-003 push/PR and QA-005 emulator PR workflows were inspected; QA-005 had completed successfully at run 42158804196. The local adapter and roadmap are present; repository SKILL.md is absent and the upstream shared package remains unverified.
+
+SEC-020B4D adds a narrow Activity-facing trust-store port and a debug-only, non-exported test Activity host. Two instrumentation cases use a synthetic Ed25519 authority and an in-memory fake backend to block either final trust-state revalidation before commit claim or the commit operation after claim. They destroy the real Activity at each boundary and verify pre-claim mutation is suppressed, post-claim fake atomic completion is not falsely canceled, and destroyed-Activity UI delivery is suppressed. A fixed synthetic emulator PIN is set and cleared per test to exercise the actual DEVICE_CREDENTIAL callback. No real authority, user credential, StrongBox alias, AtomicFile, permission, executor, physical device or production release is involved.
+
+The test host and fake backend slot are present only in the debug source set; the debug manifest entry is non-exported and absent from the main/release manifest. Exact-head CI is pending until the new instrumentation and static regression gates run. Independent security review remains pending. The upstream shared SKILL.md is not claimed as installed.

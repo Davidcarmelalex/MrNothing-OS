@@ -1,6 +1,7 @@
 package tech.mrnothing.os
 
 import android.app.Activity
+import android.content.Context
 import android.app.KeyguardManager
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
@@ -28,7 +29,7 @@ import kotlin.math.roundToInt
  * SEC-020B2: owner-visible, offline authority import and trust transition.
  * This Activity never grants Android permissions or connects enrollment/execution.
  */
-class OwnerAuthorityTrustActivity : Activity() {
+open class OwnerAuthorityTrustActivity : Activity() {
     private val confirmation = OwnerAuthorityConfirmationState(
         SystemClock::elapsedRealtimeNanos
     )
@@ -50,6 +51,13 @@ class OwnerAuthorityTrustActivity : Activity() {
     private lateinit var previewButton: Button
     private lateinit var confirmButton: Button
     private var pendingBinding: String? = null
+
+    /**
+     * Test substitution is provided only by a non-exported debug Activity host.
+     * The production Activity always uses the Android Keystore/AtomicFile backend.
+     */
+    protected open fun createTrustStore(context: Context): OwnerAuthorityTrustStorePort =
+        AndroidOwnerAuthorityTrustStore(context)
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt()
@@ -317,7 +325,7 @@ class OwnerAuthorityTrustActivity : Activity() {
         OwnerAuthorityIoCoordinator.execute {
             if (!operationGate.isActive(token)) return@execute
             val current = try {
-                AndroidOwnerAuthorityTrustStore(appContext).inspect()
+                createTrustStore(appContext).inspect()
             } catch (_: RuntimeException) {
                 AuthorityTrustStoreState.Unavailable
             }
@@ -483,7 +491,7 @@ class OwnerAuthorityTrustActivity : Activity() {
             var refreshAfter = false
             try {
                 if (!operationGate.isActive(token)) return@execute
-                val trustStore = AndroidOwnerAuthorityTrustStore(appContext)
+                val trustStore = createTrustStore(appContext)
                 val current = trustStore.inspect()
                 if (!operationGate.isActive(token)) return@execute
                 val snapshot = storeSnapshot(current)
@@ -638,7 +646,7 @@ class OwnerAuthorityTrustActivity : Activity() {
         OwnerAuthorityIoCoordinator.execute {
             if (!operationGate.isActive(token)) return@execute
             val current = try {
-                AndroidOwnerAuthorityTrustStore(appContext).inspect()
+                createTrustStore(appContext).inspect()
             } catch (_: RuntimeException) {
                 AuthorityTrustStoreState.Unavailable
             }
