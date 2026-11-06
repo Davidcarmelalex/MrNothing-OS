@@ -75,30 +75,48 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             source,
         )
 
-    def test_locked_keyguard_reveals_system_pin_with_unprivileged_shell_swipe(self):
+    def test_locked_keyguard_taps_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
-        swipe_start = source.index("private fun swipeUpToRevealSystemCredentialEntry()", prepare_start)
-        prompt_start = source.index("private fun awaitCredentialPrompt", swipe_start)
-        prepare = source[prepare_start:swipe_start]
-        swipe = source[swipe_start:prompt_start]
+        tap_start = source.index(
+            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()", prepare_start
+        )
+        prompt_start = source.index("private fun awaitCredentialPrompt", tap_start)
+        prepare = source[prepare_start:tap_start]
+        tap = source[tap_start:prompt_start]
 
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', prepare)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", prepare)
         self.assertIn("if (!hasVisibleSystemCredentialInput())", prepare)
-        self.assertIn("swipeUpToRevealSystemCredentialEntry()", prepare)
-        self.assertLess(prepare.index("swipeUpToRevealSystemCredentialEntry()"),
-                        prepare.index("awaitSystemCredentialUi"))
-        self.assertLess(prepare.index("awaitSystemCredentialUi"),
-                        prepare.index('shell("input text $TEST_PIN")'))
+        self.assertIn("tapSystemDeviceEntryIconToRevealCredentialEntry()", prepare)
+        self.assertLess(
+            prepare.index("tapSystemDeviceEntryIconToRevealCredentialEntry()"),
+            prepare.index("awaitSystemCredentialUi"),
+        )
+        self.assertLess(
+            prepare.index("awaitSystemCredentialUi"),
+            prepare.index('shell("input text $TEST_PIN")'),
+        )
 
-        self.assertIn("resources.displayMetrics", swipe)
-        self.assertIn("widthPixels", swipe)
-        self.assertIn("heightPixels", swipe)
-        self.assertIn('shell("id")', swipe)
-        self.assertIn('"uid=2000(shell)"', swipe)
-        self.assertIn('val command = "input swipe $centerX $startY $centerX $endY 300"', swipe)
-        self.assertIn("val result = shell(command)", swipe)
+        self.assertIn("resources.displayMetrics", tap)
+        self.assertIn("widthPixels", tap)
+        self.assertIn("heightPixels", tap)
+        self.assertIn('val viewId = "com.android.systemui:id/device_entry_icon_view"', tap)
+        self.assertIn('root.packageName?.toString() != "com.android.systemui"', tap)
+        self.assertIn("it.viewIdResourceName == viewId", tap)
+        self.assertIn('it.className?.toString() == "android.widget.FrameLayout"', tap)
+        self.assertIn("it.isVisibleToUser && it.isEnabled && it.isClickable", tap)
+        self.assertIn("getBoundsInScreen", tap)
+        self.assertIn("bounds.left >= 0 && bounds.top >= 0", tap)
+        self.assertIn("bounds.right <= width && bounds.bottom <= height", tap)
+        self.assertIn('shell("id")', tap)
+        self.assertIn('"uid=2000(shell)"', tap)
+        self.assertIn(
+            'val command = "input tap ${targetBounds.centerX()} ${targetBounds.centerY()}"',
+            tap,
+        )
+        self.assertIn("val result = shell(command)", tap)
+        self.assertNotIn("input swipe", source)
         self.assertNotIn("MotionEvent", source)
         self.assertNotIn("requestDismissKeyguard", source)
         self.assertNotIn("wm dismiss-keyguard", source)
@@ -136,6 +154,8 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("prepareInteractiveUnlockedEmulator()", source)
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', source)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
+        self.assertIn("tapSystemDeviceEntryIconToRevealCredentialEntry()", source)
+        self.assertIn("com.android.systemui:id/device_entry_icon_view", source)
         self.assertIn("awaitSystemCredentialUi", source)
         self.assertIn('shell("input text $TEST_PIN")', source)
         self.assertIn("OwnerCredentialSafetyGate.isSafe(context)", source)

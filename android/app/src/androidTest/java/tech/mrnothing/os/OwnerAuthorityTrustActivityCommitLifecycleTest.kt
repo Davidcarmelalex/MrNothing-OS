@@ -191,11 +191,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         shell("input keyevent KEYCODE_WAKEUP")
         SystemClock.sleep(250)
         if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
-            // A wake event exposes the lockscreen; it does not necessarily
-            // reveal the PIN pad. Use a normal swipe-up gesture only when the
-            // exact system-owned credential field is not already visible.
+            // The API 35 lockscreen keeps credential entry collapsed behind
+            // a clickable SystemUI device-entry icon. Tap only that exact
+            // system-owned control; never infer success from a gesture return code.
             if (!hasVisibleSystemCredentialInput()) {
-                lastCredentialPreflightDiagnostics = swipeUpToRevealSystemCredentialEntry()
+                lastCredentialPreflightDiagnostics = tapSystemDeviceEntryIconToRevealCredentialEntry()
             } else {
                 lastCredentialPreflightDiagnostics = "exact SystemUI credential field was already visible"
             }
@@ -215,38 +215,86 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     }
 
     /**
-     * Reveal the secure lockscreen's system-owned credential entry surface.
-     *
-     * Use Android's ordinary input utility from the unprivileged shell identity
-     * already required by QA-005. This is a swipe gesture only; it cannot
-     * authenticate or dismiss a secure Keyguard. The caller still requires an
-     * exact visible SystemUI credential resource-ID/class match before PIN entry.
+     * Reveal the credential pad through the exact clickable lockscreen entry
+     * control observed in the API 35 SystemUI hierarchy. This is an ordinary
+     * user tap from shell UID 2000; it cannot authenticate. PIN entry remains
+     * separately gated on an exact visible SystemUI credential field.
      */
-    private fun swipeUpToRevealSystemCredentialEntry(): String {
+    private fun tapSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
         assertTrue("emulator display metrics are unavailable", width > 0 && height > 0)
 
-        val centerX = width / 2
-        val startY = (height * 0.82f).toInt()
-        val endY = (height * 0.28f).toInt()
+        val automation = getInstrumentation().uiAutomation
+        val roots = try {
+            automation.windows.mapNotNull { it.root }.toMutableList()
+        } catch (_: RuntimeException) {
+            mutableListOf()
+        }
+        if (roots.isEmpty()) {
+            automation.rootInActiveWindow?.let(roots::add)
+        }
+
+        val viewId = "com.android.systemui:id/device_entry_icon_view"
+        val targetBounds = Rect()
+        var targetFound = false
+        try {
+            for (root in roots) {
+                if (root.packageName?.toString() != "com.android.systemui") continue
+                val matches = try {
+                    root.findAccessibilityNodeInfosByViewId(viewId)
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                try {
+                    val target = matches.firstOrNull {
+                        it.viewIdResourceName == viewId &&
+                            it.className?.toString() == "android.widget.FrameLayout" &&
+                            it.isVisibleToUser && it.isEnabled && it.isClickable
+                    }
+                    if (target != null) {
+                        val bounds = Rect()
+                        target.getBoundsInScreen(bounds)
+                        if (bounds.width() > 0 && bounds.height() > 0 &&
+                            bounds.left >= 0 && bounds.top >= 0 &&
+                            bounds.right <= width && bounds.bottom <= height
+                        ) {
+                            targetBounds.set(bounds)
+                            targetFound = true
+                            break
+                        }
+                    }
+                } finally {
+                    matches.forEach { it.recycle() }
+                }
+                if (targetFound) break
+            }
+        } finally {
+            roots.forEach { it.recycle() }
+        }
+
+        assertTrue(
+            "visible clickable SystemUI device-entry icon was not found; refusing coordinate guessing",
+            targetFound
+        )
         val identity = shell("id")
         assertTrue(
-            "keyguard gesture requires ordinary adb shell identity; refusing privileged execution",
+            "keyguard tap requires ordinary adb shell identity; refusing privileged execution",
             identity.contains("uid=2000(shell)")
         )
 
-        val command = "input swipe $centerX $startY $centerX $endY 300"
+        val command = "input tap ${targetBounds.centerX()} ${targetBounds.centerY()}"
         val result = shell(command)
         assertFalse(
-            "Android input utility rejected the keyguard swipe: $result",
+            "Android input utility rejected the SystemUI device-entry tap: $result",
             result.contains("usage", ignoreCase = true) ||
                 result.contains("error", ignoreCase = true)
         )
         SystemClock.sleep(250)
-        return "identity=" + identity.trim() + "; display=" + width + "x" + height +
-            "; command=" + command + "; output=" + result.trim().take(200)
+        return "identity=" + identity.trim() +
+            "; target=$viewId class=android.widget.FrameLayout bounds=$targetBounds" +
+            "; command=$command; output=" + result.trim().take(200)
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
