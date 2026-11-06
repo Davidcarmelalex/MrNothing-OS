@@ -369,6 +369,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         return false
     }
 
+    /**
+     * Fallback used only when the Keyguard PIN bouncer is not already visible.
+     * It taps only the exact visible SystemUI device-entry control and its
+     * on-screen accessibility bounds; it never guesses a coordinate.
+     */
     private fun tapSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels

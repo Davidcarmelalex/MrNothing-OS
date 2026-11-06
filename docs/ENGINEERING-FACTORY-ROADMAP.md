@@ -1006,3 +1006,8 @@ The follow-up exact-head run exposed one further static-test boundary assumption
 **Acceptance boundary:** the correction is not yet accepted until exact-head Phase 1 push/PR, CI-003 independent reproducibility and QA-005 all 28 instrumentation tests plus downstream launcher/recovery/accessibility steps complete. No physical Pixel 9 Pro was accessed. No StrongBox hardware result, spoken TalkBack acceptance, signed production release, OTA rollback or production readiness is claimed. Independent human security review remains pending.
 
 **Milestones:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is complete.
+
+
+### QA-005 source-gate formatting follow-up — 2026-11-07
+
+The first exact-head Phase 1 push/PR Python-policy runs for `b9689cf7031b830a9779860e0ad7a66c194c67b7` each executed 584 tests and failed one source-gate assertion. The failure expected the SystemUI tap command as a single-line `shell("input tap...")` expression, while the implementation intentionally formatted the same `shell("input tap ...")` call across multiple lines. This was a brittle static-test formatting assertion, not a Kotlin compile or emulator result. The source gate now verifies the `shell(` invocation and the exact bounded `input tap` expression independently. A short comment documents that the device-entry icon is only a fallback when the PIN bouncer is not already visible. Runtime behavior is unchanged. The b9689cf QA-005 emulator run was still in SDK setup and is superseded by this source-only/test-comment follow-up; it is not acceptance evidence. New exact-head CI and emulator validation are required.
