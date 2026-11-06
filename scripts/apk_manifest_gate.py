@@ -231,6 +231,8 @@ def compare_manifests(
         "packaged_manifest_policy_pass": not packaged_problems,
         "merged_package_matches_gradle_variant": merged_package == expected_package,
         "packaged_package_matches_gradle_variant": packaged_package == expected_package,
+        # Backward-compatible name; expected_package is now sourced from Gradle metadata.
+        "packaged_package_matches_expected": packaged_package == expected_package,
         "gradle_variant_metadata_valid": True,
         "security_projection_matches": not mismatched_sections,
     }
