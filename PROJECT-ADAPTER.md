@@ -265,3 +265,8 @@ The first submitted CI-006A commit over-escaped the Python date-regex and JSON f
 ### CI-006A assertion correction
 
 The first exact-head CI-006A run executed 495 tests and exposed one stale assertion message in the existing tampered-inventory test. The canonical SPDX validator rejected the modified inventory before the old namespace/hash-specific assertion text, so the implementation failed closed but the test expected only the previous wording. The assertion now accepts the new canonical-document rejection message as well. No production code or policy was weakened.
+
+
+## Verification update — 2026-11-06, SEC-020B4C
+
+The authorized branch audit at `1aa9d1247a46d8542a0f6c97828b151b2362b945` confirmed the SEC-020B4 JVM gate and worker-serialization tests existed, but no Android instrumentation source set exercised the actual Activity `onDestroy()` path. This run adds a platform-runner instrumentation test and wires `:app:connectedDebugAndroidTest` into QA-005 after the disposable emulator boots. The test blocks the single I/O worker, launches the real owner trust Activity, captures its queued operation token, destroys the Activity, verifies the token is invalidated/non-deliverable, releases the worker and drains the FIFO queue. It does not enter credentials or mutate trust. Upstream shared `SKILL.md` remains unverified; this local adapter is not an installed upstream package. Exact-head Android instrumentation and QA-005 results are required before acceptance.

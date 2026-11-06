@@ -114,6 +114,11 @@ jobs:
           done
           echo "Emulator boot timed out" >&2
           exit 1
+      - name: "SEC-020B4C: Activity destruction invalidates queued trust I/O"
+        working-directory: android
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"
