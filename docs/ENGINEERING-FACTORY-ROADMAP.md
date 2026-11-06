@@ -493,3 +493,8 @@ Added API-35 emulator instrumentation for the actual OwnerAuthorityTrustActivity
 - Each case uses a synthetic Ed25519 authority and reuses a disposable emulator-only PIN provisioned and cleared by the QA-005 workflow's ordinary ADB-shell cleanup trap to exercise the platform DEVICE_CREDENTIAL callback. No real trust material, Keystore/StrongBox, AtomicFile, permissions, agent execution or physical device is involved.
 
 This is a lifecycle-boundary test, not evidence of physical StrongBox/AtomicFile crash consistency. Exact-head CI and emulator results are required before acceptance; independent security review remains pending.
+
+
+## SEC-020B4D — Android Ed25519 provider compatibility correction (2026-11-06)
+
+The API-35 emulator exposed that the platform-default Ed25519 KeyFactory did not import the external synthetic owner SPKI. The first SEC-020B4D attempt therefore failed before its commit-boundary assertions; it is not accepted. The correction pins Bouncy Castle `bcprov-jdk18on:1.86`, records JAR/POM SHA-256 values in Gradle dependency verification, and passes an explicit provider instance to Ed25519 KeyFactory and Signature. No process-wide provider registration is permitted. The JVM regression test covers an RFC 8032 public-key fingerprint, provider-registry invariance, and existing cross-provider rotation-signature tests. Exact-head CI and emulator reruns are required before acceptance. This provider is software cryptography, not Android Keystore or StrongBox.

@@ -9,6 +9,7 @@ import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /**
  * SEC-020A: offline owner-authority trust ceremony policy.
@@ -77,6 +78,9 @@ internal object OwnerAuthorityTrustCeremony {
     private val keyIdPattern = Regex("^[A-Za-z0-9._-]{1,64}$")
     private val fingerprintPattern = Regex("^SHA256:[0-9A-F]{64}$")
     private val hex = "0123456789ABCDEF"
+    // Explicit software provider: AndroidKeyStore cannot import arbitrary owner SPKI keys.
+    // Keep this instance local to the ceremony; never mutate the process-wide provider registry.
+    private val ed25519Provider = BouncyCastleProvider()
     private val rotationDomain =
         "MRNOTHING-OWNER-AUTHORITY-ROTATION-V1\u0000".toByteArray(StandardCharsets.US_ASCII)
 
@@ -236,7 +240,7 @@ internal object OwnerAuthorityTrustCeremony {
         if (signatureBytes.size != SIGNATURE_BYTES) return false
         val payload = rotationPayload(candidate) ?: return false
         return try {
-            val verifier = Signature.getInstance("Ed25519")
+            val verifier = Signature.getInstance("Ed25519", ed25519Provider)
             verifier.initVerify(currentPublicKey)
             verifier.update(payload)
             verifier.verify(signatureBytes)
@@ -255,7 +259,7 @@ internal object OwnerAuthorityTrustCeremony {
     private fun validateKey(spkiDer: ByteArray): ValidatedCandidate? {
         if (spkiDer.isEmpty() || spkiDer.size > MAX_SPKI_BYTES) return null
         return try {
-            val key = KeyFactory.getInstance("Ed25519")
+            val key = KeyFactory.getInstance("Ed25519", ed25519Provider)
                 .generatePublic(X509EncodedKeySpec(spkiDer))
             val canonical = key.encoded ?: return null
             if (!MessageDigest.isEqual(canonical, spkiDer)) return null

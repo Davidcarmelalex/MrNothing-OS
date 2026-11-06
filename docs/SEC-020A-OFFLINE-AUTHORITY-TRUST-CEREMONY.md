@@ -55,3 +55,10 @@ These are JVM policy tests, not Android Keystore, StrongBox, physical-device, UI
 Source commit: b4b6dad184d48055753bda2087e28292a1a2a008. Phase 1 push/PR, CI-003 push/PR and QA-005 PR workflows all passed: runs 42024219462, 42024226415, 42024219429, 42024226462 and 42024226407. The Phase 1 jobs each ran 380 Python tests and passed Gradle debug unit tests/assembly with strict dependency verification. The CI-003 independent verifier confirmed byte-identical unsigned APKs (SHA-256 972cc506d948a34321351785f51129022be0eb0d7b54ed4ae18b9d53bd8f7993; 2,133,809 bytes; 13 entries), matching normalized APK contents, runtime inventory and SPDX runtime SBOM. QA-005 disposable emulator workflow passed; TalkBack remained disabled and spoken navigation remains unverified.
 
 This acceptance is limited to the SEC-020A pure-JVM policy code. No persistent trust store, UI, Android Keystore marker, StrongBox runtime, physical Pixel, production enrollment or executor was tested. SEC-020 remains incomplete; SEC-020B is the next implementation task.
+
+
+## Android Ed25519 provider compatibility
+
+API-35 emulator instrumentation exposed that the platform-default Ed25519 KeyFactory selected an AndroidKeyStore-backed implementation that could not import the synthetic external owner SPKI. The ceremony now uses a pinned Bouncy Castle 1.86 provider instance for both Ed25519 KeyFactory import and Signature verification. The provider is passed directly to each JCA lookup and is not registered in the process-wide Security provider list. A known RFC 8032 public-key vector and a provider-registry invariance assertion cover this behavior. The application dependency is checksum-pinned in Gradle verification metadata and its Bouncy Castle license is recorded in `docs/THIRD-PARTY-NOTICES.md`.
+
+This is software-provider compatibility evidence only. It does not make owner keys hardware-backed and does not claim StrongBox protection for the imported public key.

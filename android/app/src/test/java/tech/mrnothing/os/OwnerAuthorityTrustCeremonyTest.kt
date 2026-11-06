@@ -3,6 +3,8 @@ package tech.mrnothing.os
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Signature
+import java.security.Security
+import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -57,6 +59,18 @@ class OwnerAuthorityTrustCeremonyTest {
         assertEquals(fingerprint,
             OwnerAuthorityTrustCeremony.fingerprintForOwner(candidate.publicKeySpkiDer))
         assertNull(OwnerAuthorityTrustCeremony.fingerprintForOwner(byteArrayOf(1, 2, 3)))
+    }
+
+    @Test fun rfc8032PublicKeyImportsWithoutGlobalProviderMutation() {
+        val providersBefore = Security.getProviders().map { it.name }
+        val spki = Base64.getDecoder().decode(
+            "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+        )
+        assertEquals(
+            "SHA256:06E3FD8FDA29BB60AB59557DE61EDB0AECDB231134BE30E75B455F8E1B792FA9",
+            OwnerAuthorityTrustCeremony.fingerprintForOwner(spki)
+        )
+        assertEquals(providersBefore, Security.getProviders().map { it.name })
     }
 
     @Test fun firstInstallRequiresOutOfBandFingerprintAndOwnerConfirmation() {

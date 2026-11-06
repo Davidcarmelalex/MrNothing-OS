@@ -33,6 +33,8 @@ val androidTestPlatformApiJars = listOf(
 }
 
 dependencies {
+    // Explicit, pinned software provider for portable Ed25519 SPKI import and signature verification.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     testImplementation("junit:junit:4.13.2")
     // Compile-only: the emulator supplies these platform test APIs at runtime.
     // Do not package deprecated android.test libraries into the app or test APK.

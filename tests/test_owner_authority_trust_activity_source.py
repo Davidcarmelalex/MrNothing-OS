@@ -189,6 +189,15 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         )
 
 
+    def test_ed25519_operations_use_explicit_non_global_provider(self):
+        code = (SRC / "OwnerAuthorityTrustCeremony.kt").read_text()
+        self.assertIn("BouncyCastleProvider()", code)
+        self.assertIn('KeyFactory.getInstance("Ed25519", ed25519Provider)', code)
+        self.assertIn('Signature.getInstance("Ed25519", ed25519Provider)', code)
+        self.assertNotIn('KeyFactory.getInstance("Ed25519")', code)
+        self.assertNotIn('Signature.getInstance("Ed25519")', code)
+        self.assertNotIn("Security.addProvider", code)
+
     def test_commit_lifecycle_instrumentation_uses_public_only_ed25519_fixture(self):
         code = (
             ROOT
