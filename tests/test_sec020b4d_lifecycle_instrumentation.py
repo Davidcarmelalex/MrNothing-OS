@@ -75,6 +75,36 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             source,
         )
 
+    def test_locked_keyguard_reveals_system_pin_with_bounded_swipe(self):
+        source = TEST.read_text(encoding="utf-8")
+        prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
+        swipe_start = source.index("private fun swipeUpToRevealSystemCredentialEntry()", prepare_start)
+        prompt_start = source.index("private fun awaitCredentialPrompt", swipe_start)
+        prepare = source[prepare_start:swipe_start]
+        swipe = source[swipe_start:prompt_start]
+
+        self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', prepare)
+        self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", prepare)
+        self.assertIn("if (!hasVisibleSystemCredentialInput())", prepare)
+        self.assertIn("swipeUpToRevealSystemCredentialEntry()", prepare)
+        self.assertLess(prepare.index("swipeUpToRevealSystemCredentialEntry()"),
+                        prepare.index("awaitSystemCredentialUi"))
+        self.assertLess(prepare.index("awaitSystemCredentialUi"),
+                        prepare.index('shell("input text $TEST_PIN")'))
+
+        self.assertIn("resources.displayMetrics", swipe)
+        self.assertIn("widthPixels", swipe)
+        self.assertIn("heightPixels", swipe)
+        self.assertIn("MotionEvent.ACTION_DOWN", swipe)
+        self.assertIn("MotionEvent.ACTION_MOVE", swipe)
+        self.assertIn("MotionEvent.ACTION_UP", swipe)
+        self.assertIn("MotionEvent.ACTION_CANCEL", swipe)
+        self.assertIn("automation.injectInputEvent(event, true)", swipe)
+        self.assertIn("if (pointerDown)", swipe)
+        self.assertNotIn("requestDismissKeyguard", source)
+        self.assertNotIn("wm dismiss-keyguard", source)
+        self.assertNotIn("KEYCODE_MENU", source)
+
     def test_activity_default_factory_remains_android_backend(self):
         source = (MAIN / "java/tech/mrnothing/os/OwnerAuthorityTrustActivity.kt").read_text()
         self.assertIn("internal open fun createTrustStore(context: Context)", source)

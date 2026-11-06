@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
 import android.test.InstrumentationTestCase
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -185,8 +186,17 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         )
 
         shell("input keyevent KEYCODE_WAKEUP")
+        SystemClock.sleep(250)
         if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
+            // A wake event exposes the lockscreen; it does not necessarily
+            // reveal the PIN pad. Use a normal swipe-up gesture only when the
+            // exact system-owned credential field is not already visible.
+            if (!hasVisibleSystemCredentialInput()) {
+                swipeUpToRevealSystemCredentialEntry()
+            }
             awaitSystemCredentialUi("locked emulator did not expose the SystemUI PIN field")
+            // Enter the synthetic PIN only after the exact SystemUI field
+            // and its expected Android view class have been observed.
             shell("input text $TEST_PIN")
             shell("input keyevent KEYCODE_ENTER")
         }
@@ -197,6 +207,76 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             SystemClock.sleep(50)
         }
         fail("emulator is not secure, unlocked and interactive: ${safetySnapshot(context)}")
+    }
+
+    /**
+     * Reveal the secure lockscreen's system-owned credential entry surface.
+     *
+     * This injects an ordinary swipe-up gesture through instrumentation UI
+     * automation. It does not dismiss Keyguard, authenticate, or type a PIN.
+     * The caller must still observe an exact visible SystemUI credential
+     * resource-ID/class pair before entering the disposable emulator PIN.
+     */
+    private fun swipeUpToRevealSystemCredentialEntry() {
+        val metrics = getInstrumentation().targetContext.resources.displayMetrics
+        val width = metrics.widthPixels.toFloat()
+        val height = metrics.heightPixels.toFloat()
+        assertTrue("emulator display metrics are unavailable", width > 0f && height > 0f)
+
+        val x = width * 0.5f
+        val startY = height * 0.82f
+        val middleY = height * 0.55f
+        val endY = height * 0.28f
+        val downTime = SystemClock.uptimeMillis()
+        val automation = getInstrumentation().uiAutomation
+        var pointerDown = false
+
+        val inject: (Int, Float) -> Unit = { action, y ->
+            val event = MotionEvent.obtain(
+                downTime,
+                SystemClock.uptimeMillis(),
+                action,
+                x,
+                y,
+                0
+            )
+            try {
+                assertTrue(
+                    "UiAutomation rejected keyguard swipe action=$action",
+                    automation.injectInputEvent(event, true)
+                )
+            } finally {
+                event.recycle()
+            }
+        }
+
+        try {
+            inject(MotionEvent.ACTION_DOWN, startY)
+            pointerDown = true
+            SystemClock.sleep(80)
+            inject(MotionEvent.ACTION_MOVE, middleY)
+            SystemClock.sleep(80)
+            inject(MotionEvent.ACTION_MOVE, endY)
+            SystemClock.sleep(80)
+            inject(MotionEvent.ACTION_UP, endY)
+            pointerDown = false
+        } finally {
+            if (pointerDown) {
+                val cancel = MotionEvent.obtain(
+                    downTime,
+                    SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_CANCEL,
+                    x,
+                    endY,
+                    0
+                )
+                try {
+                    automation.injectInputEvent(cancel, true)
+                } finally {
+                    cancel.recycle()
+                }
+            }
+        }
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
