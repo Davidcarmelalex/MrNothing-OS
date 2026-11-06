@@ -1,6 +1,9 @@
 package tech.mrnothing.os
 
+import android.app.Activity
+import android.app.Application
 import android.content.Intent
+import android.os.Bundle
 import android.test.InstrumentationTestCase
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,12 +43,33 @@ class OwnerAuthorityTrustActivityLifecycleTest : InstrumentationTestCase() {
             val operationToken = token!!
             assertTrue("queued operation should be active before destruction", gate.isActive(operationToken))
 
-            getInstrumentation().runOnMainSync { activity!!.finish() }
-            getInstrumentation().waitForIdleSync()
-
-            assertTrue("Activity did not reach destroyed state", activity!!.isDestroyed)
-            assertFalse("destroyed Activity must invalidate queued work", gate.isActive(operationToken))
-            assertFalse("destroyed Activity must not receive a queued callback", gate.isDeliverable(operationToken))
+            val targetActivity = activity!!
+            val application = getInstrumentation().targetContext.applicationContext as Application
+            val destroyed = CountDownLatch(1)
+            val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
+                override fun onActivityStarted(activity: Activity) = Unit
+                override fun onActivityResumed(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivityStopped(activity: Activity) = Unit
+                override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
+                override fun onActivityDestroyed(activity: Activity) {
+                    if (activity === targetActivity) destroyed.countDown()
+                }
+            }
+            application.registerActivityLifecycleCallbacks(lifecycleCallbacks)
+            try {
+                getInstrumentation().runOnMainSync { targetActivity.finish() }
+                assertTrue(
+                    "Activity onDestroy callback was not observed",
+                    destroyed.await(5, TimeUnit.SECONDS)
+                )
+                assertTrue("Activity did not reach destroyed state", targetActivity.isDestroyed)
+                assertFalse("destroyed Activity must invalidate queued work", gate.isActive(operationToken))
+                assertFalse("destroyed Activity must not receive a queued callback", gate.isDeliverable(operationToken))
+            } finally {
+                application.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
+            }
         } finally {
             releaseWorker.countDown()
             val current = activity

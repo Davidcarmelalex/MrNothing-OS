@@ -55,3 +55,8 @@ The test enters no credentials, imports no authority material, commits no trust 
 ### SEC-020B4C compile-classpath correction
 
 The first exact-head QA-005 run reached `:app:compileDebugAndroidTestKotlin` and failed because the optional `android.test` APIs are not part of the default API-35 compile classpath. No instrumentation test executed on that attempt. The correction adds the SDK's `android.test.base.jar` and `android.test.runner.jar` as `androidTestCompileOnly` files, checks that both are present, and leaves them out of packaged artifacts. No external dependency or release manifest/library entry is introduced. Two Python workflow regression tests now require the instrumentation step to run after emulator boot and before launcher smoke, and require the platform test jars to remain compile-only.
+
+
+### SEC-020B4C lifecycle-observation correction
+
+The first corrected compile/run attempt successfully compiled the instrumentation source and launched the API-35 emulator test, but the assertion checked `Activity.isDestroyed` immediately after `finish()`. Android completes the destruction transition asynchronously, so that assertion raced the framework lifecycle. The test now registers an `Application.ActivityLifecycleCallbacks` observer before finishing the Activity and waits on a bounded latch for the actual `onActivityDestroyed` callback before asserting the destroyed state and invalidated operation token. The callback is always unregistered. No timeout was relaxed, no application lifecycle behavior was changed, and the worker release/FIFO drain remain in `finally`.

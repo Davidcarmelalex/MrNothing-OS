@@ -275,3 +275,8 @@ The authorized branch audit at `1aa9d1247a46d8542a0f6c97828b151b2362b945` confir
 ### SEC-020B4C first-run compile correction
 
 The first exact-head QA-005 run failed at `:app:compileDebugAndroidTestKotlin` because `android.test` is an optional Android platform test API and is not exposed by the default API-35 compile classpath. The Activity instrumentation test did not execute. The correction adds the installed SDK's `android.test.base.jar` and `android.test.runner.jar` only through `androidTestCompileOnly`, with a configuration-time presence check. The jars are not packaged into the app or test APK and no external Maven dependency is added. The QA workflow and Python regression tests enforce emulator-boot → instrumentation → launcher-smoke ordering. Re-run exact-head Phase 1, CI-003 and QA-005 before acceptance.
+
+
+### SEC-020B4C lifecycle assertion correction
+
+The second exact-head QA-005 attempt compiled the test source and ran it on the API-35 x86_64 emulator, but failed because `Activity.isDestroyed` was asserted immediately after `finish()`; the framework destruction callback is asynchronous. The test now observes `Application.ActivityLifecycleCallbacks.onActivityDestroyed` for the exact Activity instance using a five-second bounded latch, then verifies `isDestroyed` and gate invalidation. The observer is unregistered in `finally`; the blocked worker is also always released and drained. Exact-head rerun is required before acceptance.
