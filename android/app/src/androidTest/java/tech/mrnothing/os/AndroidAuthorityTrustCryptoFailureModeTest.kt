@@ -160,8 +160,11 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
     }
 
     private fun securityLevel(store: KeyStore, alias: String): Int {
-        val key = store.getKey(alias, null) as? SecretKey
-            ?: fail("expected AndroidKeyStore SecretKey for isolated test alias")
+        val candidate = store.getKey(alias, null)
+        if (candidate !is SecretKey) {
+            throw AssertionError("expected AndroidKeyStore SecretKey for isolated test alias")
+        }
+        val key = candidate
         val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
         val info = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
         return info.securityLevel
