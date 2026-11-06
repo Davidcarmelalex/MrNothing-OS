@@ -47,6 +47,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("com.android.systemui:id/auth_credential_input", source)
         self.assertIn("com.android.systemui:id/lockPassword", source)
         self.assertIn("android.widget.ImeAwareEditText", source)
+        self.assertIn("android.widget.EditText", source)
         self.assertIn("hasVisibleBiometricPromptCredentialField", source)
         self.assertIn("hasVisibleKeyguardPinPad", source)
         self.assertIn('shell("input text $TEST_PIN")', source)
@@ -86,6 +87,24 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("com.android.settings", prompt_gate)
         self.assertNotIn("pinEntry", prompt_gate)
         self.assertNotIn("key0", prompt_gate)
+
+    def test_biometric_prompt_field_uses_narrow_runtime_class_allowlist(self):
+        source = TEST.read_text(encoding="utf-8")
+        prompt_start = source.index("private fun hasVisibleBiometricPromptCredentialField")
+        keyguard_start = source.index("private fun hasVisibleSystemPinPad", prompt_start)
+        prompt_gate = source[prompt_start:keyguard_start]
+
+        self.assertIn('root.packageName?.toString() != "com.android.systemui"', prompt_gate)
+        self.assertIn('val containerId = "com.android.systemui:id/auth_credential_input"', prompt_gate)
+        self.assertIn('val fieldId = "com.android.systemui:id/lockPassword"', prompt_gate)
+        self.assertIn('container.className?.toString() != "android.widget.FrameLayout"', prompt_gate)
+        self.assertIn('fieldClass != "android.widget.ImeAwareEditText"', prompt_gate)
+        self.assertIn('fieldClass != "android.widget.EditText"', prompt_gate)
+        self.assertIn("field.viewIdResourceName != fieldId", prompt_gate)
+        self.assertIn("field.isFocused", prompt_gate)
+        self.assertIn("field.isPassword", prompt_gate)
+        self.assertNotIn("fieldClass?.contains", prompt_gate)
+        self.assertNotIn("com.android.settings", prompt_gate)
 
     def test_android_15_keyguard_pad_uses_aosp_resource_classes(self):
         source = TEST.read_text(encoding="utf-8")

@@ -573,8 +573,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     /**
      * Recognize the separate Android 15 BiometricPrompt credential form.
      * AOSP exposes auth_credential_input as a FrameLayout containing the focused
-     * android.widget.ImeAwareEditText lockPassword field. A Keyguard pinEntry
-     * behind this dialog is deliberately not accepted as evidence for this prompt.
+     * lockPassword field. The API 35 Google APIs emulator's accessibility tree
+     * reports that exact SystemUI field as android.widget.EditText, while other
+     * builds may expose android.widget.ImeAwareEditText. Accept only those two
+     * exact classes under the SystemUI package, container and resource ID.
+     * A Keyguard pinEntry behind this dialog is never accepted as this prompt.
      */
     private fun hasVisibleBiometricPromptCredentialField(): Boolean {
         val automation = getInstrumentation().uiAutomation
@@ -610,8 +613,10 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                         }
                         try {
                             if (fields.any { field ->
+                                    val fieldClass = field.className?.toString()
                                     if (field.viewIdResourceName != fieldId ||
-                                        field.className?.toString() != "android.widget.ImeAwareEditText" ||
+                                        (fieldClass != "android.widget.ImeAwareEditText" &&
+                                            fieldClass != "android.widget.EditText") ||
                                         !field.isVisibleToUser ||
                                         !field.isEnabled ||
                                         !field.isFocusable ||
