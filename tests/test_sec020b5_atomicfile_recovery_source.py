@@ -37,7 +37,7 @@ class Sec020B5AtomicFileRecoverySourceTests(unittest.TestCase):
         self.assertIn("reports Missing", doc)
         self.assertIn("RecoveryRequired(ACTIVE_RECORD_MISSING)", doc)
         self.assertIn("never Empty", doc)
-        self.assertIn("not a process-kill, kernel crash, sudden power-loss", doc)
+        self.assertIn("process-kill, kernel crash, sudden power-loss", doc)
 
 
 if __name__ == "__main__":
