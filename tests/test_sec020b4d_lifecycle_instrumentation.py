@@ -69,7 +69,9 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             source,
         )
         self.assertIn("it.className?.toString() == expectedClassName", source)
-        self.assertIn("root.packageName?.toString() !in allowedPackages", source)
+        self.assertIn("val packageName = root.packageName?.toString()", source)
+        self.assertIn("if (packageName !in allowedPackages) continue", source)
+        self.assertIn('packageName == "com.android.systemui"', source)
         self.assertNotIn(
             'it.className?.toString() == "android.widget.EditText"',
             source,
