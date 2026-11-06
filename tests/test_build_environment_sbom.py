@@ -288,7 +288,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         second = self.write_bundle(self.root / "runner-b")
         path = second / "build-environment.inventory.json"
         path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "namespace does not bind|hashes do not match"):
+        with self.assertRaisesRegex(ValueError, "namespace does not bind|hashes do not match|canonical inventory-derived"):
             verify_bundles(first, second, COMMIT, self.root / "verification.json")
 
     def test_runner_image_mismatch_fails_cross_runner_gate(self):
