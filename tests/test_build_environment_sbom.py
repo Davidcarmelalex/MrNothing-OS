@@ -243,9 +243,9 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
 
     def test_cmdline_tools_and_platform_tools_are_inventoried_when_list_omits_them(self):
         self.sdk_packages.write_text(
-            "Installed packages:\\n"
-            "build-tools;35.0.0 | 35.0.0 | Build Tools\\n"
-            "platforms;android-35 | 2 | Android Platform\\n",
+            "Installed packages:\n"
+            "build-tools;35.0.0 | 35.0.0 | Build Tools\n"
+            "platforms;android-35 | 2 | Android Platform\n",
             encoding="utf-8",
         )
         inventory = collect_inventory(self.args)
