@@ -32,7 +32,7 @@ Use ADB only after the owner approves connecting the device. These commands are 
     adb shell getprop ro.boot.vbmeta.device_state
     adb shell pm list features
 
-Expected identity is Pixel 9 Pro and `caiman`. Expected secure baseline is locked bootloader, verified/green boot and a known stock build. If any property is absent or contradictory, stop and obtain a human device assessment; do not infer safety from one property alone.
+Expected identity is Pixel 9 Pro and `caiman`. Expected secure baseline is locked bootloader, verified/green boot and a known stock build. If any property is absent or contradictory, stop and obtain a human device assessment; do not infer safety from one property alone. On AOSP, `ro.kernel.qemu=1` is an emulator marker; physical Android builds may omit the property. The offline validator therefore accepts only an absent/blank marker or exact `0`, and rejects `1` and every other non-empty/unrecognized value. Absence is not proof of physical hardware and never completes M7. This interpretation follows the [AOSP init kernel-property import path](https://chromium.googlesource.com/aosp/platform/system/core/+/7daa66aa07ce0ffa119a2cfde31ec133f03f3ec2/init/init.cpp).
 
 Record whether `android.hardware.strongbox_keystore` is advertised by PackageManager. Feature presence is only a capability preflight, not proof that a generated key is StrongBox-backed.
 

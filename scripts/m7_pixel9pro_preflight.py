@@ -94,7 +94,7 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "bootloader_locked": values["ro.boot.flash.locked"] == "1",
         "verified_boot_green": values["ro.boot.verifiedbootstate"].casefold() == "green",
         "vbmeta_device_locked": values["ro.boot.vbmeta.device_state"].casefold() == "locked",
-        "not_an_emulator": qemu.casefold() not in {"1", "true", "yes"},
+        "emulator_marker_not_positive": qemu in {"", "0"},
         "strongbox_feature_advertised": STRONGBOX_FEATURE in features,
     }
     failures = [name for name, passed in checks.items() if not passed]
@@ -114,14 +114,17 @@ def evaluate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             "codename": values["ro.product.device"],
             "android_release": values["ro.build.version.release"],
             "api_level": api_level,
+            "emulator_marker": qemu if qemu else "absent",
         },
         "checks": checks,
         "blocked_reasons": failures,
         "strongbox_key_security_level_verified": False,
         "note": (
-            "Read-only snapshot preflight only. Feature advertisement does not prove a generated key is "
-            "StrongBox-backed. Verify KeyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX in a separately "
-            "approved on-device test. This result never completes M7."
+            "Read-only snapshot preflight only. An absent ro.kernel.qemu marker is common on physical "
+            "Android builds but is not proof of physical hardware; a positive or unknown marker blocks. "
+            "Feature advertisement does not prove a generated key is StrongBox-backed. Verify "
+            "KeyInfo.securityLevel == SECURITY_LEVEL_STRONGBOX in a separately approved on-device test. "
+            "This result never completes M7."
         ),
     }
 

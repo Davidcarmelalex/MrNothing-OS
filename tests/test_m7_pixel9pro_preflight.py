@@ -73,7 +73,23 @@ class Pixel9ProPreflightTests(unittest.TestCase):
 
     def test_emulator_blocks(self):
         data = fixture(); data["properties"]["ro.kernel.qemu"] = "1"
-        self.assertIn("not_an_emulator", evaluate_snapshot(data)["blocked_reasons"])
+        self.assertIn("emulator_marker_not_positive", evaluate_snapshot(data)["blocked_reasons"])
+
+    def test_missing_emulator_marker_is_not_physical_acceptance(self):
+        data = fixture(); del data["properties"]["ro.kernel.qemu"]
+        report = evaluate_snapshot(data)
+        self.assertTrue(report["preflight_passed"])
+        self.assertEqual(report["identity"]["emulator_marker"], "absent")
+        self.assertFalse(report["acceptance_passed"])
+        self.assertFalse(report["strongbox_key_security_level_verified"])
+
+    def test_unknown_emulator_indicator_blocks(self):
+        data = fixture(); data["properties"]["ro.kernel.qemu"] = "unknown"
+        self.assertIn("emulator_marker_not_positive", evaluate_snapshot(data)["blocked_reasons"])
+
+    def test_noncanonical_emulator_indicator_blocks(self):
+        data = fixture(); data["properties"]["ro.kernel.qemu"] = "false"
+        self.assertIn("emulator_marker_not_positive", evaluate_snapshot(data)["blocked_reasons"])
 
     def test_adb_unauthorized_blocks(self):
         data = fixture(); data["adb_state"] = "unauthorized"
