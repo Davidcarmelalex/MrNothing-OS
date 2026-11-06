@@ -36,7 +36,10 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
     def test_fake_backend_is_memory_only_and_uses_synthetic_credential(self):
         source = TEST.read_text(encoding="utf-8")
         self.assertIn("BlockingFakeTrustStore", source)
-        self.assertIn("KeyPairGenerator.getInstance(\"Ed25519\")", source)
+        self.assertIn("RFC 8032 test vector 1 public key", source)
+        self.assertIn("Base64.getDecoder().decode(", source)
+        self.assertNotIn("KeyPairGenerator", source)
+        self.assertNotIn("generateKeyPair()", source)
         self.assertNotIn("locksettings set-pin", source)
         self.assertNotIn("locksettings clear --old", source)
         self.assertIn("rootInActiveWindow", source)

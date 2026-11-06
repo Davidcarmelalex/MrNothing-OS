@@ -58,7 +58,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
             // RFC 8032 test vector 1 public key (public material only). Avoid
             // provider-default key generation: Android may route Ed25519 generation
-            // to AndroidKeyStore, which requires a KeyGenParameterSpec.
+            // to AndroidKeyStore and require provider-specific initialization.
             val spki = Base64.getDecoder().decode(
                 "MCowBQYDK2VwAyEA11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
             )

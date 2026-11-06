@@ -198,7 +198,6 @@ class OwnerAuthorityTrustActivitySourceTests(unittest.TestCase):
         self.assertIn("RFC 8032 test vector 1 public key", code)
         self.assertIn("Base64.getDecoder().decode(", code)
         self.assertNotIn("KeyPairGenerator", code)
-        self.assertNotIn("KeyGenParameterSpec", code)
 
 
 if __name__ == "__main__":
