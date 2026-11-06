@@ -46,63 +46,60 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("automation.windows", source)
         self.assertIn("com.android.systemui:id/auth_credential_input", source)
         self.assertIn("com.android.systemui:id/lockPassword", source)
-        self.assertIn('setOf("com.android.systemui", "com.android.settings")', source)
+        self.assertIn("android.widget.ImeAwareEditText", source)
+        self.assertIn("hasVisibleBiometricPromptCredentialField", source)
+        self.assertIn("hasVisibleKeyguardPinPad", source)
+        self.assertIn('shell("input text $TEST_PIN")', source)
+        self.assertIn('shell("input keyevent KEYCODE_ENTER")', source)
+        self.assertIn('identity.contains("uid=2000(shell)")', source)
         self.assertIn("isVisibleToUser", source)
         self.assertIn("awaitCredentialRevalidation(target)", source)
         self.assertIn("findAccessibilityNodeInfosByViewId", source)
         self.assertNotIn("uiautomator dump", source)
+        self.assertNotIn('com.android.systemui:id/pinEntry" to', source)
+        self.assertNotIn('com.android.systemui:id/passwordEntry" to', source)
         for forbidden in ("AndroidOwnerAuthorityTrustStore(", "AndroidAuthorityTrustCrypto(",
                           "AndroidAtomicAuthorityRecordPersistence(", "fastboot", "adb root",
                           "ProcessBuilder(", "Runtime.getRuntime(", "CommandRouter(",
                           "requestPermissions(", "store.commit(real"):
             self.assertNotIn(forbidden, source)
 
-
-    def test_android_15_systemui_keyguard_fields_use_exact_view_classes(self):
+    def test_android_15_biometric_prompt_uses_exact_systemui_ime_field(self):
         source = TEST.read_text(encoding="utf-8")
-        self.assertIn(
-            '"com.android.systemui:id/pinEntry" to "com.android.keyguard.PasswordTextView"',
-            source,
-        )
-        self.assertIn(
-            '"com.android.systemui:id/passwordEntry" to "android.widget.EditText"',
-            source,
-        )
-        self.assertIn("it.className?.toString() == expectedClassName", source)
-        self.assertIn("val packageName = root.packageName?.toString()", source)
-        self.assertIn("if (packageName !in allowedPackages) continue", source)
-        self.assertIn('packageName == "com.android.systemui"', source)
-        self.assertNotIn(
-            'it.className?.toString() == "android.widget.EditText"',
-            source,
-        )
+        prompt_start = source.index("private fun hasVisibleBiometricPromptCredentialField")
+        keyguard_start = source.index("private fun hasVisibleKeyguardPinPad", prompt_start)
+        prompt_gate = source[prompt_start:keyguard_start]
 
-    def test_android_15_pin_pad_requires_complete_systemui_keypad(self):
+        self.assertIn('root.packageName?.toString() != "com.android.systemui"', prompt_gate)
+        self.assertIn('val containerId = "com.android.systemui:id/auth_credential_input"', prompt_gate)
+        self.assertIn('val fieldId = "com.android.systemui:id/lockPassword"', prompt_gate)
+        self.assertIn('"android.widget.FrameLayout"', prompt_gate)
+        self.assertIn('"android.widget.ImeAwareEditText"', prompt_gate)
+        self.assertIn("container.findAccessibilityNodeInfosByViewId(fieldId)", prompt_gate)
+        self.assertIn("field.isVisibleToUser", prompt_gate)
+        self.assertIn("field.isEnabled", prompt_gate)
+        self.assertIn("field.isFocusable", prompt_gate)
+        self.assertIn("field.isFocused", prompt_gate)
+        self.assertIn("field.isPassword", prompt_gate)
+        self.assertIn("fields.forEach { it.recycle() }", prompt_gate)
+        self.assertIn("containers.forEach { it.recycle() }", prompt_gate)
+        self.assertNotIn("com.android.settings", prompt_gate)
+        self.assertNotIn("pinEntry", prompt_gate)
+        self.assertNotIn("key0", prompt_gate)
+
+    def test_android_15_keyguard_pad_uses_aosp_resource_classes(self):
         source = TEST.read_text(encoding="utf-8")
         pin_start = source.index("private fun hasVisibleSystemPinPad")
         node_start = source.index("private fun hasVisibleSystemUiNode", pin_start)
         pin_pad = source[pin_start:node_start]
 
-        self.assertIn(
-            'root.packageName?.toString() != "com.android.systemui"',
-            pin_pad,
-        )
-        self.assertIn(
-            '"com.android.systemui:id/keyguard_pin_view"',
-            pin_pad,
-        )
-        self.assertIn(
-            '"com.android.systemui:id/pin_container"',
-            pin_pad,
-        )
-        self.assertIn(
-            '"com.android.systemui:id/bouncer_primary_message_area"',
-            pin_pad,
-        )
-        self.assertIn(
-            'val digitIds = (0..9).map { "com.android.systemui:id/key$it" }',
-            pin_pad,
-        )
+        self.assertIn('root.packageName?.toString() != "com.android.systemui"', pin_pad)
+        self.assertIn('"com.android.systemui:id/keyguard_pin_view"', pin_pad)
+        self.assertIn('"com.android.keyguard.KeyguardPINView"', pin_pad)
+        self.assertIn('"com.android.systemui:id/pin_container"', pin_pad)
+        self.assertIn('"androidx.constraintlayout.widget.ConstraintLayout"', pin_pad)
+        self.assertIn('val digitIds = (0..9).map { "com.android.systemui:id/key$it" }', pin_pad)
+        self.assertIn('"com.android.keyguard.NumPadKey"', pin_pad)
         self.assertIn("digitIds.all { viewId ->", pin_pad)
         self.assertIn("requireClickable = true", pin_pad)
 
@@ -115,23 +112,10 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("bounds.width() > 0 && bounds.height() > 0", node_gate)
         self.assertIn("matches.forEach { it.recycle() }", node_gate)
 
-        prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
-        pin_helper_start = source.index("private fun enterSyntheticSystemPin", prepare_start)
-        prepare = source[prepare_start:pin_helper_start]
-        self.assertLess(
-            prepare.index("awaitSystemCredentialUi"),
-            prepare.index('val identity = shell("id")'),
-        )
-        self.assertLess(
-            prepare.index('val identity = shell("id")'),
-            prepare.index("enterSyntheticSystemPin(identity)"),
-        )
-        self.assertIn('"uid=2000(shell)"', prepare)
-
     def test_locked_keyguard_taps_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
-        pin_helper_start = source.index("private fun enterSyntheticSystemPin", prepare_start)
+        pin_helper_start = source.index("private fun enterSyntheticKeyguardPin", prepare_start)
         tap_start = source.index(
             "private fun tapSystemDeviceEntryIconToRevealCredentialEntry()", pin_helper_start
         )
@@ -141,15 +125,15 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
 
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', prepare)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", prepare)
-        self.assertIn("if (!hasVisibleSystemCredentialInput())", prepare)
+        self.assertIn("if (!hasVisibleKeyguardPinPad())", prepare)
         self.assertIn("tapSystemDeviceEntryIconToRevealCredentialEntry()", prepare)
         self.assertLess(
             prepare.index("tapSystemDeviceEntryIconToRevealCredentialEntry()"),
-            prepare.index("awaitSystemCredentialUi"),
+            prepare.index("awaitKeyguardPinPad"),
         )
         self.assertLess(
-            prepare.index("awaitSystemCredentialUi"),
-            prepare.index("enterSyntheticSystemPin(identity)"),
+            prepare.index("awaitKeyguardPinPad"),
+            prepare.index("enterSyntheticKeyguardPin(identity)"),
         )
 
         self.assertIn("resources.displayMetrics", tap)
@@ -177,20 +161,23 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("KEYCODE_MENU", source)
         self.assertNotIn("adb root", source)
 
-
-    def test_synthetic_pin_entry_uses_only_exact_visible_systemui_key_controls(self):
+    def test_synthetic_keyguard_pin_entry_uses_exact_visible_systemui_key_controls(self):
         source = TEST.read_text(encoding="utf-8")
-        pin_start = source.index("private fun enterSyntheticSystemPin")
-        tap_start = source.index("private fun tapVisibleSystemUiNode", pin_start)
-        device_entry_start = source.index("private fun tapSystemDeviceEntryIconToRevealCredentialEntry", tap_start)
-        pin_helper = source[pin_start:tap_start]
-        node_tap = source[tap_start:device_entry_start]
+        pin_start = source.index("private fun enterSyntheticKeyguardPin")
+        biometric_start = source.index("private fun enterSyntheticBiometricPromptPin", pin_start)
+        tap_start = source.index("private fun tapVisibleSystemUiNode", biometric_start)
+        keyguard_helper = source[pin_start:biometric_start]
+        node_tap = source[tap_start:source.index(
+            "private fun tapSystemDeviceEntryIconToRevealCredentialEntry", tap_start
+        )]
 
-        self.assertIn('identity.contains("uid=2000(shell)")', pin_helper)
-        self.assertIn("hasVisibleSystemCredentialInput()", pin_helper)
-        self.assertIn("for (digit in TEST_PIN)", pin_helper)
-        self.assertIn('com.android.systemui:id/key$digit', pin_helper)
-        self.assertIn('com.android.systemui:id/key_enter', pin_helper)
+        self.assertIn('identity.contains("uid=2000(shell)")', keyguard_helper)
+        self.assertIn("hasVisibleKeyguardPinPad()", keyguard_helper)
+        self.assertIn("for (digit in TEST_PIN)", keyguard_helper)
+        self.assertIn('com.android.systemui:id/key$digit', keyguard_helper)
+        self.assertIn('"com.android.keyguard.NumPadKey"', keyguard_helper)
+        self.assertIn('"com.android.systemui:id/key_enter"', keyguard_helper)
+        self.assertIn('"com.android.keyguard.NumPadButton"', keyguard_helper)
         self.assertIn('root.packageName?.toString() != "com.android.systemui"', node_tap)
         self.assertIn("node.viewIdResourceName != viewId", node_tap)
         self.assertIn("!node.isVisibleToUser", node_tap)
@@ -200,6 +187,20 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn('shell("input tap ${bounds.centerX()} ${bounds.centerY()}")', node_tap)
         self.assertIn("matches.forEach { it.recycle() }", node_tap)
         self.assertIn("roots.forEach { it.recycle() }", node_tap)
+
+    def test_biometric_prompt_pin_entry_targets_only_focused_systemui_ime_field(self):
+        source = TEST.read_text(encoding="utf-8")
+        start = source.index("private fun enterSyntheticBiometricPromptPin")
+        end = source.index("private fun tapVisibleSystemUiNode", start)
+        helper = source[start:end]
+
+        self.assertIn('identity.contains("uid=2000(shell)")', helper)
+        self.assertIn("hasVisibleBiometricPromptCredentialField()", helper)
+        self.assertIn('shell("input text $TEST_PIN")', helper)
+        self.assertIn('shell("input keyevent KEYCODE_ENTER")', helper)
+        self.assertNotIn("input tap", helper)
+        self.assertNotIn("key$digit", helper)
+        self.assertNotIn("TEST_PIN.to", helper)
 
     def test_missing_credential_ui_failure_captures_bounded_window_evidence(self):
         source = TEST.read_text(encoding="utf-8")
@@ -227,23 +228,23 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("AndroidOwnerAuthorityTrustStore(context)", source)
         self.assertEqual(source.count("createTrustStore(appContext)"), 3)
 
-    def test_emulator_preflight_wakes_and_uses_only_visible_systemui_credential(self):
+    def test_emulator_preflight_and_biometric_prompt_use_distinct_systemui_surfaces(self):
         source = TEST.read_text(encoding="utf-8")
         self.assertIn("prepareInteractiveUnlockedEmulator()", source)
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', source)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
         self.assertIn("tapSystemDeviceEntryIconToRevealCredentialEntry()", source)
         self.assertIn("com.android.systemui:id/device_entry_icon_view", source)
-        self.assertIn("awaitSystemCredentialUi", source)
-        self.assertIn("private fun enterSyntheticSystemPin", source)
-        self.assertIn('val viewId = "com.android.systemui:id/key$digit"', source)
-        self.assertIn('tapVisibleSystemUiNode("com.android.systemui:id/key_enter")', source)
-        self.assertNotIn('shell("input text $TEST_PIN")', source)
+        self.assertIn("awaitKeyguardPinPad", source)
+        self.assertIn("private fun enterSyntheticKeyguardPin", source)
+        self.assertIn("awaitBiometricPromptCredentialField", source)
+        self.assertIn("private fun enterSyntheticBiometricPromptPin", source)
+        self.assertIn("hasVisibleBiometricPromptCredentialField", source)
+        self.assertIn('val fieldId = "com.android.systemui:id/lockPassword"', source)
         self.assertIn("OwnerCredentialSafetyGate.isSafe(context)", source)
         self.assertIn("deviceCredentialCanAuthenticate", source)
         self.assertNotIn("wm dismiss-keyguard", source)
         self.assertNotIn("adb root", source)
-
 
 if __name__ == "__main__":
     unittest.main()

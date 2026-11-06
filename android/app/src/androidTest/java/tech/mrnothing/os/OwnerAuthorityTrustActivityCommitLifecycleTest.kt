@@ -93,7 +93,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             }
 
             awaitCredentialPrompt(target)
-            enterSyntheticSystemPin()
+            enterSyntheticBiometricPromptPin()
             awaitCredentialRevalidation(target)
 
             val boundaryReached = if (destroyAfterClaim) fakeStore.commitEntered else fakeStore.finalInspectEntered
@@ -191,22 +191,21 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         shell("input keyevent KEYCODE_WAKEUP")
         SystemClock.sleep(250)
         if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
-            // The API 35 lockscreen keeps credential entry collapsed behind
-            // a clickable SystemUI device-entry icon. Tap only that exact
-            // system-owned control; never infer success from a gesture return code.
-            if (!hasVisibleSystemCredentialInput()) {
+            // This is the device lockscreen, not the later BiometricPrompt dialog.
+            // Reveal and verify the complete SystemUI Keyguard PIN pad before input.
+            if (!hasVisibleKeyguardPinPad()) {
                 lastCredentialPreflightDiagnostics = tapSystemDeviceEntryIconToRevealCredentialEntry()
             } else {
-                lastCredentialPreflightDiagnostics = "exact SystemUI credential surface was already visible"
+                lastCredentialPreflightDiagnostics = "exact SystemUI Keyguard PIN pad was already visible"
             }
-            awaitSystemCredentialUi("locked emulator did not expose a recognized SystemUI credential surface")
+            awaitKeyguardPinPad("locked emulator did not expose the complete SystemUI Keyguard PIN pad")
             val identity = shell("id")
             assertTrue(
                 "synthetic PIN entry requires ordinary adb shell identity; refusing privileged execution",
                 identity.contains("uid=2000(shell)")
             )
             lastCredentialPreflightDiagnostics += "; synthetic-pin-entry-identity=" + identity.trim()
-            enterSyntheticSystemPin(identity)
+            enterSyntheticKeyguardPin(identity)
         }
 
         val deadline = SystemClock.elapsedRealtime() + 10_000L
@@ -218,34 +217,70 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
     }
 
     /**
-     * Enter only the workflow's synthetic PIN by tapping exact, visible,
-     * clickable SystemUI keypad resource IDs. This avoids input-text/IME
-     * ambiguity and never targets an app-owned field or guesses coordinates.
+     * Unlock only the disposable emulator's actual Keyguard PIN pad. Each digit
+     * is sent as a bounded tap to an exact visible SystemUI NumPadKey node.
      */
-    private fun enterSyntheticSystemPin(identityFromCaller: String? = null) {
+    private fun enterSyntheticKeyguardPin(identityFromCaller: String? = null) {
+        val identity = identityFromCaller ?: shell("id")
+        assertTrue(
+            "synthetic PIN entry requires ordinary adb shell identity; refusing privileged execution",
+            identity.contains("uid=2000(shell)")
+        )
+        assertTrue("exact SystemUI Keyguard PIN pad is not visible", hasVisibleKeyguardPinPad())
+        SystemClock.sleep(250)
+        var tappedDigits = 0
+        for (digit in TEST_PIN) {
+            val viewId = "com.android.systemui:id/key$digit"
+            assertTrue(
+                "exact clickable SystemUI Keyguard PIN key was not available: key$digit",
+                tapVisibleSystemUiNode(viewId, "com.android.keyguard.NumPadKey")
+            )
+            tappedDigits += 1
+            SystemClock.sleep(120)
+        }
+        assertTrue(
+            "exact clickable SystemUI Keyguard PIN submit key was not available",
+            tapVisibleSystemUiNode(
+                "com.android.systemui:id/key_enter",
+                "com.android.keyguard.NumPadButton"
+            )
+        )
+        lastCredentialPreflightDiagnostics += "; keyguardDigitKeysTapped=$tappedDigits; submitKeyTapped=true"
+        SystemClock.sleep(250)
+    }
+
+    /**
+     * Enter the workflow's synthetic PIN only into Android 15 BiometricPrompt's
+     * focused SystemUI ImeAwareEditText. This is ordinary input to the visible
+     * platform credential field, not a Keyguard or BiometricPrompt bypass.
+     */
+    private fun enterSyntheticBiometricPromptPin(identityFromCaller: String? = null) {
         lastCredentialEntryDiagnostics = "starting"
         val identity = identityFromCaller ?: shell("id")
         assertTrue(
             "synthetic PIN entry requires ordinary adb shell identity; refusing privileged execution",
             identity.contains("uid=2000(shell)")
         )
-        assertTrue("exact SystemUI credential keypad is not visible", hasVisibleSystemCredentialInput())
-        SystemClock.sleep(250)
-        var tappedDigits = 0
-        for (digit in TEST_PIN) {
-            val viewId = "com.android.systemui:id/key$digit"
-            assertTrue(
-                "exact clickable SystemUI PIN key was not available: key$digit",
-                tapVisibleSystemUiNode(viewId, "android.view.ViewGroup")
-            )
-            tappedDigits += 1
-            SystemClock.sleep(120)
-        }
         assertTrue(
-            "exact clickable SystemUI PIN submit key was not available",
-            tapVisibleSystemUiNode("com.android.systemui:id/key_enter")
+            "focused SystemUI BiometricPrompt credential field is not visible",
+            hasVisibleBiometricPromptCredentialField()
         )
-        lastCredentialEntryDiagnostics = "systemUiDigitKeysTapped=$tappedDigits; submitKeyTapped=true"
+
+        val textResult = shell("input text $TEST_PIN")
+        assertFalse(
+            "Android input utility rejected the SystemUI credential-field text input",
+            textResult.contains("usage", ignoreCase = true) ||
+                textResult.contains("error", ignoreCase = true)
+        )
+        val submitResult = shell("input keyevent KEYCODE_ENTER")
+        assertFalse(
+            "Android input utility rejected the SystemUI credential-field submit key",
+            submitResult.contains("usage", ignoreCase = true) ||
+                submitResult.contains("error", ignoreCase = true)
+        )
+        // Deliberately omit the synthetic PIN value from diagnostics and artifacts.
+        lastCredentialEntryDiagnostics =
+            "focusedSystemUiImeField=true; syntheticPinInputSent=true; submitKeyEventSent=true"
         SystemClock.sleep(250)
     }
 
@@ -394,8 +429,8 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                     safetySnapshot(activity)
             )
         }
-        awaitSystemCredentialUi(
-            "credential-only SystemUI prompt did not become visible; " +
+        awaitBiometricPromptCredentialField(
+            "credential-only BiometricPrompt SystemUI input did not become visible; " +
                 "status='$status'; " + safetySnapshot(activity)
         )
     }
@@ -485,71 +520,118 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             " bounds=" + bounds
     }
 
-    private fun awaitSystemCredentialUi(message: String) {
+    private fun awaitKeyguardPinPad(message: String) {
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
-            if (hasVisibleSystemCredentialInput()) return
+            if (hasVisibleKeyguardPinPad()) return
             SystemClock.sleep(100)
         }
         fail(
             "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
                 "preflight=$lastCredentialPreflightDiagnostics; " +
-                "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}; " +
+                "visibleKeyguardPinPad=${hasVisibleKeyguardPinPad()}; " +
+                "ui=${credentialUiSnapshot()}"
+        )
+    }
+
+    private fun awaitBiometricPromptCredentialField(message: String) {
+        val deadline = SystemClock.elapsedRealtime() + 12_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (hasVisibleBiometricPromptCredentialField()) return
+            SystemClock.sleep(100)
+        }
+        fail(
+            "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
+                "preflight=$lastCredentialPreflightDiagnostics; " +
+                "focusedBiometricPromptField=${hasVisibleBiometricPromptCredentialField()}; " +
                 "ui=${credentialUiSnapshot()}"
         )
     }
 
     /**
-     * BiometricPrompt credential UI differs across Android releases and can be
-     * hosted in more than the active window. Inspect all accessible windows,
-     * but accept an input field only from the system credential packages and
-     * known credential-input resource IDs. Never type into an app-owned field.
+     * Recognize the lockscreen PIN bouncer only. The full Keyguard PIN hierarchy
+     * and all ten visible/clickable NumPadKey controls must share one SystemUI root.
      */
-    private fun hasVisibleSystemCredentialInput(): Boolean {
+    private fun hasVisibleKeyguardPinPad(): Boolean {
         val automation = getInstrumentation().uiAutomation
         val roots = try {
             automation.windows.mapNotNull { it.root }.toMutableList()
         } catch (_: RuntimeException) {
             mutableListOf()
         }
-        if (roots.isEmpty()) {
-            automation.rootInActiveWindow?.let(roots::add)
+        if (roots.isEmpty()) automation.rootInActiveWindow?.let(roots::add)
+        try {
+            return roots.any { root ->
+                root.packageName?.toString() == "com.android.systemui" &&
+                    hasVisibleSystemPinPad(root)
+            }
+        } finally {
+            roots.forEach { it.recycle() }
         }
+    }
 
-        val allowedPackages = setOf("com.android.systemui", "com.android.settings")
-        // Android 15's PIN bouncer is not guaranteed to expose its custom
-        // PasswordTextView as an accessibility node. The observed API 35
-        // hierarchy instead exposes keyguard_pin_view, pin_container and the
-        // ten clickable key0..key9 controls. Require that complete structure;
-        // a lone keypad-like node or an app-owned field is never sufficient.
-        val credentialInputSelectors = listOf(
-            "com.android.systemui:id/auth_credential_input" to "android.widget.EditText",
-            "com.android.systemui:id/lockPassword" to "android.widget.EditText",
-            "com.android.systemui:id/pinEntry" to "com.android.keyguard.PasswordTextView",
-            "com.android.systemui:id/passwordEntry" to "android.widget.EditText"
-        )
+    /**
+     * Recognize the separate Android 15 BiometricPrompt credential form.
+     * AOSP exposes auth_credential_input as a FrameLayout containing the focused
+     * android.widget.ImeAwareEditText lockPassword field. A Keyguard pinEntry
+     * behind this dialog is deliberately not accepted as evidence for this prompt.
+     */
+    private fun hasVisibleBiometricPromptCredentialField(): Boolean {
+        val automation = getInstrumentation().uiAutomation
+        val roots = try {
+            automation.windows.mapNotNull { it.root }.toMutableList()
+        } catch (_: RuntimeException) {
+            mutableListOf()
+        }
+        if (roots.isEmpty()) automation.rootInActiveWindow?.let(roots::add)
+
+        val containerId = "com.android.systemui:id/auth_credential_input"
+        val fieldId = "com.android.systemui:id/lockPassword"
         try {
             for (root in roots) {
-                val packageName = root.packageName?.toString()
-                if (packageName !in allowedPackages) continue
-                if (packageName == "com.android.systemui" && hasVisibleSystemPinPad(root)) {
-                    return true
+                if (root.packageName?.toString() != "com.android.systemui") continue
+                val containers = try {
+                    root.findAccessibilityNodeInfosByViewId(containerId)
+                } catch (_: RuntimeException) {
+                    emptyList()
                 }
-                for ((viewId, expectedClassName) in credentialInputSelectors) {
-                    val matches = try {
-                        root.findAccessibilityNodeInfosByViewId(viewId)
-                    } catch (_: RuntimeException) {
-                        emptyList()
+                try {
+                    for (container in containers) {
+                        if (container.viewIdResourceName != containerId ||
+                            container.className?.toString() != "android.widget.FrameLayout" ||
+                            !container.isVisibleToUser ||
+                            !container.isEnabled
+                        ) continue
+
+                        val fields = try {
+                            container.findAccessibilityNodeInfosByViewId(fieldId)
+                        } catch (_: RuntimeException) {
+                            emptyList()
+                        }
+                        try {
+                            if (fields.any { field ->
+                                    if (field.viewIdResourceName != fieldId ||
+                                        field.className?.toString() != "android.widget.ImeAwareEditText" ||
+                                        !field.isVisibleToUser ||
+                                        !field.isEnabled ||
+                                        !field.isFocusable ||
+                                        !field.isFocused ||
+                                        !field.isPassword
+                                    ) {
+                                        false
+                                    } else {
+                                        val bounds = Rect()
+                                        field.getBoundsInScreen(bounds)
+                                        bounds.width() > 0 && bounds.height() > 0
+                                    }
+                                }
+                            ) return true
+                        } finally {
+                            fields.forEach { it.recycle() }
+                        }
                     }
-                    try {
-                        if (matches.any {
-                                it.isVisibleToUser &&
-                                    it.className?.toString() == expectedClassName
-                            }
-                        ) return true
-                    } finally {
-                        matches.forEach { it.recycle() }
-                    }
+                } finally {
+                    containers.forEach { it.recycle() }
                 }
             }
         } finally {
@@ -558,29 +640,18 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         return false
     }
 
-    /**
-     * Recognize only the complete Android 15 SystemUI PIN bouncer. The exact
-     * root package, bouncer/container classes, message area and all ten visible
-     * clickable digit controls must be present before the synthetic PIN is sent.
-     */
     private fun hasVisibleSystemPinPad(root: AccessibilityNodeInfo): Boolean {
         if (root.packageName?.toString() != "com.android.systemui") return false
         if (!hasVisibleSystemUiNode(
                 root,
                 "com.android.systemui:id/keyguard_pin_view",
-                "android.widget.LinearLayout"
+                "com.android.keyguard.KeyguardPINView"
             )
         ) return false
         if (!hasVisibleSystemUiNode(
                 root,
                 "com.android.systemui:id/pin_container",
-                "android.view.ViewGroup"
-            )
-        ) return false
-        if (!hasVisibleSystemUiNode(
-                root,
-                "com.android.systemui:id/bouncer_primary_message_area",
-                "android.widget.TextView"
+                "androidx.constraintlayout.widget.ConstraintLayout"
             )
         ) return false
 
@@ -589,7 +660,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             hasVisibleSystemUiNode(
                 root,
                 viewId,
-                "android.view.ViewGroup",
+                "com.android.keyguard.NumPadKey",
                 requireClickable = true
             )
         }
