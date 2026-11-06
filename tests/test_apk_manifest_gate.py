@@ -194,6 +194,8 @@ class PackagedApkManifestWorkflowTests(unittest.TestCase):
         self.assertIn("--variant-metadata \"$VARIANT_METADATA\"", workflow)
         self.assertNotIn("--expected-package tech.mrnothing.os", workflow)
         self.assertIn("--release-variant-metadata \"$VARIANT_METADATA\"", workflow)
+        provenance_step = workflow[workflow.index("Generate deterministic SPDX runtime SBOM and build provenance"):]
+        self.assertIn('VARIANT_METADATA="app/build/reports/ci003/release-variant-metadata.json"', provenance_step)
         self.assertIn("release-variant-metadata.json", workflow)
         self.assertIn("cmp runner-a/release-variant-metadata.json runner-b/release-variant-metadata.json", workflow)
         self.assertIn("release-packaged-manifest-security.json", workflow)

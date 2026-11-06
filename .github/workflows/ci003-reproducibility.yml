@@ -87,6 +87,7 @@ jobs:
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           INVENTORY="app/build/reports/ci003/release-runtime-dependencies.tsv"
+          VARIANT_METADATA="app/build/reports/ci003/release-variant-metadata.json"
           OUT="app/build/outputs/apk/release"
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$SOURCE_COMMIT")"
