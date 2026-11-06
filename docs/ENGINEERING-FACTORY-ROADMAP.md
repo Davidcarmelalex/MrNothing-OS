@@ -654,3 +654,26 @@ The bounded instrumentation correction recognizes only that complete exact Syste
 ### Exact-head Python source-gate alignment
 
 At `f68dd47591379a4fae52eba260bc928c703dc5df`, the Phase 1 Python-policy jobs ran 515 tests with 1 failure: a source assertion still expected the previous inline package check, while the implementation uses a local `packageName` variable before the same allowlist decision. The other 514 tests passed. The source gate was updated to assert the variable, allowlist check and SystemUI-specific keypad branch. The QA-005 run at that head had not reached instrumentation when superseded; it is not counted as a runtime result. Re-run all exact-head gates on the corrective commit.
+
+
+## 2026-11-06 — SEC-020B4D exact-head acceptance and SEC-020B5
+
+### SEC-020B4D acceptance at `ceebf9fb24d46c2156d584a1b8995e8a5bbc0745`
+
+Exact-head Phase 1 push [42200088688](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200088688) and PR [42200100036](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200100036) passed. Both Python-policy jobs ran 515 tests; Android unit tests, debug assembly, repeat debug APK comparison, strict dependency verification, modified-dependency negative control and source-manifest security gate passed.
+
+Exact-head CI-003 push [42200088574](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200088574) and PR [42200100017](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200100017) passed independent-runner verification. Unsigned release APKs were byte-identical (7,829,060 bytes; SHA-256 `3c09c4b4c7956cb7e2a90fdc96c9ab909f53f4526c8439ed25b0aae78c49f1ea`; normalized-entry SHA-256 `9e6c4b9489af0f8b07f1d5fdae1d2ac6746041686d84fded9c0cecd4ddbc97d1`). Runtime inventory and SPDX runtime SBOM matched. Provenance retains `release_ready=false`.
+
+QA-005 PR [42200100094](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200100094) completed with all workflow steps successful. The API 35 x86_64 emulator ran the three SEC-020B4D lifecycle instrumentation tests, launcher/recovery and QA-006 through QA-013, plus QA-020B2/B3; the synthetic PIN cleanup reported `Lock credential cleared`. Evidence artifact [13493729544](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42200100094/artifacts/13493729544). QA-011 remains only a read-only service-availability preflight (`blocked_service_disabled`); QA-012 is structural semantics, not spoken TalkBack.
+
+**Gate decision:** SEC-020B4D is accepted for this API 35 x86_64 disposable-emulator lifecycle path only. This does not establish StrongBox/Pixel hardware behavior, physical crash recovery, spoken TalkBack or independent security approval.
+
+### SEC-020B5 — Android AtomicFile interruption/recovery instrumentation
+
+A new instrumentation suite uses a ContextWrapper with an isolated temporary no-backup directory and the real `AndroidAtomicAuthorityRecordPersistence` adapter. It covers write/read and replacement, interrupted replacement backup restoration through `AtomicFile.openRead()`, interrupted first-write classification (partial data is not a fresh-install `Missing` result), oversized stored-record rejection, and invalid write-bound preservation.
+
+The interrupted replacement is simulated by closing an unfinished `AtomicFile.startWrite()` stream without calling `finishWrite()` or `failWrite()`. This tests the deterministic backup-recovery window; it is not a process-kill, power-loss, filesystem-corruption or Pixel hardware test. No production backend, credential, trust authority, permission or executor behavior changes.
+
+**Current acceptance:** source/test committed; exact-head Phase 1, CI-003 and QA-005 workflows pending. Keep SEC-020B5 IN PROGRESS until the new instrumentation suite passes on the disposable emulator and independent review examines the test's AtomicFile assumptions.
+
+**Next after SEC-020B5:** add isolated Android Keystore behavior tests that prove StrongBox absence and alias/metadata failures refuse without TEE/software fallback, then reserve actual StrongBox durability and recovery acceptance for supervised Pixel 9 Pro M7 hardware validation. Do not treat emulator Keystore as StrongBox evidence.
