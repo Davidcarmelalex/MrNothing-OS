@@ -119,6 +119,13 @@ class ReleaseManifestGateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 find_release_manifest(Path(temp))
 
+    def test_unknown_permission_declaration_is_rejected(self):
+        xml = BASE.replace(
+            "<application",
+            '<uses-permission-sdk-35 android:name="android.permission.CAMERA"/><application'
+        )
+        self.assertTrue(any("unsupported permission declaration" in item for item in problems(xml)))
+
 
 class ReleaseManifestWorkflowTests(unittest.TestCase):
     def test_ci003_runs_gate_after_release_build_and_compares_reports(self):

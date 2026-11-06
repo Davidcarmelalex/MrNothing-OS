@@ -32,3 +32,10 @@ The test module is included automatically by scripts/phase1-preflight.sh unittes
 ## Limitations
 
 This is a build-time merged-manifest policy check. It does not prove runtime absence of reflective/transitive capabilities, does not replace decoding the final binary manifest from the APK, and does not validate physical-device behavior. The release APK remains unsigned and release_ready=false. Independent security review remains pending.
+
+
+## CI-004B — packaged APK manifest verification
+
+CI-004B uses the installed Android SDK Command-Line Tools apkanalyzer manifest print command to decode the binary manifest from the final unsigned release APK. It checks the packaged manifest against the same fail-closed policy and compares a deterministic security projection with the Gradle-merged manifest. The report records both raw XML and canonical policy hashes and is compared byte-for-byte across the independent CI-003 builders.
+
+See docs/CI-004B-PACKAGED-APK-MANIFEST.md. This remains a build-time manifest check, not runtime capability or physical-device proof.

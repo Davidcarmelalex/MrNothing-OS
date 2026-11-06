@@ -44,16 +44,19 @@ def inspect_manifest(root: ET.Element) -> list[str]:
             problems.append(attribute + " must not be true")
 
     seen_permissions: set[str] = set()
-    for tag in ("uses-permission", "uses-permission-sdk-23"):
-        for node in root.findall(tag):
-            name = node.get(ANDROID + "name")
-            if not name:
-                problems.append("permission missing android:name")
-            elif name not in ALLOWED_PERMISSIONS:
-                problems.append("unreviewed release permission: " + name)
-            elif name in seen_permissions:
-                problems.append("duplicate release permission: " + name)
-            seen_permissions.add(name)
+    for node in root:
+        if not node.tag.startswith("uses-permission"):
+            continue
+        if node.tag not in {"uses-permission", "uses-permission-sdk-23"}:
+            problems.append("unsupported permission declaration: " + node.tag)
+        name = node.get(ANDROID + "name")
+        if not name:
+            problems.append("permission missing android:name")
+        elif name not in ALLOWED_PERMISSIONS:
+            problems.append("unreviewed release permission: " + name)
+        elif name in seen_permissions:
+            problems.append("duplicate release permission: " + name)
+        seen_permissions.add(name)
 
     if root.findall("instrumentation"):
         problems.append("instrumentation components are forbidden in release")
