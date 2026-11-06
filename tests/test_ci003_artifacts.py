@@ -23,7 +23,7 @@ def make_variant_metadata(path: Path, application_id="tech.mrnothing.os"):
         "applicationId": application_id,
         "variantName": "release",
         "buildType": "release",
-    }, sort_keys=True) + "\\n", encoding="utf-8")
+    }, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
 def make_apk(path: Path, entries=None, timestamp=(2026, 1, 1, 0, 0, 0)):

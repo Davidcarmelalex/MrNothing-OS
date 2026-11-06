@@ -38,13 +38,13 @@ class PackagedApkManifestGateTests(unittest.TestCase):
         packaged = root / "release-packaged-manifest.xml"
         packaged.write_text(packaged_xml, encoding="utf-8")
         metadata = root / "release-variant-metadata.json"
-        metadata.write_text(json.dumps(VARIANT_METADATA, sort_keys=True) + "\\n", encoding="utf-8")
+        metadata.write_text(json.dumps(VARIANT_METADATA, sort_keys=True) + "\n", encoding="utf-8")
         return root, merged_root, merged, packaged, metadata
 
     def run_gate(self, merged_xml=BASE, packaged_xml=BASE, variant_metadata=None):
         root, merged_root, merged, packaged, metadata = self.write_pair(merged_xml, packaged_xml)
         if variant_metadata is not None:
-            metadata.write_text(json.dumps(variant_metadata, sort_keys=True) + "\\n", encoding="utf-8")
+            metadata.write_text(json.dumps(variant_metadata, sort_keys=True) + "\n", encoding="utf-8")
         return compare_manifests(
             merged, packaged, metadata, "test-cmdline-tools", merged_root
         )
@@ -163,7 +163,7 @@ class PackagedApkManifestGateTests(unittest.TestCase):
         root, merged_root, merged, packaged, metadata = self.write_pair()
         metadata.write_text(
             '{"schema":"mrnothing-gradle-release-variant-v1","applicationId":"tech.mrnothing.os",'
-            '"applicationId":"tech.mrnothing.attacker","variantName":"release","buildType":"release"}\\n',
+            '"applicationId":"tech.mrnothing.attacker","variantName":"release","buildType":"release"}\n',
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ValueError, "duplicate JSON key"):
