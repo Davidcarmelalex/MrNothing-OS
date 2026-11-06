@@ -56,7 +56,7 @@ open class OwnerAuthorityTrustActivity : Activity() {
      * Test substitution is provided only by a non-exported debug Activity host.
      * The production Activity always uses the Android Keystore/AtomicFile backend.
      */
-    protected open fun createTrustStore(context: Context): OwnerAuthorityTrustStorePort =
+    internal open fun createTrustStore(context: Context): OwnerAuthorityTrustStorePort =
         AndroidOwnerAuthorityTrustStore(context)
 
     private fun dp(value: Int): Int =

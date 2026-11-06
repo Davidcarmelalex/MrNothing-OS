@@ -12,7 +12,7 @@ internal object OwnerAuthorityTrustTestBackend {
 }
 
 class OwnerAuthorityTrustActivityTestHost : OwnerAuthorityTrustActivity() {
-    override fun createTrustStore(context: Context): OwnerAuthorityTrustStorePort =
+    internal override fun createTrustStore(context: Context): OwnerAuthorityTrustStorePort =
         OwnerAuthorityTrustTestBackend.store
             ?: throw IllegalStateException("SEC-020B4D fake trust store was not configured")
 }

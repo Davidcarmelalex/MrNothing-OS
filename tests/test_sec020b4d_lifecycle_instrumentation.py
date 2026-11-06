@@ -47,7 +47,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
 
     def test_activity_default_factory_remains_android_backend(self):
         source = (MAIN / "java/tech/mrnothing/os/OwnerAuthorityTrustActivity.kt").read_text()
-        self.assertIn("protected open fun createTrustStore(context: Context)", source)
+        self.assertIn("internal open fun createTrustStore(context: Context)", source)
         self.assertIn("AndroidOwnerAuthorityTrustStore(context)", source)
         self.assertEqual(source.count("createTrustStore(appContext)"), 3)
 

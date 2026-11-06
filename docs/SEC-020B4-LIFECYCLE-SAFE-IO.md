@@ -64,7 +64,7 @@ The first corrected compile/run attempt successfully compiled the instrumentatio
 
 ## SEC-020B4D — in-flight transaction lifecycle instrumentation
 
-The Activity now depends on a narrow `OwnerAuthorityTrustStorePort`. Its default protected factory still constructs only `AndroidOwnerAuthorityTrustStore`; the only override is a debug-source-set test host registered in the debug manifest as a non-exported Activity. The fake backend slot and test host do not exist in the release source set or release manifest.
+The Activity now depends on a narrow `OwnerAuthorityTrustStorePort`. Its default internal factory still constructs only `AndroidOwnerAuthorityTrustStore`; the only override is a debug-source-set test host registered in the debug manifest as a non-exported Activity. The fake backend slot and test host do not exist in the release source set or release manifest.
 
 Two API-35 emulator instrumentation cases exercise the real Activity's credential-confirmation callback and commit worker with a synthetic Ed25519 authority and an in-memory fake store:
 
