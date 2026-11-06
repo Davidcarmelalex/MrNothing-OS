@@ -31,12 +31,30 @@ private const val DEFAULT_AES_ALIAS = "mrnothing_authority_record_aes_v1"
 private const val DEFAULT_MARKER_PREFIX = "mrnothing_authority_marker_v1_"
 
 /**
+ * Narrow test seam for Android Keystore metadata inspection. Production uses
+ * PlatformAndroidAuthorityKeyInfoReader; instrumentation may inject deterministic
+ * failures without changing global JCA providers or production aliases.
+ */
+internal interface AndroidAuthorityKeyInfoReader {
+    fun securityLevel(key: SecretKey): Int
+}
+
+internal object PlatformAndroidAuthorityKeyInfoReader : AndroidAuthorityKeyInfoReader {
+    override fun securityLevel(key: SecretKey): Int {
+        val factory = SecretKeyFactory.getInstance(key.algorithm, "AndroidKeyStore")
+        val info = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
+        return info.securityLevel
+    }
+}
+
+/**
  * Alias overrides are a test-isolation seam only. Production construction uses
  * the original defaults; instrumentation tests supply a unique disposable namespace.
  */
 internal class AndroidAuthorityTrustCrypto(
     private val markerPrefix: String = DEFAULT_MARKER_PREFIX,
-    private val aesAlias: String = DEFAULT_AES_ALIAS
+    private val aesAlias: String = DEFAULT_AES_ALIAS,
+    private val keyInfoReader: AndroidAuthorityKeyInfoReader = PlatformAndroidAuthorityKeyInfoReader
 ) : AuthorityTrustCrypto {
     init {
         require(markerPrefix.isNotBlank())
@@ -210,9 +228,7 @@ internal class AndroidAuthorityTrustCrypto(
 
     private fun isStrongBoxBacked(key: SecretKey): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-        val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
-        val info = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
-        return info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
+        return keyInfoReader.securityLevel(key) == KeyProperties.SECURITY_LEVEL_STRONGBOX
     }
 
     private fun loadKeyStore(): KeyStore? {

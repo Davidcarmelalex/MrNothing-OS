@@ -724,3 +724,34 @@ At head `28065d7416c2aa89ffc17ed3dcf4614f2a34e733`, Phase 1 push [42220210875](h
 QA-005 [42220218287](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42220218287) compiled and started all 16 instrumentation tests. Two SEC-020B6 test cases failed in the synthetic Ed25519 record helper before their crypto assertions because default provider selection resolved to the AndroidKeyStore key-pair generator, which was not initialized. The other 14 tests reported no failures. Later QA-006 through QA-020B3 steps were skipped by fail-fast behavior. Diagnostics uploaded; log records `Lock credential cleared`.
 
 The fixture is corrected to instantiate Bouncy Castle explicitly for the in-memory synthetic Ed25519 key pair, consistent with the ceremony's provider-isolation design. This is test-only; no production trust or key-generation policy changed. SEC-020B6 remains **IN PROGRESS** pending exact-head Phase 1, CI-003 and QA-005 rerun.
+
+
+## Engineering Factory run — SEC-020B6 acceptance and SEC-020B6A implementation (2026-11-06)
+
+**Audit baseline:** branch `feat/phase1-agentic-phone` at `83a3aa2e90e89b29bae4f9c2b14cd402f084ebc7`; complete recursive tree has **282 entries**, not truncated. The latest 20 commits were inspected. `PROJECT-ADAPTER.md` and this roadmap are present; repository `SKILL.md` is absent. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed. Six PRs (#1, #3, #4, #5, #6, #7) are open/draft. PR #1 targets `main`, head is the authorized branch, and has no submitted reviews or inline review threads. Branch API reports `protected=false`; repository rulesets are empty. Other PR branches were not modified.
+
+### SEC-020B6 exact-head acceptance
+
+- Phase 1 push [42221148919](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221148919) and PR [42221159695](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221159695) passed. The push Python-policy job ran **524 tests**. Both Android jobs passed `:app:testDebugUnitTest`, `:app:assembleDebug`, same-run repeat debug-APK comparison, strict Gradle dependency verification, modified-dependency negative control and Android manifest security checks.
+- CI-003 push [42221148873](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221148873) and PR [42221159954](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221159954) passed both independent builders and verifier. Unsigned release APKs were byte-identical (7,829,728 bytes; SHA-256 `09623ce52db112aab99a23b08196b260e9fab02456e76a41d970c14edbc69510`; normalized-entry SHA-256 `97c70391d2c258e19a7cd4080e04bc852472b4c622320bea760ef56fea6c0027`). Runtime inventory, SPDX runtime SBOM, release variant and toolchain matched. Verifier reports `reproducible=true`, `release_ready=false`; CI-006's 1,260-component inventory is scoped, not a complete runner-image SBOM.
+- QA-005 [42221159692](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221159692) passed all workflow steps on a disposable API 35 x86_64 emulator. The instrumentation log reports **16 tests started, 16 finished, 0 skipped, 0 failed**: three SEC-020B4D, five SEC-020B5 and eight SEC-020B6. QA-006 through QA-013 and QA-020B2/B3 passed; synthetic emulator PIN cleanup succeeded. Evidence artifact [13504760131](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42221159692/artifacts/13504760131), digest `sha256:4012f7db4d37504a9080fd49bb57eff1cc9780803733e56f4a19f4346b0eb519`.
+- QA-011 is a read-only TalkBack service-availability preflight and found the service disabled. QA-012 is structural semantics, not spoken TalkBack acceptance.
+
+SEC-020B6 is accepted only for the tested API 35 x86_64 emulator negative-path scope. It does not prove StrongBox hardware, Pixel 9 Pro behavior, Keystore persistence across reboot/reset, spoken TalkBack, independent human security approval or production readiness.
+
+### SEC-020B6A — KeyInfo/provider failure injection
+
+A narrow internal `AndroidAuthorityKeyInfoReader` seam was added to `AndroidAuthorityTrustCrypto`. The production default is `PlatformAndroidAuthorityKeyInfoReader`, which preserves the existing AndroidKeyStore SecretKeyFactory and KeyInfo.securityLevel query. Production construction remains no-argument with unchanged aliases.
+
+Three new isolated instrumentation cases cover:
+1. GeneralSecurityException from KeyInfo inspection -> `Unavailable`.
+2. Runtime provider exception from KeyInfo inspection -> `Unavailable`.
+3. Missing AES alias with a generation marker and valid envelope -> `RecoveryRequired(ACTIVE_RECORD_UNREADABLE)`, never `Empty`.
+
+The third test uses a metadata-only test double and a disposable TEE test alias to reach the coordinator state on an emulator; it is not StrongBox evidence. No process-wide JCA provider registration, production alias, key, authority, permission, trust transition or executor was changed.
+
+**SEC-020B6A status:** implementation committed; exact-head Phase 1, CI-003 and QA-005 reruns pending.
+
+**Current milestone status:** M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED by physical Pixel 9 Pro access; M8 BLOCKED. No milestone is COMPLETE. Independent human security review, spoken TalkBack acceptance, physical StrongBox/reboot recovery, signed release, OTA rollback and production deployment remain outstanding.
+
+**Next bounded task after SEC-020B6A acceptance:** add deterministic Keystore load/alias-enumeration failure injection, then stop emulator-only claims and reserve real StrongBox, reboot and recovery acceptance for supervised Pixel 9 Pro M7 hardware validation.

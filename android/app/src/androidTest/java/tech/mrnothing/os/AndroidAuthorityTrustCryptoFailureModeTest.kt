@@ -6,6 +6,10 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.test.InstrumentationTestCase
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.nio.charset.StandardCharsets
+import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.util.UUID
@@ -114,6 +118,47 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             )
         }
 
+    fun testKeyInfoGeneralSecurityExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(throwingKeyInfoReader(GeneralSecurityException("injected KeyInfo failure"))) {
+                crypto, _, markerPrefix, _, _ ->
+            createTeeHmac(markerPrefix + "1")
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+        }
+
+    fun testKeyInfoRuntimeExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(throwingKeyInfoReader(IllegalStateException("injected provider failure"))) {
+                crypto, _, markerPrefix, _, _ ->
+            createTeeHmac(markerPrefix + "1")
+            assertNull(crypto.highestObservedGeneration())
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+        }
+
+    fun testMissingAesKeyWithGenerationMarkerRequiresRecovery() =
+        withIsolatedCrypto(SyntheticStrongBoxKeyInfoReader) {
+                crypto, store, markerPrefix, aesAlias, _ ->
+            createTeeHmac(markerPrefix + "1")
+            createTeeAes(aesAlias)
+            assertTrue("test AES alias must exist before simulated key loss", store.containsAlias(aesAlias))
+            store.deleteEntry(aesAlias)
+            assertFalse("AES alias must be absent after simulated key loss", store.containsAlias(aesAlias))
+
+            val envelope = encodeEnvelopeForTest(1L, ByteArray(28))
+            assertEquals(
+                AuthorityTrustStoreState.RecoveryRequired(
+                    1L,
+                    AuthorityRecoveryReason.ACTIVE_RECORD_UNREADABLE
+                ),
+                OwnerAuthorityTrustStore(crypto, PresentPersistence(envelope)).inspect()
+            )
+        }
+
     private fun validRecord(): AuthorityTrustRecord {
         val pair = KeyPairGenerator.getInstance("Ed25519", BouncyCastleProvider()).generateKeyPair()
         val spki = pair.public.encoded
@@ -172,13 +217,16 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
     }
 
     private fun withIsolatedCrypto(
+        keyInfoReader: AndroidAuthorityKeyInfoReader? = null,
         block: (AndroidAuthorityTrustCrypto, KeyStore, String, String, Context) -> Unit
     ) {
         val context = getInstrumentation().targetContext
         val token = UUID.randomUUID().toString().replace("-", "")
         val markerPrefix = "mrnothing_sec020b6_${token}_marker_"
         val aesAlias = "mrnothing_sec020b6_${token}_aes"
-        val crypto = AndroidAuthorityTrustCrypto(markerPrefix, aesAlias)
+        val crypto = keyInfoReader?.let {
+            AndroidAuthorityTrustCrypto(markerPrefix, aesAlias, it)
+        } ?: AndroidAuthorityTrustCrypto(markerPrefix, aesAlias)
         val store = KeyStore.getInstance(ANDROID_KEYSTORE)
         store.load(null)
         try {
@@ -193,6 +241,34 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             }
             if (cleanup.containsAlias(aesAlias)) cleanup.deleteEntry(aesAlias)
         }
+    }
+
+    private fun throwingKeyInfoReader(failure: Exception): AndroidAuthorityKeyInfoReader =
+        object : AndroidAuthorityKeyInfoReader {
+            override fun securityLevel(key: SecretKey): Int {
+                throw failure
+            }
+        }
+
+    private object SyntheticStrongBoxKeyInfoReader : AndroidAuthorityKeyInfoReader {
+        // Metadata-only test double. It does not create or claim a StrongBox key.
+        override fun securityLevel(key: SecretKey): Int = KeyProperties.SECURITY_LEVEL_STRONGBOX
+    }
+
+    private fun encodeEnvelopeForTest(generation: Long, encrypted: ByteArray): ByteArray {
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { output ->
+            output.write("MRAENV01".toByteArray(StandardCharsets.US_ASCII))
+            output.writeLong(generation)
+            output.writeInt(encrypted.size)
+            output.write(encrypted)
+        }
+        return bytes.toByteArray()
+    }
+
+    private class PresentPersistence(private val bytes: ByteArray) : AuthorityRecordPersistence {
+        override fun read(): AuthorityRecordRead = AuthorityRecordRead.Present(bytes.copyOf())
+        override fun writeAtomically(bytes: ByteArray): Boolean = false
     }
 
     private object MissingPersistence : AuthorityRecordPersistence {

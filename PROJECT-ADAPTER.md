@@ -482,3 +482,14 @@ The test is corrected to assert that two-layer behavior using a synthetic marker
 At head `28065d7416c2aa89ffc17ed3dcf4614f2a34e733`, Phase 1 push/PR passed with 524 Python tests each and Android unit/build/dependency gates. CI-003 push/PR passed independent-runner verification; unsigned APKs were byte-identical (7,829,728 bytes; SHA-256 `09623ce52db112aab99a23b08196b260e9fab02456e76a41d970c14edbc69510`). QA-005 run [42220218287](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42220218287) started 16 instrumentation tests; two SEC-020B6 tests failed before crypto assertions because the synthetic Ed25519 helper selected the uninitialized AndroidKeyStore provider. The other 14 tests reported no failures; fail-fast skipped later QA stages. Diagnostics uploaded and synthetic lock credential cleanup reported success.
 
 The fixture now selects an explicit Bouncy Castle provider instance for the in-memory Ed25519 key pair. This is test-only; production Keystore policy and aliases are unchanged. SEC-020B6 remains unaccepted until exact-head QA-005 and all Phase 1/CI-003 reruns pass.
+
+
+## Audit update — 2026-11-06, SEC-020B6 acceptance and SEC-020B6A
+
+The latest audit was performed at `83a3aa2e90e89b29bae4f9c2b14cd402f084ebc7`. The recursive tree contained 282 entries and was not truncated; six open PRs were reviewed; PR #1 remains draft with no reviews; the branch is unprotected and repository rulesets are empty. This local adapter and the engineering roadmap are present; repository SKILL.md is absent; the upstream shared factory package remains unverified and is not claimed as installed.
+
+SEC-020B6 passed exact-head Phase 1 push/PR, CI-003 push/PR and QA-005. The API 35 x86_64 disposable emulator ran 16 instrumentation tests with zero failures or skips, including three SEC-020B4D, five SEC-020B5 and eight SEC-020B6 cases. QA-011 remains a disabled-service preflight and QA-012 remains structural semantics only. CI-003 verified byte-identical unsigned APKs and reports release_ready=false.
+
+SEC-020B6A adds an internal KeyInfo-reader injection seam with the existing AndroidKeyStore implementation as the production default. New tests inject checked/runtime metadata exceptions and verify that a missing AES alias with a generation marker produces RecoveryRequired rather than Empty. The missing-AES test uses synthetic metadata and is not StrongBox evidence. Exact-head Phase 1, CI-003 and QA-005 reruns are pending.
+
+**Next bounded task:** after SEC-020B6A acceptance, test Keystore load and alias-enumeration failures. Keep M1/M2/M6 in progress, M3 partial, M4 not started, M5 not accepted, M7 blocked pending Pixel 9 Pro access and M8 blocked. No milestone is complete. Independent human security review remains pending.

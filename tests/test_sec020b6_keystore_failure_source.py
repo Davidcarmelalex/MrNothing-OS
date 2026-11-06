@@ -16,6 +16,26 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
         self.assertIn("AndroidAuthorityTrustCrypto()", BACKEND)
         self.assertIn('KeyPairGenerator.getInstance("Ed25519", BouncyCastleProvider())', INSTRUMENTATION)
 
+    def test_platform_key_info_reader_remains_the_production_default(self):
+        self.assertIn(
+            "private val keyInfoReader: AndroidAuthorityKeyInfoReader = PlatformAndroidAuthorityKeyInfoReader",
+            BACKEND,
+        )
+        self.assertIn('SecretKeyFactory.getInstance(key.algorithm, "AndroidKeyStore")', BACKEND)
+        self.assertIn("keyInfoReader.securityLevel(key)", BACKEND)
+        self.assertIn("AndroidAuthorityTrustCrypto()", BACKEND)
+
+    def test_instrumentation_covers_metadata_exceptions_and_missing_aes_key(self):
+        for name in (
+            "testKeyInfoGeneralSecurityExceptionMakesTrustStoreUnavailable",
+            "testKeyInfoRuntimeExceptionMakesTrustStoreUnavailable",
+            "testMissingAesKeyWithGenerationMarkerRequiresRecovery",
+        ):
+            self.assertIn(name, INSTRUMENTATION)
+        self.assertIn("SyntheticStrongBoxKeyInfoReader", INSTRUMENTATION)
+        self.assertIn("PresentPersistence(envelope)", INSTRUMENTATION)
+        self.assertNotIn("Security.addProvider", INSTRUMENTATION)
+
     def test_both_generation_marker_and_aes_keys_require_strongbox(self):
         self.assertEqual(2, BACKEND.count(".setIsStrongBoxBacked(true)"))
         self.assertNotIn(".setIsStrongBoxBacked(false)", BACKEND)
