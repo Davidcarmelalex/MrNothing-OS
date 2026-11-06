@@ -81,7 +81,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                 (privateField(target, "confirmButton") as Button).performClick()
             }
 
-            awaitCredentialPrompt()
+            awaitCredentialPrompt(target)
             shell("input text $TEST_PIN")
             shell("input keyevent 66")
 
@@ -172,16 +172,27 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
     }
 
-    private fun awaitCredentialPrompt() {
+    private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
+        awaitMainCondition("credential confirmation was not initiated") {
+            privateField(activity, "pendingBinding") != null
+        }
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
-            val hierarchy = shell(
-                "uiautomator dump /sdcard/mrnothing-sec020b4d-window.xml >/dev/null 2>&1; " +
-                    "cat /sdcard/mrnothing-sec020b4d-window.xml 2>/dev/null"
-            )
-            if (hierarchy.contains("com.android.systemui") &&
-                hierarchy.contains("lockPassword")
-            ) return
+            val root = getInstrumentation().uiAutomation.rootInActiveWindow
+            if (root != null) {
+                val isSystemUi = root.packageName?.toString() == "com.android.systemui"
+                val matches = try {
+                    root.findAccessibilityNodeInfosByViewId(
+                        "com.android.systemui:id/lockPassword"
+                    )
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                val visible = isSystemUi && matches.isNotEmpty()
+                matches.forEach { it.recycle() }
+                root.recycle()
+                if (visible) return
+            }
             SystemClock.sleep(100)
         }
         fail("credential-only SystemUI prompt did not become visible")

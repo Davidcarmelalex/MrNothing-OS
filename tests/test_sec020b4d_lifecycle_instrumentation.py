@@ -39,6 +39,9 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("KeyPairGenerator.getInstance(\"Ed25519\")", source)
         self.assertIn("locksettings set-pin", source)
         self.assertIn("locksettings clear --old", source)
+        self.assertIn("rootInActiveWindow", source)
+        self.assertIn("findAccessibilityNodeInfosByViewId", source)
+        self.assertNotIn("uiautomator dump", source)
         for forbidden in ("AndroidOwnerAuthorityTrustStore(", "AndroidAuthorityTrustCrypto(",
                           "AndroidAtomicAuthorityRecordPersistence(", "fastboot", "adb root",
                           "ProcessBuilder(", "Runtime.getRuntime(", "CommandRouter(",
