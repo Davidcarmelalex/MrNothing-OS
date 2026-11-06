@@ -13,6 +13,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
+import java.security.Key
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.Enumeration
@@ -57,6 +58,9 @@ internal interface AndroidAuthorityKeyStoreReader {
 
     @Throws(GeneralSecurityException::class)
     fun aliases(store: KeyStore): Enumeration<String>
+
+    @Throws(GeneralSecurityException::class)
+    fun getKey(store: KeyStore, alias: String): Key?
 }
 
 internal object PlatformAndroidAuthorityKeyStoreReader : AndroidAuthorityKeyStoreReader {
@@ -67,6 +71,8 @@ internal object PlatformAndroidAuthorityKeyStoreReader : AndroidAuthorityKeyStor
     }
 
     override fun aliases(store: KeyStore): Enumeration<String> = store.aliases()
+
+    override fun getKey(store: KeyStore, alias: String): Key? = store.getKey(alias, null)
 }
 
 /**
@@ -140,7 +146,7 @@ internal class AndroidAuthorityTrustCrypto(
         ) return@synchronized false
         try {
             val store = loadKeyStore() ?: return@synchronized false
-            val key = store.getKey(markerAlias(record.generation), null) as? SecretKey
+            val key = keyStoreReader.getKey(store, markerAlias(record.generation)) as? SecretKey
                 ?: return@synchronized false
             if (!isStrongBoxBacked(key)) return@synchronized false
             MessageDigest.isEqual(proof, hmac(key, markerPayload(record)))
@@ -188,7 +194,7 @@ internal class AndroidAuthorityTrustCrypto(
                 val store = loadKeyStore() ?: return@synchronized null
                 val highest = highestObservedGeneration(store) ?: return@synchronized null
                 if (highest <= 0L) return@synchronized null
-                val key = store.getKey(aesAlias, null) as? SecretKey
+                val key = keyStoreReader.getKey(store, aesAlias) as? SecretKey
                     ?: return@synchronized null
                 if (!isStrongBoxBacked(key)) return@synchronized null
                 val iv = envelope.copyOfRange(0, GCM_IV_BYTES)
@@ -217,7 +223,7 @@ internal class AndroidAuthorityTrustCrypto(
             val suffix = alias.removePrefix(markerPrefix)
             val generation = suffix.toLongOrNull() ?: return null
             if (generation <= 0L || generation.toString() != suffix) return null
-            val key = store.getKey(alias, null) as? SecretKey ?: return null
+            val key = keyStoreReader.getKey(store, alias) as? SecretKey ?: return null
             if (!isStrongBoxBacked(key)) return null
             if (generation > highest) highest = generation
         }
@@ -229,7 +235,7 @@ internal class AndroidAuthorityTrustCrypto(
 
     private fun getOrCreateEncryptionKey(store: KeyStore): SecretKey? {
         if (store.containsAlias(aesAlias)) {
-            val existing = store.getKey(aesAlias, null) as? SecretKey ?: return null
+            val existing = keyStoreReader.getKey(store, aesAlias) as? SecretKey ?: return null
             return if (isStrongBoxBacked(existing)) existing else null
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)

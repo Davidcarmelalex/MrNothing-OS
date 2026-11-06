@@ -11,6 +11,9 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
+import java.security.Key
+import java.security.ProviderException
+import java.security.UnrecoverableKeyException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.util.Enumeration
@@ -222,6 +225,119 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             assertFalse(store.containsAlias(aesAlias))
         }
 
+
+    fun testMarkerKeyUnrecoverableExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReaderFactory = { markerPrefix, _ ->
+                throwingKeyStoreGetKeyReader(
+                    markerPrefix + "1",
+                    UnrecoverableKeyException("injected marker key retrieval failure")
+                )
+            }
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            createTeeHmac(markerPrefix + "1")
+            val record = validRecord()
+            assertNull(crypto.highestObservedGeneration())
+            assertFalse(
+                crypto.verifyGenerationMarker(
+                    record,
+                    ByteArray(AuthorityTrustStoreLimits.MARKER_PROOF_BYTES)
+                )
+            )
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(record))
+            assertTrue("existing marker must remain untouched", store.containsAlias(markerPrefix + "1"))
+            assertFalse("failed retrieval must not create the next marker", store.containsAlias(markerPrefix + "2"))
+            assertFalse("failed marker inspection must not create AES state", store.containsAlias(aesAlias))
+        }
+
+    fun testMarkerKeyProviderExceptionMakesTrustStoreUnavailable() =
+        withIsolatedCrypto(
+            keyStoreReaderFactory = { markerPrefix, _ ->
+                throwingKeyStoreGetKeyReader(
+                    markerPrefix + "1",
+                    ProviderException("injected marker KeyStore provider failure")
+                )
+            }
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            createTeeHmac(markerPrefix + "1")
+            val record = validRecord()
+            assertNull(crypto.highestObservedGeneration())
+            assertFalse(
+                crypto.verifyGenerationMarker(
+                    record,
+                    ByteArray(AuthorityTrustStoreLimits.MARKER_PROOF_BYTES)
+                )
+            )
+            assertEquals(
+                AuthorityTrustStoreState.Unavailable,
+                OwnerAuthorityTrustStore(crypto, MissingPersistence).inspect()
+            )
+            assertNull(crypto.createGenerationMarker(record))
+            assertTrue("existing marker must remain untouched", store.containsAlias(markerPrefix + "1"))
+            assertFalse("failed retrieval must not create the next marker", store.containsAlias(markerPrefix + "2"))
+            assertFalse("failed marker inspection must not create AES state", store.containsAlias(aesAlias))
+        }
+
+    fun testAesKeyUnrecoverableExceptionFailsClosedForEncryptAndDecrypt() =
+        withIsolatedCrypto(
+            keyInfoReader = SyntheticStrongBoxKeyInfoReader,
+            keyStoreReaderFactory = { _, aesAlias ->
+                throwingKeyStoreGetKeyReader(
+                    aesAlias,
+                    UnrecoverableKeyException("injected AES key retrieval failure")
+                )
+            }
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            createTeeHmac(markerPrefix + "1")
+            createTeeAes(aesAlias)
+            assertTrue("isolated AES alias must exist before injected retrieval failure", store.containsAlias(aesAlias))
+            val aad = "sec020b6c-test".toByteArray(StandardCharsets.US_ASCII)
+            assertNull(crypto.encrypt(byteArrayOf(1, 2, 3), aad))
+            val envelope = encodeEnvelopeForTest(1L, ByteArray(28))
+            assertNull(crypto.decrypt(envelope, aad))
+            assertEquals(
+                AuthorityTrustStoreState.RecoveryRequired(
+                    1L,
+                    AuthorityRecoveryReason.ACTIVE_RECORD_UNREADABLE
+                ),
+                OwnerAuthorityTrustStore(crypto, PresentPersistence(envelope)).inspect()
+            )
+            assertTrue("failed retrieval must not delete the AES alias", store.containsAlias(aesAlias))
+            assertFalse("failed retrieval must not advance the marker", store.containsAlias(markerPrefix + "2"))
+        }
+
+    fun testAesKeyProviderExceptionFailsClosedForEncryptAndDecrypt() =
+        withIsolatedCrypto(
+            keyInfoReader = SyntheticStrongBoxKeyInfoReader,
+            keyStoreReaderFactory = { _, aesAlias ->
+                throwingKeyStoreGetKeyReader(
+                    aesAlias,
+                    ProviderException("injected AES KeyStore provider failure")
+                )
+            }
+        ) { crypto, store, markerPrefix, aesAlias, _ ->
+            createTeeHmac(markerPrefix + "1")
+            createTeeAes(aesAlias)
+            assertTrue("isolated AES alias must exist before injected retrieval failure", store.containsAlias(aesAlias))
+            val aad = "sec020b6c-test".toByteArray(StandardCharsets.US_ASCII)
+            assertNull(crypto.encrypt(byteArrayOf(1, 2, 3), aad))
+            val envelope = encodeEnvelopeForTest(1L, ByteArray(28))
+            assertNull(crypto.decrypt(envelope, aad))
+            assertEquals(
+                AuthorityTrustStoreState.RecoveryRequired(
+                    1L,
+                    AuthorityRecoveryReason.ACTIVE_RECORD_UNREADABLE
+                ),
+                OwnerAuthorityTrustStore(crypto, PresentPersistence(envelope)).inspect()
+            )
+            assertTrue("failed retrieval must not delete the AES alias", store.containsAlias(aesAlias))
+            assertFalse("failed retrieval must not advance the marker", store.containsAlias(markerPrefix + "2"))
+        }
+
     fun testMissingAesKeyWithGenerationMarkerRequiresRecovery() =
         withIsolatedCrypto(SyntheticStrongBoxKeyInfoReader) {
                 crypto, store, markerPrefix, aesAlias, _ ->
@@ -301,6 +417,7 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
     private fun withIsolatedCrypto(
         keyInfoReader: AndroidAuthorityKeyInfoReader? = null,
         keyStoreReader: AndroidAuthorityKeyStoreReader? = null,
+        keyStoreReaderFactory: ((String, String) -> AndroidAuthorityKeyStoreReader)? = null,
         block: (AndroidAuthorityTrustCrypto, KeyStore, String, String, Context) -> Unit
     ) {
         val context = getInstrumentation().targetContext
@@ -311,7 +428,8 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             markerPrefix,
             aesAlias,
             keyInfoReader ?: PlatformAndroidAuthorityKeyInfoReader,
-            keyStoreReader ?: PlatformAndroidAuthorityKeyStoreReader
+            keyStoreReader ?: keyStoreReaderFactory?.invoke(markerPrefix, aesAlias)
+                ?: PlatformAndroidAuthorityKeyStoreReader
         )
         val store = KeyStore.getInstance(ANDROID_KEYSTORE)
         store.load(null)
@@ -334,6 +452,8 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             override fun load(): KeyStore = throw failure
 
             override fun aliases(store: KeyStore): Enumeration<String> = store.aliases()
+
+            override fun getKey(store: KeyStore, alias: String): Key? = store.getKey(alias, null)
         }
 
     private fun throwingKeyStoreAliasReader(failure: Exception): AndroidAuthorityKeyStoreReader =
@@ -345,6 +465,27 @@ class AndroidAuthorityTrustCryptoFailureModeTest : InstrumentationTestCase() {
             }
 
             override fun aliases(store: KeyStore): Enumeration<String> = throw failure
+
+            override fun getKey(store: KeyStore, alias: String): Key? = store.getKey(alias, null)
+        }
+
+    private fun throwingKeyStoreGetKeyReader(
+        targetAlias: String,
+        failure: Exception
+    ): AndroidAuthorityKeyStoreReader =
+        object : AndroidAuthorityKeyStoreReader {
+            override fun load(): KeyStore {
+                val store = KeyStore.getInstance(ANDROID_KEYSTORE)
+                store.load(null)
+                return store
+            }
+
+            override fun aliases(store: KeyStore): Enumeration<String> = store.aliases()
+
+            override fun getKey(store: KeyStore, alias: String): Key? {
+                if (alias == targetAlias) throw failure
+                return store.getKey(alias, null)
+            }
         }
 
     private fun throwingKeyInfoReader(failure: Exception): AndroidAuthorityKeyInfoReader =

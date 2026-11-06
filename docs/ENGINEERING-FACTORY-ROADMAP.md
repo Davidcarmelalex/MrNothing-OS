@@ -779,3 +779,33 @@ A narrow internal `AndroidAuthorityKeyStoreReader` seam preserves the production
 **Milestones:** M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised Pixel 9 Pro access; M8 BLOCKED. No milestone is complete. Independent human security review, spoken TalkBack, physical StrongBox/reboot recovery, signed releases, OTA rollback and production deployment remain outstanding.
 
 **Next bounded task after SEC-020B6B acceptance:** add deterministic KeyStore key-retrieval failure injection for marker/AES aliases, then reserve actual StrongBox, reboot and recovery acceptance for supervised Pixel 9 Pro M7 hardware validation.
+
+
+## Engineering Factory run — 2026-11-06, SEC-020B6B acceptance and SEC-020B6C
+
+**Audit baseline:** `feat/phase1-agentic-phone` at `83bb54904e7f9db15ac42a532f96dbededc91bca`. The recursive Git tree contains 282 entries and is not truncated. The latest 20 branch commits were inspected; the branch is 223 commits ahead of `main` and 0 behind at this baseline. `PROJECT-ADAPTER.md` and this roadmap are present; repository `SKILL.md` is absent. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed. Six PRs (#1, #3, #4, #5, #6, #7) are open/draft. PR #1 targets `main`, has 223 commits/218 changed files, matches the authorized branch head, and has zero submitted reviews and zero inline review threads. Other PR branches were not modified. The branch API reports `protected=false`; repository rulesets are empty.
+
+### SEC-020B6B exact-head acceptance
+
+- Phase 1 push [42226887109](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226887109) and PR [42226898225](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226898225) passed. Each Python-policy job ran **528 tests**. Android debug unit tests/build, same-run repeat debug APK comparison, strict Gradle dependency verification, modified-dependency negative control and Android manifest security gate passed.
+- CI-003 push [42226887105](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226887105) and PR [42226897830](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226897830) passed both independent builders and verifier. Unsigned release APKs were byte-identical (7,831,748 bytes; SHA-256 `3008fcdc6a737aaa9b200565f5535abe84ad2dcd0731f8cd0811c73a4a16627f`; normalized-entry SHA-256 `600e753c6aebf12cc8b8b6774910a30ee57cfe44f389acd473be4c433c7acf15`). Runtime inventory SHA-256 `9b06a5f81611e6fcbf8264ab0793543a02e29a8a7b9ef3c8aa8994b3a32afe8b`; SPDX runtime SBOM SHA-256 `51ad4b95bd8326c3a0fe2b66372329b4e9b166df5eb7c78561fddf304fb2eb31`. The verifier reported `reproducible=true`, `release_ready=false`. The 1,260-component CI-006 inventory is scoped and is not a complete hosted-runner image SBOM.
+- QA-005 [42226897923](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226897923), attempt 2, passed its emulator-smoke job and all workflow steps on a disposable API 35 x86_64 emulator. The first attempt failed in the existing SEC-020B4D lifecycle callback test; the failed-job-only retry succeeded without source changes. Evidence artifact [13511926456](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42226897923/artifacts/13511926456), digest `sha256:6f7261289126bf0358afd93ae113e1bc636c6daa20834eccadda4a4be5f52ab0`. QA-011 reports `blocked_service_disabled` (not TalkBack acceptance); QA-012 is structural semantics only, not spoken TalkBack.
+- SEC-020B6B is accepted only for the tested API 35 x86_64 emulator Keystore-load and alias-enumeration failure paths. It does not establish physical StrongBox or Pixel 9 Pro behavior.
+
+### SEC-020B6C — KeyStore key-retrieval failure injection
+
+A narrow `AndroidAuthorityKeyStoreReader.getKey(store, alias)` seam routes production marker/AES retrieval through the platform default, which delegates directly to `KeyStore.getKey(alias, null)`. Production aliases and no-argument `AndroidAuthorityTrustCrypto()` construction remain unchanged.
+
+Four isolated instrumentation cases inject:
+1. `UnrecoverableKeyException` while reading a generation-marker key.
+2. `ProviderException` while reading a generation-marker key.
+3. `UnrecoverableKeyException` while reading an existing AES record key.
+4. `ProviderException` while reading an existing AES record key.
+
+Marker retrieval failures must make the trust store `Unavailable`, make marker verification false, and refuse generation advancement. AES retrieval failures must make encrypt/decrypt fail closed and map a present record to `RecoveryRequired(ACTIVE_RECORD_UNREADABLE)`, never `Empty` or `Active`. Existing test aliases must remain untouched; no fallback key or marker is created. The tests use unique disposable aliases and a metadata-only KeyInfo test double for emulator state classification; this is not StrongBox hardware evidence.
+
+**SEC-020B6C:** implementation committed in the current audit run; exact-head Phase 1, CI-003 and QA-005 validation are pending.
+
+**Milestones:** M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending supervised physical Pixel 9 Pro access; M8 BLOCKED. No milestone is complete. Independent human security review, spoken TalkBack acceptance, physical StrongBox/reboot recovery, signed release, OTA rollback and production deployment remain outstanding.
+
+**Next task after SEC-020B6C exact-head acceptance:** stop adding emulator-only trust-store abstractions and prepare the supervised Pixel 9 Pro M7 StrongBox/key persistence/reboot/recovery validation, while separately closing the TalkBack service and spoken-navigation acceptance gap.

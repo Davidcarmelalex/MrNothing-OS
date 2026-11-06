@@ -69,6 +69,32 @@ class AndroidAuthorityTrustCryptoFailureSourceTests(unittest.TestCase):
         self.assertIn("throwingKeyStoreAliasReader", INSTRUMENTATION)
         self.assertNotIn("Security.addProvider", INSTRUMENTATION)
 
+
+    def test_key_retrieval_is_routed_through_platform_reader(self):
+        self.assertIn("fun getKey(store: KeyStore, alias: String): Key?", BACKEND)
+        self.assertIn(
+            "override fun getKey(store: KeyStore, alias: String): Key? = store.getKey(alias, null)",
+            BACKEND,
+        )
+        self.assertEqual(1, BACKEND.count("store.getKey(alias, null)"))
+        self.assertIn("keyStoreReader.getKey(store, markerAlias(record.generation))", BACKEND)
+        self.assertIn("keyStoreReader.getKey(store, alias)", BACKEND)
+        self.assertEqual(2, BACKEND.count("keyStoreReader.getKey(store, aesAlias)"))
+
+    def test_marker_and_aes_key_retrieval_failures_are_injected(self):
+        for name in (
+            "testMarkerKeyUnrecoverableExceptionMakesTrustStoreUnavailable",
+            "testMarkerKeyProviderExceptionMakesTrustStoreUnavailable",
+            "testAesKeyUnrecoverableExceptionFailsClosedForEncryptAndDecrypt",
+            "testAesKeyProviderExceptionFailsClosedForEncryptAndDecrypt",
+        ):
+            self.assertIn(name, INSTRUMENTATION)
+        self.assertIn("throwingKeyStoreGetKeyReader", INSTRUMENTATION)
+        self.assertIn("keyStoreReaderFactory", INSTRUMENTATION)
+        self.assertIn("UnrecoverableKeyException", INSTRUMENTATION)
+        self.assertIn("ProviderException", INSTRUMENTATION)
+        self.assertNotIn("Security.addProvider", INSTRUMENTATION)
+
     def test_marker_aliases_must_be_positive_canonical_decimal(self):
         self.assertIn("suffix.toLongOrNull() ?: return null", BACKEND)
         self.assertIn("generation <= 0L || generation.toString() != suffix", BACKEND)
