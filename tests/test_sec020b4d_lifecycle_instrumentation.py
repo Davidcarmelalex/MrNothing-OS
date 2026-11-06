@@ -120,7 +120,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("takeScreenshot()", source)
         self.assertIn("viewIdResourceName", source)
         self.assertIn("getBoundsInScreen", source)
-        self.assertIn("captureCredentialUiScreenshot()", source)
+        self.assertIn("credentialUiSnapshot()", source)
         self.assertIn('shell("dumpsys window windows")', source)
         self.assertIn("lastCredentialPreflightDiagnostics", source)
         self.assertIn("ui=${credentialUiSnapshot()}", source)

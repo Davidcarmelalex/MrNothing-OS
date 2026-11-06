@@ -95,7 +95,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("credential-ui-pre-cleanup.png", self.workflow)
         start = instrumentation.index("private fun awaitSystemCredentialUi")
         end = instrumentation.index("private fun hasVisibleSystemCredentialInput", start)
-        self.assertIn("captureCredentialUiScreenshot()", instrumentation[start:end])
+        self.assertIn("credentialUiSnapshot()", instrumentation[start:end])
+        self.assertIn("exec-out screencap -p", self.workflow)
 
     def test_failure_screenshot_is_extracted_without_root(self):
         self.assertIn("timeout 180s", self.workflow)
