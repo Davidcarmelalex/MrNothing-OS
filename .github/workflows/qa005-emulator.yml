@@ -124,6 +124,15 @@ jobs:
             local rc=$?
             trap - EXIT INT TERM
             if [[ "$PIN_CONFIGURED" == 1 ]]; then
+              if [[ "$rc" -ne 0 ]]; then
+                # Capture the disposable emulator before removing its synthetic PIN.
+                # This is bounded, unprivileged ADB screencap; it never uses root.
+                timeout 10s adb -s "$ANDROID_SERIAL" exec-out screencap -p \
+                  > "$QA005_OUTPUT/credential-ui-pre-cleanup.png" 2> "$QA005_OUTPUT/credential-ui-screencap.stderr" || rm -f "$QA005_OUTPUT/credential-ui-pre-cleanup.png"
+                if [[ ! -s "$QA005_OUTPUT/credential-ui-pre-cleanup.png" ]]; then
+                  rm -f "$QA005_OUTPUT/credential-ui-pre-cleanup.png"
+                fi
+              fi
               if adb -s "$ANDROID_SERIAL" shell locksettings clear --old "$TEST_PIN"; then
                 PIN_CONFIGURED=0
               else
@@ -142,7 +151,7 @@ jobs:
           adb -s "$ANDROID_SERIAL" shell locksettings set-pin "$TEST_PIN" \
             > "$RUNNER_TEMP/sec020b4d-pin-set.txt" 2>&1
           PIN_CONFIGURED=1
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"
@@ -204,12 +213,6 @@ jobs:
           timeout 15s adb -s "$ANDROID_SERIAL" logcat -b all -d -t 2000 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity lastanr > "$QA005_OUTPUT/last-anr.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys meminfo tech.mrnothing.os > "$QA005_OUTPUT/app-meminfo.txt" 2>&1 || true
-          # The instrumentation writes this screenshot only when the exact SystemUI
-          # credential field is missing. Extract it from the debuggable test target
-          # without root or broad storage access; it contains only disposable AVD UI.
-          if timeout 15s adb -s "$ANDROID_SERIAL" shell run-as tech.mrnothing.os test -s files/qa005-credential-ui.png >/dev/null 2>&1; then
-            timeout 15s adb -s "$ANDROID_SERIAL" exec-out run-as tech.mrnothing.os cat files/qa005-credential-ui.png > "$QA005_OUTPUT/credential-ui.png" || rm -f "$QA005_OUTPUT/credential-ui.png"
-          fi
           df -h > "$QA005_OUTPUT/disk.txt" || true
           free -h > "$QA005_OUTPUT/memory.txt" || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

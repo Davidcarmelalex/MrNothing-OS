@@ -90,15 +90,18 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         instrumentation = instrumentation_path.read_text(encoding="utf-8")
         self.assertIn("viewIdResourceName", instrumentation)
         self.assertIn("getBoundsInScreen", instrumentation)
-        self.assertIn("takeScreenshot()", instrumentation)
-        self.assertIn("qa005-credential-ui.png", instrumentation)
+        self.assertIn("credentialNodeSummary", instrumentation)
+        self.assertNotIn("takeScreenshot()", instrumentation)
+        self.assertIn("credential-ui-pre-cleanup.png", self.workflow)
         start = instrumentation.index("private fun awaitSystemCredentialUi")
         end = instrumentation.index("private fun hasVisibleSystemCredentialInput", start)
         self.assertIn("captureCredentialUiScreenshot()", instrumentation[start:end])
 
     def test_failure_screenshot_is_extracted_without_root(self):
-        self.assertIn("run-as tech.mrnothing.os test -s files/qa005-credential-ui.png", self.workflow)
-        self.assertIn("exec-out run-as tech.mrnothing.os cat files/qa005-credential-ui.png", self.workflow)
+        self.assertIn("timeout 180s", self.workflow)
+        self.assertIn("exec-out screencap -p", self.workflow)
+        self.assertIn("credential-ui-pre-cleanup.png", self.workflow)
+        self.assertLess(self.workflow.index("exec-out screencap -p"), self.workflow.index("locksettings clear --old"))
         self.assertNotIn("adb root", self.workflow)
 
     def test_no_physical_device_target(self):

@@ -5,7 +5,6 @@ import android.app.Application
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.Rect
 import android.hardware.biometrics.BiometricManager
 import android.os.Bundle
@@ -19,8 +18,6 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import android.view.accessibility.AccessibilityNodeInfo
-import java.io.File
-import java.io.FileOutputStream
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -361,37 +358,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             " bounds=" + bounds
     }
 
-    /**
-     * Capture only the disposable emulator's screen when the exact
-     * SystemUI credential field cannot be found. The screenshot is written
-     * to this debuggable test target's private files directory and extracted
-     * by QA-005 with run-as; no storage permission or production API is added.
-     */
-    private fun captureCredentialUiScreenshot(): String {
-        val context = getInstrumentation().targetContext
-        val screenshot = try {
-            getInstrumentation().uiAutomation.takeScreenshot()
-        } catch (error: RuntimeException) {
-            return "capture-error=" + error.javaClass.simpleName
-        } ?: return "capture-unavailable"
-
-        val file = File(context.filesDir, "qa005-credential-ui.png")
-        return try {
-            val encoded = FileOutputStream(file).use { output ->
-                screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)
-            }
-            if (encoded) {
-                "files/qa005-credential-ui.png bytes=" + file.length()
-            } else {
-                "encode-failed"
-            }
-        } catch (error: Exception) {
-            "write-error=" + error.javaClass.simpleName
-        } finally {
-            screenshot.recycle()
-        }
-    }
-
     private fun awaitSystemCredentialUi(message: String) {
         val deadline = SystemClock.elapsedRealtime() + 12_000L
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -402,7 +368,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             "$message; ${safetySnapshot(getInstrumentation().targetContext)}; " +
                 "preflight=$lastCredentialPreflightDiagnostics; " +
                 "visibleSystemCredentialInput=${hasVisibleSystemCredentialInput()}; " +
-                "screenshot=${captureCredentialUiScreenshot()}; " +
                 "ui=${credentialUiSnapshot()}"
         )
     }
