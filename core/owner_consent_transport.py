@@ -838,6 +838,33 @@ class OwnerConsentTlsAdapter:
             discard()
             return None, "TRANSPORT_CREDENTIAL_CHANGED"
 
+        # Re-read the owner enrollment after the transport refresh so a
+        # consent-key rotation/revocation during validation fails closed.
+        try:
+            fresh_owner_record = self._consent_registry.lookup_active_device(
+                record.device_id
+            )
+        except Exception:
+            return None, "ENROLLMENT_REGISTRY_UNAVAILABLE"
+        if (
+            type(fresh_owner_record) is not EnrolledOwnerDevice
+            or type(fresh_owner_record.active) is not bool
+            or fresh_owner_record.active is not True
+            or fresh_owner_record.owner_id != record.owner_id
+            or fresh_owner_record.device_id != record.device_id
+            or fresh_owner_record.transport_certificate_sha256
+                != record.transport_certificate_sha256
+            or type(fresh_owner_record.credential_generation) is not int
+            or fresh_owner_record.credential_generation
+                != record.credential_generation
+            or type(fresh_owner_record.public_key_spki_der) is not bytes
+            or not 1 <= len(fresh_owner_record.public_key_spki_der) <= 512
+            or hashlib.sha256(fresh_owner_record.public_key_spki_der).hexdigest()
+                != record.consent_public_key_sha256
+        ):
+            discard()
+            return None, "ENROLLMENT_CONTEXT_CHANGED"
+
         final_clocks, final_clock_error = self._read_clocks()
         if final_clock_error is not None:
             discard()
@@ -953,17 +980,34 @@ class OwnerConsentTlsAdapter:
                 and decision.created
                 and decision.state == RESERVED
             ):
-                try:
-                    now_epoch_ms = self._read_clocks()[0][0]
-                except Exception:
-                    now_epoch_ms = issued.challenge.expires_at_epoch_ms
-                if now_epoch_ms >= issued.challenge.expires_at_epoch_ms:
+                post_clocks, post_clock_error = self._read_clocks()
+                cancel_reason = None
+                if post_clock_error is not None:
+                    cancel_reason = "RESERVATION_CLOCK_UNAVAILABLE"
+                else:
+                    post_epoch_ms, post_monotonic_ns = post_clocks
+                    if (
+                        post_epoch_ms >= issued.challenge.expires_at_epoch_ms
+                        or post_monotonic_ns >= record.expires_monotonic_ns
+                        or post_monotonic_ns >= state.expires_monotonic_ns
+                    ):
+                        cancel_reason = "CAPABILITY_EXPIRED"
+                if cancel_reason is not None:
                     try:
-                        ledger.cancel_before_dispatch(decision.idempotency_key)
+                        cancellation = ledger.cancel_before_dispatch(
+                            decision.idempotency_key
+                        )
                     except Exception:
-                        pass
+                        return ActionReservationAdmissionResult(
+                            False, "RESERVATION_RECONCILIATION_REQUIRED", key, None
+                        )
+                    if cancellation.applied or cancellation.state == "CANCELLED":
+                        return ActionReservationAdmissionResult(
+                            False, cancel_reason, key, "CANCELLED"
+                        )
                     return ActionReservationAdmissionResult(
-                        False, "CAPABILITY_EXPIRED", key, "CANCELLED"
+                        False, "RESERVATION_RECONCILIATION_REQUIRED",
+                        key, cancellation.state
                     )
                 return ActionReservationAdmissionResult(
                     True, "RESERVATION_CREATED_NO_EXECUTION", key, RESERVED
