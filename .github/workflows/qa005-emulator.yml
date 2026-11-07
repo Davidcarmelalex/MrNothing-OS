@@ -218,7 +218,9 @@ jobs:
           fi
           display_width="${display_size%x*}"
           display_height="${display_size#*x}"
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
+          swipe_start_y="$((display_height - 120))"
+          swipe_end_y="$((display_height / 2))"
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$swipe_start_y" "$((display_width / 2))" "$swipe_end_y" 450
           # Let the lockscreen bouncer settle; capture a fresh hierarchy with bounded null-root retries.
           sleep 1
           TEST_PIN="$TEST_PIN" timeout 120s python3 ../scripts/qa005_unlock_keyguard.py --serial "$ANDROID_SERIAL" --hierarchy "$QA005_OUTPUT/keyguard-hierarchy.xml" --capture

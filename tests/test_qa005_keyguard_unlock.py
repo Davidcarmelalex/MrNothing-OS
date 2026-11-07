@@ -21,7 +21,7 @@ from qa005_unlock_keyguard import (  # noqa: E402
     DEVICE_ENTRY_ID,
     DEVICE_ENTRY_FG_ID,
     DEVICE_LOCKED_DESC,
-    collect_keyguard_entry_center,
+    validate_keyguard_locked_surface,
     KeyguardUnlockError,
     capture_fresh_systemui_keypad_hierarchy,
     collect_keypad_centers,
@@ -176,16 +176,13 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
 
 
 
-    def test_accepts_exact_visible_systemui_device_entry_affordance(self):
+    def test_accepts_exact_visible_systemui_locked_surface(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "lockscreen.xml"
             path.write_text(fixture_lockscreen_xml(), encoding="utf-8")
-            self.assertEqual(
-                collect_keyguard_entry_center(path, 1080, 1920),
-                (540, 1632),
-            )
+            validate_keyguard_locked_surface(path, 1080, 1920)
 
-    def test_rejects_untrusted_or_noninteractive_device_entry_affordance(self):
+    def test_rejects_untrusted_or_noninteractive_locked_surface(self):
         for xml in (
             fixture_lockscreen_xml(wrong_package=True),
             fixture_lockscreen_xml(wrong_description=True),
@@ -196,13 +193,12 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
                     path = Path(directory) / "lockscreen.xml"
                     path.write_text(xml, encoding="utf-8")
                     with self.assertRaises(KeyguardUnlockError):
-                        collect_keyguard_entry_center(path, 1080, 1920)
+                        validate_keyguard_locked_surface(path, 1080, 1920)
 
-    def test_capture_taps_exact_device_entry_then_requires_fresh_pinpad(self):
+    def test_capture_waits_for_pinpad_after_workflow_swipe_without_extra_input(self):
         with tempfile.TemporaryDirectory() as directory:
             hierarchy = Path(directory) / "keyguard.xml"
             dump_count = 0
-            taps = []
 
             def fake_run(command, **kwargs):
                 nonlocal dump_count
@@ -215,37 +211,28 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
                 if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
                     dump_count += 1
                     remote = command[-1]
-                    return SimpleNamespace(
-                        returncode=0,
-                        stdout=f"UI hierchary dumped to: {remote}",
-                        stderr="",
-                    )
+                    return SimpleNamespace(returncode=0, stdout=f"UI hierchary dumped to: {remote}", stderr="")
                 if command[-3] == "pull":
                     xml = fixture_lockscreen_xml() if dump_count == 1 else fixture_xml()
                     Path(command[-1]).write_text(xml, encoding="utf-8")
                     return SimpleNamespace(returncode=0, stdout="", stderr="")
                 if command[-3] == "tap":
-                    taps.append((int(command[-2]), int(command[-1])))
-                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                    self.fail("Capture helper must not tap SystemUI controls")
                 raise AssertionError(f"Unexpected ADB command: {command}")
 
             with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
                 "qa005_unlock_keyguard.time.sleep"
             ) as sleep:
-                attempts = capture_fresh_systemui_keypad_hierarchy(
-                    "emulator-5554", hierarchy
-                )
+                attempts = capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
 
             self.assertEqual(attempts, 2)
             self.assertEqual(dump_count, 2)
-            self.assertEqual(taps, [(540, 1632)])
-            self.assertEqual(sleep.call_count, 1)
+            sleep.assert_called_once_with(1)
 
-    def test_capture_taps_device_entry_at_most_once_and_fails_closed(self):
+    def test_capture_fails_closed_when_bouncer_never_appears_without_input(self):
         with tempfile.TemporaryDirectory() as directory:
             hierarchy = Path(directory) / "keyguard.xml"
             dump_count = 0
-            taps = []
 
             def fake_run(command, **kwargs):
                 nonlocal dump_count
@@ -258,33 +245,21 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
                 if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
                     dump_count += 1
                     remote = command[-1]
-                    return SimpleNamespace(
-                        returncode=0,
-                        stdout=f"UI hierchary dumped to: {remote}",
-                        stderr="",
-                    )
+                    return SimpleNamespace(returncode=0, stdout=f"UI hierchary dumped to: {remote}", stderr="")
                 if command[-3] == "pull":
-                    Path(command[-1]).write_text(
-                        fixture_lockscreen_xml(), encoding="utf-8"
-                    )
+                    Path(command[-1]).write_text(fixture_lockscreen_xml(), encoding="utf-8")
                     return SimpleNamespace(returncode=0, stdout="", stderr="")
                 if command[-3] == "tap":
-                    taps.append((int(command[-2]), int(command[-1])))
-                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                    self.fail("Capture helper must not tap SystemUI controls")
                 raise AssertionError(f"Unexpected ADB command: {command}")
 
             with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
                 "qa005_unlock_keyguard.time.sleep"
             ) as sleep:
-                with self.assertRaisesRegex(
-                    KeyguardUnlockError, "PIN bouncer did not appear"
-                ):
-                    capture_fresh_systemui_keypad_hierarchy(
-                        "emulator-5554", hierarchy
-                    )
+                with self.assertRaisesRegex(KeyguardUnlockError, "PIN bouncer did not appear"):
+                    capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
 
             self.assertEqual(dump_count, 5)
-            self.assertEqual(taps, [(540, 1632)])
             self.assertEqual(sleep.call_count, 4)
 
     def test_capture_refuses_unknown_lockscreen_surface_without_tapping(self):
@@ -300,28 +275,17 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
                     return SimpleNamespace(returncode=0, stdout="", stderr="")
                 if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
                     remote = command[-1]
-                    return SimpleNamespace(
-                        returncode=0,
-                        stdout=f"UI hierchary dumped to: {remote}",
-                        stderr="",
-                    )
+                    return SimpleNamespace(returncode=0, stdout=f"UI hierchary dumped to: {remote}", stderr="")
                 if command[-3] == "pull":
-                    Path(command[-1]).write_text(
-                        fixture_lockscreen_xml(wrong_description=True),
-                        encoding="utf-8",
-                    )
+                    Path(command[-1]).write_text(fixture_lockscreen_xml(wrong_description=True), encoding="utf-8")
                     return SimpleNamespace(returncode=0, stdout="", stderr="")
                 if command[-3] == "tap":
                     self.fail("Unknown SystemUI surface must never be tapped")
                 raise AssertionError(f"Unexpected ADB command: {command}")
 
             with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run):
-                with self.assertRaisesRegex(
-                    KeyguardUnlockError, "device-entry label"
-                ):
-                    capture_fresh_systemui_keypad_hierarchy(
-                        "emulator-5554", hierarchy
-                    )
+                with self.assertRaisesRegex(KeyguardUnlockError, "device-entry label"):
+                    capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
 
     def test_capture_retries_null_root_with_unique_fresh_remote_paths(self):
         with tempfile.TemporaryDirectory() as directory:

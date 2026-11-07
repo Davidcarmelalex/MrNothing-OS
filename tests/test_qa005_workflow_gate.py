@@ -110,6 +110,11 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "--capture",
             "keyguard-hierarchy.xml",
             "qa005_unlock_keyguard.py",
+            'swipe_start_y="$((display_height - 120))"',
+            'swipe_end_y="$((display_height / 2))"',
+            '"$swipe_start_y"',
+            '"$swipe_end_y"',
+            " 450",
             "Disposable emulator keyguard dismissed",
         ):
             self.assertIn(required, boundary)
@@ -117,6 +122,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertLess(boundary.index("input keyevent KEYCODE_SLEEP"), boundary.index("dumpsys power"))
         self.assertLess(boundary.index("dumpsys power"), boundary.index("input keyevent KEYCODE_WAKEUP"))
         self.assertLess(boundary.index("input keyevent KEYCODE_WAKEUP"), boundary.index("keyguard_showing=0"))
+        self.assertLess(boundary.index("swipe_start_y="), boundary.index("input swipe"))
+        self.assertLess(boundary.index("input swipe"), boundary.index("--capture"))
         self.assertLess(boundary.index("keyguard_showing=0"), boundary.index("if keyguard_is_showing"))
         self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index("--capture"))
         self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index("--capture"))
@@ -171,7 +178,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn('DEVICE_ENTRY_ID = f"{SYSTEM_UI}:id/device_entry_icon_view"', script)
         self.assertIn('DEVICE_ENTRY_FG_ID = f"{SYSTEM_UI}:id/device_entry_icon_fg"', script)
         self.assertIn('DEVICE_LOCKED_DESC = "Device locked"', script)
-        self.assertIn("collect_keyguard_entry_center", script)
+        self.assertIn("validate_keyguard_locked_surface", script)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
@@ -237,7 +244,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         capture_end = script.index("\ndef unlock_with_visible_systemui_pinpad", capture_start)
         capture = script[capture_start:capture_end]
         self.assertIn("entry_tapped = False", capture)
-        self.assertIn('_adb(serial, "shell", "input", "tap", str(x), str(y))', capture)
+        self.assertIn("validate_keyguard_locked_surface(hierarchy, width, height)", capture)
+        self.assertNotIn('"input", "tap"', capture)
         self.assertIn("max_attempts: int = 5", capture)
         self.assertNotIn('shell", "input", "text"', script)
 

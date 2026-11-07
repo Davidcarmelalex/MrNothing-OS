@@ -27,13 +27,7 @@ The previous harness performed a swipe, then immediately required the PIN keypad
 
 ## Selected task and implementation
 
-The highest-priority bounded task is to make the QA-only helper transition from the observed lockscreen to the PIN bouncer using only the exact, visible SystemUI affordance.
-
-- Add a parser for the exact `device_entry_icon_view` parent and `device_entry_icon_fg` child, requiring SystemUI package identity, enabled/clickable parent, exact `Device locked` content description, matching bounded child/parent centers and valid display bounds.
-- If and only if the exact PIN surface is absent and the exact lock-entry affordance is present, tap its bounds-derived center once.
-- Capture a new unique SystemUI hierarchy after the tap. Continue only within the existing five-attempt/one-second bound.
-- Require the full exact PIN hierarchy before entering the synthetic PIN. No guessed coordinates, text injection, PIN logging or repeated entry-control taps.
-- Add positive, negative, exact-tap, one-tap-only and bounded-failure unit tests plus source-gate assertions.
+The first AGENT-004S candidate validated the exact lock-entry icon and attempted one bounds-derived tap. Artifact 13574907764 showed that this tap did not open the PIN bouncer; the screenshot and fresh hierarchy remained on the lockscreen. The final correction removes all helper-side taps. It validates the exact locked-state SystemUI parent/child only as a read-only state marker, and changes the workflow's single gesture to start 120 pixels above the bottom edge and end at mid-screen over 450 ms. The helper then captures fresh unique hierarchies within five attempts and requires the full exact PIN keypad before entering the synthetic PIN. No guessed keypad coordinates, text injection, PIN logging or repeated gestures are added.
 
 This modifies only the QA helper, its unit/source tests, the project adapter and roadmap. No production app source, manifest, permission, AccessibilityService, MediaProjection, owner-consent protocol, CommandRouter, executor, physical device, firmware, OTA or deployment changes.
 
@@ -74,3 +68,8 @@ Run exact-head Phase 1 and CI-003, then inspect full QA-005 instrumentation/JUni
 ## Source-gate correction
 
 The first pushed candidate `a8f4adf70e150bf7f1dc97f8be8aa158ed0c05fe` ran 699 Python tests on both push and PR: 698 passed and one newly added source-gate assertion failed because its expected source fragment contained an extra leading quote. The assertion was corrected to match the exact bounds-derived `_adb(serial, "shell", "input", "tap", str(x), str(y))` call. The helper implementation itself was not changed. All post-correction exact-head runs remain required.
+
+
+## Follow-up evidence — bottom-edge swipe correction
+
+The exact-head QA-005 run on `a8f4adf70e150bf7f1dc97f8be8aa158ed0c05fe` showed the initial bounds-derived tap on `device_entry_icon_view` did not open the PIN bouncer. Artifact [13574907764](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42374293034/artifacts/13574907764) showed the lockscreen still visible after the tap, with the synthetic PIN successfully cleared by the EXIT trap. The final correction removes the helper-side tap entirely and moves the workflow's one swipe to the bottom gesture region (display height minus 120 px to mid-screen, 450 ms). The helper now only validates the exact lockscreen state and waits for the PIN hierarchy; it performs no input events. Exact-head CI and full QA-005 remain pending.

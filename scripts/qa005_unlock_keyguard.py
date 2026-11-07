@@ -122,10 +122,10 @@ def collect_keypad_centers(
 
 
 
-def collect_keyguard_entry_center(
+def validate_keyguard_locked_surface(
     hierarchy: Path, width: int, height: int
-) -> Tuple[int, int]:
-    """Return the center of the exact visible SystemUI lock-entry control."""
+) -> None:
+    """Require the exact visible SystemUI locked-state surface without interacting with it."""
     if width <= 0 or height <= 0:
         raise KeyguardUnlockError("Invalid emulator display dimensions")
     try:
@@ -162,8 +162,6 @@ def collect_keyguard_entry_center(
     entry_center = parse_bounds(entries[0], width, height)
     if parse_bounds(label, width, height) != entry_center:
         raise KeyguardUnlockError("SystemUI device-entry label bounds do not match its control")
-    return entry_center
-
 
 def _adb_result(serial: str, *args: str, timeout: int = 10):
     try:
@@ -199,7 +197,7 @@ def parse_display_size(output: str) -> Tuple[int, int]:
 def capture_fresh_systemui_keypad_hierarchy(
     serial: str, hierarchy: Path, max_attempts: int = 5
 ) -> int:
-    """Capture a fresh PIN hierarchy, opening only the exact SystemUI lock-entry control."""
+    """Capture a fresh PIN hierarchy after the workflow's bounded lockscreen swipe."""
     if not serial.startswith("emulator-"):
         raise KeyguardUnlockError("Refusing non-emulator target")
     if not 1 <= max_attempts <= 5:
@@ -214,7 +212,6 @@ def capture_fresh_systemui_keypad_hierarchy(
     except FileNotFoundError:
         pass
 
-    entry_tapped = False
     for attempt in range(1, max_attempts + 1):
         remote_path = f"/sdcard/qa005-keyguard-attempt-{attempt}.xml"
         _adb(serial, "shell", "rm", "-f", remote_path)
@@ -239,17 +236,13 @@ def capture_fresh_systemui_keypad_hierarchy(
             except KeyguardUnlockError as exc:
                 if str(exc) != "Exact visible SystemUI Keyguard PIN surface not found":
                     raise
-
-            if not entry_tapped:
-                x, y = collect_keyguard_entry_center(hierarchy, width, height)
-                _adb(serial, "shell", "input", "tap", str(x), str(y))
-                entry_tapped = True
-            elif attempt == max_attempts:
-                raise KeyguardUnlockError(
-                    "SystemUI PIN bouncer did not appear after the exact device-entry tap"
-                )
-            time.sleep(1)
-            continue
+            validate_keyguard_locked_surface(hierarchy, width, height)
+            if attempt < max_attempts:
+                time.sleep(1)
+                continue
+            raise KeyguardUnlockError(
+                "SystemUI PIN bouncer did not appear after the bounded bottom-edge lockscreen swipe"
+            )
 
         if "ERROR: null root node returned by UiTestAutomationBridge." in output:
             if attempt < max_attempts:
@@ -258,10 +251,6 @@ def capture_fresh_systemui_keypad_hierarchy(
             break
         raise KeyguardUnlockError("UIAutomator did not confirm a fresh SystemUI hierarchy dump")
 
-    if entry_tapped:
-        raise KeyguardUnlockError(
-            "SystemUI PIN bouncer did not appear within bounded capture attempts"
-        )
     raise KeyguardUnlockError("UIAutomator returned a null root for all bounded capture attempts")
 
 def unlock_with_visible_systemui_pinpad(
