@@ -898,10 +898,16 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             client.close()
 
     def test_transport_owner_or_device_rebind_discards_issued_capability(self):
-        for changes in (
+        for index, changes in enumerate((
             {"owner_id": "other-owner"},
             {"device_id": "other-device"},
-        ):
+        )):
+            # The fixture nonce registry is persistent across this loop; use
+            # a distinct deterministic nonce for each independent socket case.
+            marker = "b" if index == 0 else "c"
+            self.adapter._nonce_factory = (
+                lambda size, marker=marker: marker * (size * 2)
+            )
             server, client = self._pair()
             try:
                 capability, _challenge = self._issue_read_screen_capability(server)

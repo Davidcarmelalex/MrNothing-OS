@@ -69,3 +69,7 @@ Define a versioned owner-consent protocol that signs a canonical digest of non-e
 
 Before accepting the capability harness, a second pass identified two race conditions: a consent public-key rotation between signature/nonce verification and capability minting, and a transport registry owner/device remap after capability issuance. The verifier result now exposes the digest of the exact key used by the successful signature/nonce transaction; capability minting compares it with the current record and fails without issuing a capability on mismatch. Consumption now also rechecks transport owner/device identity and credential generation, and checks the challenge owner/device binding. Three new adversarial tests cover these cases. A future real executor still requires atomic final authorization/idempotency reservation; this no-op path has no device effects.
 
+## CI fixture correction
+
+The first f0341bef Phase 1 Python runs executed 605 tests and reported one failure in the two-case transport owner/device remapping test. Review of the traceback showed the second case reused the first case's deterministic test nonce, correctly triggering the persistent replay registry. The test fixture now supplies a distinct deterministic nonce marker for each independent case; production nonce and replay logic are unchanged. Exact-head CI on the correction commit is required before acceptance.
+
