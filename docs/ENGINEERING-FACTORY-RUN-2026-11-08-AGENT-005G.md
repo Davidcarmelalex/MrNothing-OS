@@ -57,3 +57,8 @@ No milestone is complete.
 ## Next task — AGENT-005H
 
 Inspect exact-head Phase 1, CI-003 and QA-005 runs. Confirm the new runner receives all five class names and executes all 30 methods. If the runner now reaches tests, fix only actual failing assertions from JUnit evidence. If class loading still stalls, capture runner arguments and per-class startup timing before changing frameworks. Keep PR #1 draft; do not merge, flash or deploy.
+
+
+## AGENT-005G implementation correction
+
+A post-push source inspection caught over-escaped backslashes in the newly added Python source-inventory regular expressions. The Gradle allowlist itself is correct, but the candidate regression would not have matched Kotlin class declarations. This follow-up corrects both patterns to Python raw-regex forms (`\.`, `\s`, `\w`, `\b`) before exact-head acceptance. The original candidate is not counted as accepted; the final exact-head Python policy run must pass the corrected source gate.

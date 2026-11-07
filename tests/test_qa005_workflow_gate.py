@@ -356,7 +356,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         end = gradle.index(').joinToString(",")', start)
         configured_block = gradle[start:end]
         configured = re.findall(
-            r'"(tech\\.mrnothing\\.os\\.[A-Za-z0-9_]+)"',
+            r'"(tech\.mrnothing\.os\.[A-Za-z0-9_]+)"',
             configured_block,
         )
 
@@ -367,7 +367,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             discovered.extend(
                 f"tech.mrnothing.os.{name}"
                 for name in re.findall(
-                    r"^class\\s+(\\w+)\\s*:\\s*InstrumentationTestCase\\b",
+                    r"^class\s+(\w+)\s*:\s*InstrumentationTestCase\b",
                     source,
                     re.MULTILINE,
                 )
