@@ -68,7 +68,7 @@ jobs:
           curl -fsSL --retry 3 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/gradle-8.9-bin.zip" https://services.gradle.org/distributions/gradle-8.9-bin.zip
           echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check
           unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:assembleDebug
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Negative control — reject modified Gradle dependency
         run: python3 scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Start disposable x86_64 emulator with bounded waits
@@ -153,6 +153,46 @@ jobs:
           adb -s "$ANDROID_SERIAL" shell locksettings set-pin "$TEST_PIN" \
             > "$RUNNER_TEMP/sec020b4d-pin-set.txt" 2>&1
           PIN_CONFIGURED=1
+          # The disposable AVD can time out to keyguard while Gradle installs
+          # instrumentation APKs. Keep this emulator awake and explicitly
+          # dismiss only the synthetic test PIN before any UI instrumentation.
+          timeout 10s adb -s "$ANDROID_SERIAL" shell settings put system screen_off_timeout 600000
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
+          read_keyguard_policy() {
+            timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy | tr -d '\r'
+          }
+          keyguard_policy="$(read_keyguard_policy)"
+          printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt"
+          if grep -q 'mShowingLockscreen=true' <<< "$keyguard_policy"; then
+            display_size="$(timeout 10s adb -s "$ANDROID_SERIAL" shell wm size | sed -n 's/.*size: //p' | tr -d '\r' | tail -n 1)"
+            if [[ ! "$display_size" =~ ^[0-9]+x[0-9]+$ ]]; then
+              echo "Could not determine disposable emulator display size for keyguard dismissal" >&2
+              exit 1
+            fi
+            display_width="${display_size%x*}"
+            display_height="${display_size#*x}"
+            timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
+            timeout 10s adb -s "$ANDROID_SERIAL" shell input text "$TEST_PIN"
+            timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_ENTER
+          elif ! grep -q 'mShowingLockscreen=false' <<< "$keyguard_policy"; then
+            echo "Could not determine disposable emulator keyguard state; refusing to start UI instrumentation" >&2
+            exit 1
+          fi
+          unlocked=0
+          for attempt in $(seq 1 20); do
+            keyguard_policy="$(read_keyguard_policy || true)"
+            if grep -q 'mShowingLockscreen=false' <<< "$keyguard_policy"; then
+              unlocked=1
+              break
+            fi
+            sleep 1
+          done
+          printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-instrumentation-unlock.txt"
+          if [[ "$unlocked" != 1 ]]; then
+            echo "Disposable emulator remained locked after synthetic test-PIN dismissal" >&2
+            exit 1
+          fi
+          echo "Disposable emulator keyguard dismissed; starting instrumentation"
           timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh

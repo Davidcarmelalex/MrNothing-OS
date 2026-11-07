@@ -1235,3 +1235,16 @@ AGENT-004L adds a non-exported owner-visible Accessibility disclosure Activity, 
 Local pure-JVM harness: five state scenarios passed. Exact-head Phase 1, CI-003 and QA-005 reruns are pending at commit preparation. No local Android Gradle build/emulator is claimed because the local container has no Android SDK. Independent human security/accessibility review remains pending. No milestone is complete: M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7 blocked; M8 blocked.
 
 Next gate: independent security/accessibility review before declaring a narrowly scoped AccessibilityService; then wire only real service lifecycle callbacks to the exact session lease and test reconnect, process death, stale callbacks, revocation, stop behavior and TalkBack coexistence. MediaProjection remains separate.
+
+
+## Engineering Factory run — 2026-11-07, AGENT-004M QA-005 keyguard precondition
+
+Audit baseline: 8b021b682b0aa8677a464f9495631b9fa55a180d; recursive tree 320 entries, not truncated; 262 commits ahead of main, zero behind. Six open draft PRs (#1, #3–#7) were inspected; PR #1 matched the authorized branch. PROJECT-ADAPTER.md and this roadmap are present; repository SKILL.md is absent; upstream shared package remains unverified and is not claimed as installed. Branch protection is not established (metadata protected=false, empty rulesets, protection detail HTTP 403).
+
+Exact-head Phase 1 push/PR and CI-003 push/PR passed (runs 42356568198, 42356572084, 42356568200, 42356572111). QA-005 run 42356572086 failed only in connectedDebugAndroidTest: 180-second timeout, first test AccessibilityDisclosureActivityTest.testAccessibilitySettingsIntentIsIssuedOnlyAfterExplicitTap, 0/30 complete, pre-cleanup screenshot shows lockscreen. No app assertion failure or crash was recorded. The test harness did not ensure the disposable emulator was unlocked after the synthetic PIN setup and APK install delay.
+
+AGENT-004M prebuilds the instrumentation APK, extends the disposable AVD screen timeout, wakes the emulator, conditionally dismisses the synthetic test PIN through ordinary adb shell input, and requires dumpsys window policy to report mShowingLockscreen=false before instrumentation. Existing EXIT cleanup still clears the PIN. Python static regression gates cover command ordering, ordinary shell UID, no-root boundary and cleanup. No product permission, service declaration, service connection, executor, real device operation or physical hardware access is added. Exact-head validation is pending; no local Android SDK/AVD run is claimed.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent security/accessibility review remains pending.
+
+Next: accept the QA-005 rerun only on exact-head evidence, then obtain independent security/accessibility review before considering any AccessibilityService declaration. MediaProjection remains separate.

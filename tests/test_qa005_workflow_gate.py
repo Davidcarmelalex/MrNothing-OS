@@ -80,6 +80,38 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("trap cleanup EXIT INT TERM", boundary_step)
         self.assertIn("uid=2000(shell)", boundary_step)
 
+    def test_instrumentation_test_apk_is_prebuilt_before_emulator_credential_setup(self):
+        build_start = self.workflow.index("Build debug APK with checksum-verified Gradle")
+        build_end = self.workflow.index("Negative control — reject modified Gradle dependency", build_start)
+        build_step = self.workflow[build_start:build_end]
+        self.assertIn(":app:assembleDebugAndroidTest", build_step)
+        self.assertLess(
+            self.workflow.index(":app:assembleDebugAndroidTest"),
+            self.workflow.index("locksettings set-pin"),
+        )
+
+    def test_disposable_emulator_is_awake_and_unlocked_before_ui_instrumentation(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        for required in (
+            "settings put system screen_off_timeout 600000",
+            "input keyevent KEYCODE_WAKEUP",
+            "dumpsys window policy",
+            "mShowingLockscreen=true",
+            "mShowingLockscreen=false",
+            "shell wm size",
+            "shell input swipe",
+            'shell input text "$TEST_PIN"',
+            "input keyevent KEYCODE_ENTER",
+            "Disposable emulator keyguard dismissed",
+        ):
+            self.assertIn(required, boundary)
+        self.assertLess(boundary.index("locksettings set-pin"), boundary.index("input text"))
+        self.assertLess(boundary.index("input text"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn("adb root", boundary)
+        self.assertIn("uid=2000(shell)", boundary)
+
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn("androidTestCompileOnly(files(androidTestPlatformApiJars))", gradle)
