@@ -50,7 +50,8 @@ class AccessibilityDisclosureSourceTests(unittest.TestCase):
         self.assertNotIn("startService(", self.activity)
 
     def test_status_reader_is_exact_component_scoped_and_fail_closed(self):
-        self.assertIn("AccessibilityServiceContract.COMPONENT_CLASS_NAME", self.state)
+        self.assertIn('COMPONENT_CLASS_NAME = "tech.mrnothing.os.OwnerScreenControlAccessibilityService"', self.state)
+        self.assertIn("AccessibilityServiceContract.COMPONENT_CLASS_NAME", self.probe)
         self.assertIn("if (!probe.isDeclared())", self.state)
         self.assertIn("AccessibilityDisclosureStatus.UNAVAILABLE", self.state)
         self.assertIn("catch (_: SecurityException)", self.state)
