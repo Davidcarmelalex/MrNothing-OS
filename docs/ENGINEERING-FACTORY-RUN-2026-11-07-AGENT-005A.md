@@ -66,3 +66,8 @@ Verify the exact-head emulator sequence and inspect JUnit, Keyguard and Biometri
 ## AGENT-005A independent diff correction
 
 Independent review of the first candidate commit `8c70ebe36ed2396659b56d72cb1a4571eb1af2f0` found that the workflow tree edit had retained the old Gradle command at the replacement boundary, producing a duplicated `:app:connectedDebugAndroidTest` invocation on one shell line. The candidate is not accepted. This follow-up removes the duplicate, adds a source regression assertion requiring exactly one instrumentation invocation, and corrects the Kotlin helper documentation to describe its long-click behavior. The new exact-head CI runs, not the candidate runs, determine acceptance.
+
+
+## AGENT-005A test-gate correction
+
+The first exact-head policy jobs on candidate `948ae030cf9ec2a605b2f5c5bd056168c5d25af5` ran 719 tests and reported one error: the newly added exactly-once assertion referenced `boundary_step` before the test assigned it. The failure is confined to the new Python test's statement order; the long-click source test itself passed. This follow-up moves the assertion immediately after the boundary slice is assigned. The candidate policy jobs are not accepted; a fresh exact-head rerun is required.
