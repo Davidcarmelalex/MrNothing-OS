@@ -12,12 +12,18 @@ import tempfile
 import time
 import threading
 import unittest
+from unittest.mock import patch
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+from core.action_reservation import (
+    ActionReservationRequest,
+    DurableActionReservationLedger,
+    RESERVED,
+)
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import canonical_payload
 from core.owner_consent_transport import (
@@ -598,6 +604,328 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             self.assertTrue(accepted.accepted, accepted.reason)
             self.assertEqual(accepted.reason, "SIMULATED_ONLY")
             self.assertFalse(accepted.device_actions_executed)
+        finally:
+            server.close()
+            client.close()
+
+    def test_v2_capability_creates_durable_reservation_without_dispatch(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "adapter-actions.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            arguments = {"target_package": "com.example.notes"}
+            issued = self.adapter.issue_challenge(
+                server, action="navigate", arguments=arguments
+            )
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            capability = self.adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(capability.issued, capability.reason)
+
+            result = self.adapter.reserve_action_capability(
+                server, capability.capability, action="navigate",
+                arguments=arguments, ledger=ledger,
+            )
+            self.assertTrue(result.reserved, result.reason)
+            self.assertEqual(result.reason, "RESERVATION_CREATED_NO_EXECUTION")
+            record = ledger.get(result.idempotency_key)
+            self.assertEqual(record.owner_id, challenge.owner_id)
+            self.assertEqual(record.device_id, challenge.device_id)
+            self.assertEqual(record.session_id, challenge.session_id)
+            self.assertEqual(record.capability_nonce, challenge.nonce)
+            self.assertEqual(record.protocol_version, 2)
+            self.assertEqual(record.action_id, "navigate")
+            self.assertEqual(record.arguments_sha256, challenge.arguments_sha256)
+            self.assertEqual(record.transport_certificate_sha256, self.fingerprint)
+            self.assertEqual(record.credential_generation, 1)
+            self.assertEqual(
+                record.consent_public_key_sha256,
+                hashlib.sha256(self.consent_public_der).hexdigest(),
+            )
+            self.assertEqual(record.state, RESERVED)
+
+            replay = self.adapter.reserve_action_capability(
+                server, capability.capability, action="navigate",
+                arguments=arguments, ledger=ledger,
+            )
+            self.assertFalse(replay.reserved)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+            self.assertEqual(ledger.get(result.idempotency_key).state, RESERVED)
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_argument_mismatch_does_not_consume_capability(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "argument-mismatch.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            arguments = {"target_package": "com.example.notes"}
+            issued = self.adapter.issue_challenge(
+                server, action="navigate", arguments=arguments
+            )
+            challenge = issued.capability.challenge
+            capability = self.adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(capability.issued, capability.reason)
+
+            mismatch = self.adapter.reserve_action_capability(
+                server, capability.capability, action="navigate",
+                arguments={"target_package": "com.example.other"},
+                ledger=ledger,
+            )
+            self.assertFalse(mismatch.reserved)
+            self.assertEqual(mismatch.reason, "ARGUMENTS_MISMATCH")
+
+            accepted = self.adapter.reserve_action_capability(
+                server, capability.capability, action="navigate",
+                arguments=arguments, ledger=ledger,
+            )
+            self.assertTrue(accepted.reserved, accepted.reason)
+            self.assertEqual(ledger.get(accepted.idempotency_key).state, RESERVED)
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_revalidates_transport_revocation_and_discards_capability(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "revocation.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.transport_registry.record = replace(
+                self.transport_record, active=False
+            )
+            denied = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "TRANSPORT_CERT_REVOKED")
+
+            self.transport_registry.record = self.transport_record
+            replay = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(replay.reserved)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_revalidates_consent_key_rotation(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "key-rotation.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            rotated = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            self.consent_registry.record = replace(
+                self.consent_record, public_key_spki_der=rotated
+            )
+            denied = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "ENROLLMENT_KEY_MISMATCH")
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_rechecks_consent_key_after_transport_refresh(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "late-key-rotation.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            rotated = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            rotated_record = replace(
+                self.consent_record, public_key_spki_der=rotated
+            )
+
+            class RotateAfterFirstLookup:
+                def __init__(self):
+                    self.calls = 0
+
+                def lookup_active_device(inner_self, device_id):
+                    inner_self.calls += 1
+                    return (
+                        self.consent_record
+                        if inner_self.calls == 1
+                        else rotated_record
+                    )
+
+            self.adapter._consent_registry = RotateAfterFirstLookup()
+            denied = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "ENROLLMENT_CONTEXT_CHANGED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_registry_outage_fails_closed_and_allows_short_retry(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "registry-outage.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.consent_registry.fail = True
+            denied = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+
+            self.consent_registry.fail = False
+            retried = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertTrue(retried.reserved, retried.reason)
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_store_error_fails_closed_without_losing_live_capability(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "store-outage.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            with patch.object(ledger, "reserve", side_effect=OSError("disk unavailable")):
+                denied = self.adapter.reserve_action_capability(
+                    server, capability, action="read_screen", arguments={},
+                    ledger=ledger,
+                )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "RESERVATION_STORE_UNAVAILABLE")
+
+            retried = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertTrue(retried.reserved, retried.reason)
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_duplicate_nonce_is_idempotent_and_not_dispatchable(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "duplicate.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, challenge = self._issue_read_screen_capability(server)
+            request = ActionReservationRequest(
+                owner_id=challenge.owner_id,
+                device_id=challenge.device_id,
+                session_id=challenge.session_id,
+                capability_nonce=challenge.nonce,
+                protocol_version=challenge.version,
+                action_id=challenge.action,
+                arguments_sha256=self.adapter._sessions[server].capabilities[
+                    id(capability)
+                ].arguments_sha256,
+                issued_at_epoch_ms=challenge.issued_at_epoch_ms,
+                expires_at_epoch_ms=challenge.expires_at_epoch_ms,
+                transport_certificate_sha256=self.fingerprint,
+                credential_generation=1,
+                consent_public_key_sha256=hashlib.sha256(
+                    self.consent_public_der
+                ).hexdigest(),
+            )
+            prior = ledger.reserve(request)
+            self.assertTrue(prior.created)
+
+            replay = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(replay.reserved)
+            self.assertEqual(replay.reason, "IDEMPOTENT_REPLAY")
+            self.assertEqual(replay.state, RESERVED)
+            self.assertEqual(ledger.get(prior.idempotency_key).state, RESERVED)
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_expiry_uses_monotonic_clock(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "expired.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.monotonic_now[0] += 31_000_000_000
+            denied = self.adapter.reserve_action_capability(
+                server, capability, action="read_screen", arguments={},
+                ledger=ledger,
+            )
+            self.assertFalse(denied.reserved)
+            self.assertEqual(denied.reason, "CAPABILITY_EXPIRED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_reservation_expiring_during_commit_is_cancelled(self):
+        server, client = self._pair()
+        try:
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "commit-expiry.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            capability, _challenge = self._issue_read_screen_capability(server)
+            original_reserve = ledger.reserve
+
+            def reserve_then_expire(request):
+                decision = original_reserve(request)
+                self.monotonic_now[0] += 31_000_000_000
+                return decision
+
+            with patch.object(ledger, "reserve", side_effect=reserve_then_expire):
+                result = self.adapter.reserve_action_capability(
+                    server, capability, action="read_screen", arguments={},
+                    ledger=ledger,
+                )
+            self.assertFalse(result.reserved)
+            self.assertEqual(result.reason, "CAPABILITY_EXPIRED")
+            self.assertEqual(result.state, "CANCELLED")
+            self.assertEqual(
+                ledger.get(result.idempotency_key).state, "CANCELLED"
+            )
         finally:
             server.close()
             client.close()
