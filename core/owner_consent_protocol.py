@@ -173,12 +173,14 @@ def _decode_envelope(envelope: bytes) -> tuple[dict[str, Any], str] | None:
     if type(payload) is not dict:
         return None
     version = payload.get("version")
-    if type(version) is not int:
-        return None
-    expected_keys = _BASE_PAYLOAD_KEYS if version == 1 else (
-        _PAYLOAD_KEYS_V2 if version == 2 else None
-    )
-    if expected_keys is None or set(payload) != expected_keys:
+    # Preserve type-mismatch diagnostics for the v1 base shape (for example,
+    # JSON true must not masquerade as integer version 1). V2 alone requires
+    # its additional digest field and exact version value.
+    if set(payload) == _BASE_PAYLOAD_KEYS:
+        pass
+    elif type(version) is int and version == 2 and set(payload) == _PAYLOAD_KEYS_V2:
+        pass
+    else:
         return None
     if type(signature) is not str or _SIGNATURE_RE.fullmatch(signature) is None:
         return None
