@@ -185,14 +185,14 @@ jobs:
             grep -Eq 'mWakefulness=Awake' <<< "$1" &&
               grep -Eq 'mWakefulnessChanging=false' <<< "$1" &&
               grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1" || return 1
-            wake_age_ms="$(sed -nE 's/.*mLastWakeTime=[^()]*\\(([0-9]+) ms ago\\).*/\\1/p' <<< "$1")"
+            wake_age_ms="$(sed -nE 's/.*mLastWakeTime=[^()]*\(([0-9]+) ms ago\).*/\1/p' <<< "$1")"
             [[ "$wake_age_ms" =~ ^[0-9]+$ ]] && (( wake_age_ms >= 1500 ))
           }
           awake=0
           power_state_after_wake=""
           for attempt in $(seq 1 20); do
             power_state_after_wake="$(read_power_state || true)"
-            printf '%s\\n' "$power_state_after_wake" > "$QA005_OUTPUT/power-state-after-wake.txt"
+            printf '%s\n' "$power_state_after_wake" > "$QA005_OUTPUT/power-state-after-wake.txt"
             if screen_is_awake "$power_state_after_wake"; then
               awake=1
               break
