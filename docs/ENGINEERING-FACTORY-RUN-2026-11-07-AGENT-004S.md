@@ -69,3 +69,8 @@ No milestone is complete.
 ## Next task
 
 Run exact-head Phase 1 and CI-003, then inspect full QA-005 instrumentation/JUnit and every downstream smoke step. Do not declare SEC-020B4D accepted until the complete current-head workflow passes and its artifact is independently checked. Obtain independent security/accessibility review before any AccessibilityService declaration. Keep MediaProjection separate and CommandRouter fail-closed.
+
+
+## Source-gate correction
+
+The first pushed candidate `a8f4adf70e150bf7f1dc97f8be8aa158ed0c05fe` ran 699 Python tests on both push and PR: 698 passed and one newly added source-gate assertion failed because its expected source fragment contained an extra leading quote. The assertion was corrected to match the exact bounds-derived `_adb(serial, "shell", "input", "tap", str(x), str(y))` call. The helper implementation itself was not changed. All post-correction exact-head runs remain required.

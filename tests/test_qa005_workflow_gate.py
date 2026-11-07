@@ -237,7 +237,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         capture_end = script.index("\ndef unlock_with_visible_systemui_pinpad", capture_start)
         capture = script[capture_start:capture_end]
         self.assertIn("entry_tapped = False", capture)
-        self.assertIn('"_adb(serial, "shell", "input", "tap"', capture)
+        self.assertIn('_adb(serial, "shell", "input", "tap", str(x), str(y))', capture)
         self.assertIn("max_attempts: int = 5", capture)
         self.assertNotIn('shell", "input", "text"', script)
 
