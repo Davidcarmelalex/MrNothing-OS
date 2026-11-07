@@ -72,6 +72,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertLess(emulator, instrumentation)
         self.assertLess(instrumentation, launcher_smoke)
         self.assertIn(":app:connectedDebugAndroidTest", self.workflow)
+        self.assertEqual(1, boundary_step.count(":app:connectedDebugAndroidTest"))
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary_step = self.workflow[start:end]
@@ -286,6 +287,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.assertIn(required, helper)
         self.assertNotIn("input tap", helper)
         self.assertNotIn("input swipe", helper)
+
+    def test_instrumentation_command_is_invoked_exactly_once(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        self.assertEqual(1, boundary.count(":app:connectedDebugAndroidTest"))
 
 if __name__ == "__main__":
     unittest.main()

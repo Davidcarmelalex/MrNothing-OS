@@ -371,8 +371,8 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     /**
      * Fallback used only when the Keyguard PIN bouncer is not already visible.
-     * It taps only the exact visible SystemUI device-entry control and its
-     * on-screen accessibility bounds; it never guesses a coordinate.
+     * It invokes ACTION_LONG_CLICK only on the exact visible, long-clickable
+     * SystemUI device-entry node with screen-bounded accessibility bounds.
      */
     private fun longPressSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics

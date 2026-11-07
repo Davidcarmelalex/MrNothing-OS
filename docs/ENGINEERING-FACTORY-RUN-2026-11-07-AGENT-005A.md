@@ -61,3 +61,8 @@ No milestone is complete.
 ## Next task
 
 Verify the exact-head emulator sequence and inspect JUnit, Keyguard and BiometricPrompt evidence. Only after complete QA acceptance and independent security/accessibility review may a narrowly scoped AccessibilityService registration be considered. Keep MediaProjection separate and keep real agent dispatch disabled.
+
+
+## AGENT-005A independent diff correction
+
+Independent review of the first candidate commit `8c70ebe36ed2396659b56d72cb1a4571eb1af2f0` found that the workflow tree edit had retained the old Gradle command at the replacement boundary, producing a duplicated `:app:connectedDebugAndroidTest` invocation on one shell line. The candidate is not accepted. This follow-up removes the duplicate, adds a source regression assertion requiring exactly one instrumentation invocation, and corrects the Kotlin helper documentation to describe its long-click behavior. The new exact-head CI runs, not the candidate runs, determine acceptance.
