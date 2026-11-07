@@ -3,6 +3,7 @@
 These tests cannot prove that an emulator booted; runtime evidence is required.
 """
 from pathlib import Path
+import re
 import unittest
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/qa005-emulator.yml"
@@ -340,6 +341,44 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         for artifact_name in ("events-tail.txt", "app-exit-info.txt", "test-exit-info.txt", "dropbox-data-app-anr.txt"):
             self.assertIn(artifact_name, diagnostics)
         self.assertNotIn("adb root", diagnostics)
+
+
+    def test_legacy_instrumentation_runner_uses_explicit_class_allowlist(self):
+        root = WORKFLOW.parents[2]
+        gradle = (root / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn(
+            'testInstrumentationRunner = "android.test.InstrumentationTestRunner"',
+            gradle,
+        )
+        assignment = 'testInstrumentationRunnerArguments["class"] = listOf('
+        self.assertIn(assignment, gradle)
+        start = gradle.index(assignment)
+        end = gradle.index(').joinToString(",")', start)
+        configured_block = gradle[start:end]
+        configured = re.findall(
+            r'"(tech\\.mrnothing\\.os\\.[A-Za-z0-9_]+)"',
+            configured_block,
+        )
+
+        test_dir = root / "android/app/src/androidTest/java/tech/mrnothing/os"
+        discovered = []
+        for source_path in sorted(test_dir.glob("*.kt")):
+            source = source_path.read_text(encoding="utf-8")
+            discovered.extend(
+                f"tech.mrnothing.os.{name}"
+                for name in re.findall(
+                    r"^class\\s+(\\w+)\\s*:\\s*InstrumentationTestCase\\b",
+                    source,
+                    re.MULTILINE,
+                )
+            )
+
+        self.assertTrue(discovered, "no InstrumentationTestCase classes were discovered")
+        self.assertEqual(sorted(discovered), sorted(configured))
+        self.assertEqual(len(configured), len(set(configured)))
+        self.assertEqual(5, len(configured))
+        self.assertIn('.joinToString(",")', gradle)
+
 
 
 if __name__ == "__main__":

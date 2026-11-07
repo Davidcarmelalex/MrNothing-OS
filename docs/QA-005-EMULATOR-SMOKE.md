@@ -249,3 +249,19 @@ AGENT-005F adds one bounded, read-only capture: dumpsys dropbox --print data_app
 At this exact head, Phase 1 push and PR runs [42404466547](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42404466547) and [42404472260](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42404472260) passed, including both 722-test Python policy jobs, Android debug unit/build/repeat-build checks and dependency negative control. CI-003 push and PR runs [42404466487](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42404466487) and [42404472173](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42404472173) passed independent unsigned-build verification. QA-005 failed as described. No current-head emulator acceptance is claimed.
 
 No milestone is complete. M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending physical Pixel 9 Pro access; M8 BLOCKED. Independent human security/accessibility review remains pending.
+
+
+
+## 2026-11-08 — AGENT-005G: instrumentation discovery ANR diagnosis
+
+At exact parent head `155295c299067c0161eddb481b7ea9a956f9a3d5`, QA-005 PR run [42407298271](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42407298271) completed SDK setup, debug/AndroidTest APK compilation, emulator boot and the dependency-verification negative control. It then failed at `:app:connectedDebugAndroidTest`: UTP reported zero tests started and `INSTRUMENTATION_FAILED: Process crashed`. The synthetic emulator PIN cleanup succeeded. The full evidence artifact is [13588166608](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42407298271/artifacts/13588166608).
+
+The newly retained `dropbox-data-app-anr.txt` identifies the blocked main-thread stack precisely:
+
+`DexFile.getClassNameList` → `DexFile.entries` → `ClassPathPackageInfoSource.findClassesInApk` → `scanForApkFiles` → `findClasses` → `getTopLevelClassesRecursive` → `TestGrouping.testCaseClassesInPackage` → `InstrumentationTestRunner.onCreate`.
+
+The ANR subject is `Process ... tech.mrnothing.os ... failed to complete startup`. No test method ran. The stack is the deprecated legacy runner's default whole-package class discovery, not MainActivity initialization. The same snapshot shows CPU pressure avg10=62.88 / avg60=55.41, total CPU 93%, with system_server at 43%; contention may amplify the scan but is not needed to explain the stack's work.
+
+AGENT-005G keeps the existing legacy `InstrumentationTestRunner` and `InstrumentationTestCase` suite, but supplies its documented comma-separated `class` argument with the five explicit instrumentation classes. This routes the runner through its class-list parser instead of its default recursive package scan. A Python source regression gate compares the configured allowlist to every `InstrumentationTestCase` class in the androidTest source directory, so adding a class cannot silently omit it. All 30 existing test methods remain in the five listed classes. No test dependency, production app source, manifest, permission, service, trust, consent, command router or executor behavior changes. No timeout or ANR threshold is raised.
+
+Exact-head CI and emulator rerun are required before acceptance. This diagnosis is based on the retained DropBox stack and is distinct from the earlier Keyguard/SystemUI/ActivityMonitor issues.

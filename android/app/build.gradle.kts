@@ -15,6 +15,15 @@ android {
         versionCode = 1
         versionName = "0.1.0-dev"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
+        // Avoid the legacy runner's whole-APK DexFile package scan during startup.
+        // The exact class inventory is source-gated in tests/test_qa005_workflow_gate.py.
+        testInstrumentationRunnerArguments["class"] = listOf(
+            "tech.mrnothing.os.AccessibilityDisclosureActivityTest",
+            "tech.mrnothing.os.AndroidAtomicAuthorityRecordPersistenceTest",
+            "tech.mrnothing.os.AndroidAuthorityTrustCryptoFailureModeTest",
+            "tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest",
+            "tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest"
+        ).joinToString(",")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
