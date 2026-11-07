@@ -24,7 +24,9 @@ from core.owner_consent_transport import (
     EnrolledTransportCertificate,
     OWNER_CONSENT_ALPN,
     OwnerConsentTlsAdapter,
+    VerifiedOwnerActionCapability,
 )
+from core.noop_action_executor import NoOpActionExecutor
 
 
 class _TransportRegistry:
@@ -633,6 +635,233 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
         import inspect
         parameters = tuple(inspect.signature(self.adapter.verify_and_consume).parameters)
         self.assertEqual(parameters, ("peer", "envelope", "challenge"))
+
+
+    def _issue_read_screen_capability(self, server):
+        issued = self.adapter.issue_challenge(server, action="read_screen")
+        self.assertTrue(issued.issued, issued.reason)
+        challenge = issued.capability.challenge
+        result = self.adapter.verify_and_issue_capability(
+            server,
+            self._signed_envelope(challenge),
+            challenge,
+            arguments={},
+        )
+        self.assertTrue(result.issued, result.reason)
+        self.assertIsNotNone(result.capability)
+        return result.capability, challenge
+
+    def test_opaque_capability_is_one_use_and_noop_only(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            executor = NoOpActionExecutor(self.adapter)
+            result = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertTrue(result.accepted, result.reason)
+            self.assertEqual(result.reason, "SIMULATED_ONLY")
+            self.assertTrue(result.simulated)
+            self.assertFalse(result.device_actions_executed)
+
+            replay = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(replay.accepted)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+            self.assertFalse(replay.device_actions_executed)
+        finally:
+            server.close()
+            client.close()
+
+    def test_v1_refuses_nonempty_arguments_without_consuming_owner_consent(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            envelope = self._signed_envelope(challenge)
+
+            rejected = self.adapter.verify_and_issue_capability(
+                server, envelope, challenge, arguments={"query": "private"}
+            )
+            self.assertFalse(rejected.issued)
+            self.assertEqual(rejected.reason, "ARGUMENTS_NOT_SUPPORTED_BY_V1")
+
+            accepted = self.adapter.verify_and_issue_capability(
+                server, envelope, challenge, arguments={}
+            )
+            self.assertTrue(accepted.issued, accepted.reason)
+        finally:
+            server.close()
+            client.close()
+
+    def test_argument_or_action_mismatch_does_not_consume_valid_capability(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            executor = NoOpActionExecutor(self.adapter)
+
+            wrong_arguments = executor.simulate(
+                server,
+                capability,
+                action="read_screen",
+                arguments={"text": "not in signed consent"},
+            )
+            self.assertFalse(wrong_arguments.accepted)
+            self.assertEqual(wrong_arguments.reason, "ARGUMENTS_MISMATCH")
+
+            wrong_action = executor.simulate(
+                server, capability, action="navigate", arguments={}
+            )
+            self.assertFalse(wrong_action.accepted)
+            self.assertEqual(wrong_action.reason, "ACTION_MISMATCH")
+
+            correct = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertTrue(correct.accepted, correct.reason)
+            self.assertFalse(correct.device_actions_executed)
+        finally:
+            server.close()
+            client.close()
+
+    def test_caller_constructed_capability_cannot_substitute_for_adapter_handle(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            executor = NoOpActionExecutor(self.adapter)
+            forged = VerifiedOwnerActionCapability()
+            rejected = executor.simulate(
+                server, forged, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "CAPABILITY_NOT_ACTIVE")
+
+            accepted = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertTrue(accepted.accepted, accepted.reason)
+        finally:
+            server.close()
+            client.close()
+
+    def test_capability_cannot_move_to_another_live_tls_socket(self):
+        server1, client1 = self._pair()
+        server2, client2 = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server1)
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server2, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "CAPABILITY_SESSION_NOT_FOUND")
+
+            accepted = executor.simulate(
+                server1, capability, action="read_screen", arguments={}
+            )
+            self.assertTrue(accepted.accepted, accepted.reason)
+        finally:
+            server1.close()
+            client1.close()
+            server2.close()
+            client2.close()
+
+    def test_transport_revocation_discards_issued_capability(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.transport_registry.record = replace(
+                self.transport_record, active=False
+            )
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "TRANSPORT_CERT_REVOKED")
+
+            self.transport_registry.record = self.transport_record
+            replay = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(replay.accepted)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
+
+    def test_consent_key_rotation_discards_issued_capability(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.consent_registry.record = replace(
+                self.consent_record, public_key_spki_der=b"\x30\x00"
+            )
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "ENROLLMENT_KEY_MISMATCH")
+        finally:
+            server.close()
+            client.close()
+
+    def test_expired_capability_is_discarded_using_monotonic_time(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.monotonic_now[0] += 31_000_000_000
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "CAPABILITY_EXPIRED")
+        finally:
+            server.close()
+            client.close()
+
+    def test_consent_registry_outage_fails_closed_without_consuming_capability(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.consent_registry.fail = True
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+
+            self.consent_registry.fail = False
+            accepted = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertTrue(accepted.accepted, accepted.reason)
+            self.assertFalse(accepted.device_actions_executed)
+        finally:
+            server.close()
+            client.close()
+
+    def test_enrollment_revocation_discards_issued_capability(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.consent_registry.record = replace(
+                self.consent_record, active=False
+            )
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "DEVICE_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
 
 
 if __name__ == "__main__":

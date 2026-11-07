@@ -47,11 +47,56 @@ MAX_TRANSPORT_SESSION_TTL_MS = 30_000
 MAX_OUTSTANDING_CHALLENGES_PER_SESSION = 64
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_ACTION_ARGUMENTS_DOMAIN = b"mrnothing-owner-action-arguments-v1\x00"
+_NO_ARGUMENT_ACTIONS = frozenset({"read_screen"})
+
+
+def _empty_action_arguments_digest(action: object) -> str | None:
+    """Digest the only v1 action schema supported by the no-op capability path."""
+    if type(action) is not str or action not in _NO_ARGUMENT_ACTIONS:
+        return None
+    return hashlib.sha256(
+        _ACTION_ARGUMENTS_DOMAIN + action.encode("ascii") + b"\x00{}"
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
 class _IssuedChallenge:
     challenge: ConsentChallenge
+    expires_monotonic_ns: int
+
+
+class VerifiedOwnerActionCapability:
+    """Opaque in-process handle; only its issuing adapter instance recognizes it."""
+
+    __slots__ = ()
+
+
+@dataclass(frozen=True)
+class ActionCapabilityIssueResult:
+    issued: bool
+    reason: str
+    capability: VerifiedOwnerActionCapability | None = None
+
+
+@dataclass(frozen=True)
+class ActionCapabilityAdmissionResult:
+    admitted: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class _IssuedActionCapability:
+    capability: VerifiedOwnerActionCapability
+    nonce: str
+    owner_id: str
+    device_id: str
+    session_id: str
+    action: str
+    arguments_sha256: str
+    transport_certificate_sha256: str
+    credential_generation: int
+    consent_public_key_sha256: str
     expires_monotonic_ns: int
 
 
@@ -62,6 +107,7 @@ class _PeerSessionState:
     credential_generation: int
     expires_monotonic_ns: int
     challenges: dict[str, _IssuedChallenge]
+    capabilities: dict[int, _IssuedActionCapability]
 
 
 @dataclass(frozen=True)
@@ -313,6 +359,7 @@ class OwnerConsentTlsAdapter:
                         + (session_expiry_ms - now_epoch_ms) * 1_000_000
                     ),
                     challenges={},
+                    capabilities={},
                 )
             else:
                 if now_monotonic_ns >= state.expires_monotonic_ns:
@@ -444,3 +491,313 @@ class OwnerConsentTlsAdapter:
                 credential_generation=enrolled.credential_generation,
                 now_epoch_ms=now_epoch_ms,
             )
+
+
+    def verify_and_issue_capability(
+        self,
+        peer: ssl.SSLSocket,
+        envelope: bytes,
+        challenge: ConsentChallenge,
+        *,
+        arguments: dict,
+    ) -> ActionCapabilityIssueResult:
+        """Mint an opaque one-use capability after live mTLS and signed consent.
+
+        Protocol v1 is intentionally limited here to read_screen with exactly
+        empty arguments. Actions requiring parameters need a new signed,
+        owner-visible protocol version; they are not silently treated as empty.
+        """
+        if type(arguments) is not dict:
+            return ActionCapabilityIssueResult(False, "INVALID_ARGUMENTS")
+        if arguments:
+            return ActionCapabilityIssueResult(
+                False, "ARGUMENTS_NOT_SUPPORTED_BY_V1"
+            )
+        if type(challenge) is not ConsentChallenge:
+            return ActionCapabilityIssueResult(False, "INVALID_CHALLENGE")
+        arguments_digest = _empty_action_arguments_digest(challenge.action)
+        if arguments_digest is None:
+            return ActionCapabilityIssueResult(
+                False, "ACTION_ARGUMENT_SCHEMA_UNAVAILABLE"
+            )
+
+        # RLock keeps verification and capability registration atomic relative
+        # to other operations performed through this adapter instance.
+        with self._lock:
+            admission = self.verify_and_consume(peer, envelope, challenge)
+            if not admission.admitted:
+                return ActionCapabilityIssueResult(False, admission.reason)
+
+            clocks, clock_error = self._read_clocks()
+            if clock_error is not None:
+                return ActionCapabilityIssueResult(False, clock_error)
+            now_epoch_ms, now_monotonic_ns = clocks
+            binding, binding_error = self._current_peer_binding(peer, now_epoch_ms)
+            if binding_error is not None:
+                return ActionCapabilityIssueResult(False, binding_error)
+            enrolled, fingerprint, _certificate_expiry_ms = binding
+
+            state = self._sessions.get(peer)
+            if state is None:
+                return ActionCapabilityIssueResult(
+                    False, "TRANSPORT_SESSION_NOT_ISSUED"
+                )
+            issued = state.challenges.get(challenge.nonce)
+            if issued is None or issued.challenge != challenge:
+                return ActionCapabilityIssueResult(
+                    False, "CHALLENGE_NOT_ISSUED_ON_SESSION"
+                )
+            expires_monotonic_ns = min(
+                state.expires_monotonic_ns,
+                issued.expires_monotonic_ns,
+            )
+            if (
+                now_monotonic_ns >= expires_monotonic_ns
+                or now_epoch_ms >= state.session.expires_at_epoch_ms
+            ):
+                return ActionCapabilityIssueResult(False, "CAPABILITY_EXPIRED")
+            if (
+                state.session.owner_id != enrolled.owner_id
+                or state.session.device_id != enrolled.device_id
+                or state.certificate_sha256 != fingerprint
+                or state.credential_generation != enrolled.credential_generation
+            ):
+                return ActionCapabilityIssueResult(
+                    False, "TRANSPORT_CREDENTIAL_CHANGED"
+                )
+
+            try:
+                owner_record = self._consent_registry.lookup_active_device(
+                    challenge.device_id
+                )
+            except Exception:
+                return ActionCapabilityIssueResult(
+                    False, "ENROLLMENT_REGISTRY_UNAVAILABLE"
+                )
+            if type(owner_record) is not EnrolledOwnerDevice:
+                return ActionCapabilityIssueResult(False, "DEVICE_NOT_ENROLLED")
+            if type(owner_record.active) is not bool:
+                return ActionCapabilityIssueResult(
+                    False, "ENROLLMENT_REGISTRY_INVALID"
+                )
+            if owner_record.active is not True:
+                return ActionCapabilityIssueResult(False, "DEVICE_NOT_ACTIVE")
+            if (
+                owner_record.owner_id != state.session.owner_id
+                or owner_record.device_id != state.session.device_id
+            ):
+                return ActionCapabilityIssueResult(
+                    False, "OWNER_DEVICE_MISMATCH"
+                )
+            if (
+                owner_record.transport_certificate_sha256 != fingerprint
+                or type(owner_record.credential_generation) is not int
+                or owner_record.credential_generation
+                != enrolled.credential_generation
+            ):
+                return ActionCapabilityIssueResult(
+                    False, "ENROLLMENT_CREDENTIAL_MISMATCH"
+                )
+            if (
+                type(owner_record.public_key_spki_der) is not bytes
+                or not 1 <= len(owner_record.public_key_spki_der) <= 512
+            ):
+                return ActionCapabilityIssueResult(False, "INVALID_TRUSTED_KEY")
+
+            capability = VerifiedOwnerActionCapability()
+            record = _IssuedActionCapability(
+                capability=capability,
+                nonce=challenge.nonce,
+                owner_id=state.session.owner_id,
+                device_id=state.session.device_id,
+                session_id=state.session.session_id,
+                action=challenge.action,
+                arguments_sha256=arguments_digest,
+                transport_certificate_sha256=fingerprint,
+                credential_generation=enrolled.credential_generation,
+                consent_public_key_sha256=hashlib.sha256(
+                    owner_record.public_key_spki_der
+                ).hexdigest(),
+                expires_monotonic_ns=expires_monotonic_ns,
+            )
+            state.capabilities[id(capability)] = record
+            return ActionCapabilityIssueResult(
+                True, "VERIFIED_ACTION_CAPABILITY_ISSUED", capability
+            )
+
+    def consume_action_capability(
+        self,
+        peer: ssl.SSLSocket,
+        capability: VerifiedOwnerActionCapability,
+        *,
+        action: str,
+        arguments: dict,
+    ) -> ActionCapabilityAdmissionResult:
+        """Consume once after revalidating the exact live peer and enrollment.
+
+        This is admission evidence only. It does not check Android runtime
+        permissions and does not execute or dispatch a device action.
+        """
+        if type(peer) is not ssl.SSLSocket:
+            return ActionCapabilityAdmissionResult(False, "INVALID_TLS_SOCKET")
+        if type(capability) is not VerifiedOwnerActionCapability:
+            return ActionCapabilityAdmissionResult(False, "INVALID_CAPABILITY")
+        if type(action) is not str:
+            return ActionCapabilityAdmissionResult(False, "ACTION_MISMATCH")
+        if type(arguments) is not dict:
+            return ActionCapabilityAdmissionResult(False, "INVALID_ARGUMENTS")
+        if arguments:
+            return ActionCapabilityAdmissionResult(False, "ARGUMENTS_MISMATCH")
+
+        with self._lock:
+            state = self._sessions.get(peer)
+            if state is None:
+                return ActionCapabilityAdmissionResult(
+                    False, "CAPABILITY_SESSION_NOT_FOUND"
+                )
+            capability_key = id(capability)
+            record = state.capabilities.get(capability_key)
+            if record is None or record.capability is not capability:
+                return ActionCapabilityAdmissionResult(
+                    False, "CAPABILITY_NOT_ACTIVE"
+                )
+            if action != record.action:
+                return ActionCapabilityAdmissionResult(False, "ACTION_MISMATCH")
+            arguments_digest = _empty_action_arguments_digest(action)
+            if (
+                arguments_digest is None
+                or arguments_digest != record.arguments_sha256
+            ):
+                return ActionCapabilityAdmissionResult(
+                    False, "ARGUMENTS_MISMATCH"
+                )
+
+            def discard() -> None:
+                state.capabilities.pop(capability_key, None)
+                state.challenges.pop(record.nonce, None)
+
+            clocks, clock_error = self._read_clocks()
+            if clock_error is not None:
+                discard()
+                return ActionCapabilityAdmissionResult(False, clock_error)
+            now_epoch_ms, now_monotonic_ns = clocks
+            if (
+                now_monotonic_ns >= record.expires_monotonic_ns
+                or now_monotonic_ns >= state.expires_monotonic_ns
+                or now_epoch_ms >= state.session.expires_at_epoch_ms
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(False, "CAPABILITY_EXPIRED")
+
+            binding, binding_error = self._current_peer_binding(
+                peer, now_epoch_ms
+            )
+            if binding_error is not None:
+                if binding_error != "TRANSPORT_REGISTRY_UNAVAILABLE":
+                    discard()
+                return ActionCapabilityAdmissionResult(False, binding_error)
+            enrolled, fingerprint, _certificate_expiry_ms = binding
+            if (
+                state.session.owner_id != record.owner_id
+                or state.session.device_id != record.device_id
+                or state.session.session_id != record.session_id
+                or fingerprint != record.transport_certificate_sha256
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "CAPABILITY_CONTEXT_MISMATCH"
+                )
+            if (
+                state.credential_generation != record.credential_generation
+                or enrolled.credential_generation != record.credential_generation
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "TRANSPORT_CREDENTIAL_CHANGED"
+                )
+            issued = state.challenges.get(record.nonce)
+            if (
+                issued is None
+                or issued.challenge.action != record.action
+                or issued.challenge.session_id != record.session_id
+                or now_epoch_ms >= issued.challenge.expires_at_epoch_ms
+                or now_monotonic_ns >= issued.expires_monotonic_ns
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(False, "CHALLENGE_EXPIRED")
+
+            try:
+                owner_record = self._consent_registry.lookup_active_device(
+                    record.device_id
+                )
+            except Exception:
+                return ActionCapabilityAdmissionResult(
+                    False, "ENROLLMENT_REGISTRY_UNAVAILABLE"
+                )
+            if type(owner_record) is not EnrolledOwnerDevice:
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "DEVICE_NOT_ENROLLED"
+                )
+            if type(owner_record.active) is not bool:
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "ENROLLMENT_REGISTRY_INVALID"
+                )
+            if owner_record.active is not True:
+                discard()
+                return ActionCapabilityAdmissionResult(False, "DEVICE_NOT_ACTIVE")
+            if (
+                owner_record.owner_id != record.owner_id
+                or owner_record.device_id != record.device_id
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "OWNER_DEVICE_MISMATCH"
+                )
+            if (
+                owner_record.transport_certificate_sha256
+                != record.transport_certificate_sha256
+                or type(owner_record.credential_generation) is not int
+                or owner_record.credential_generation != record.credential_generation
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "ENROLLMENT_CREDENTIAL_MISMATCH"
+                )
+            if (
+                type(owner_record.public_key_spki_der) is not bytes
+                or not 1 <= len(owner_record.public_key_spki_der) <= 512
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "INVALID_TRUSTED_KEY"
+                )
+            if (
+                hashlib.sha256(owner_record.public_key_spki_der).hexdigest()
+                != record.consent_public_key_sha256
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, "ENROLLMENT_KEY_MISMATCH"
+                )
+
+            fresh_clocks, fresh_clock_error = self._read_clocks()
+            if fresh_clock_error is not None:
+                discard()
+                return ActionCapabilityAdmissionResult(
+                    False, fresh_clock_error
+                )
+            _fresh_epoch_ms, fresh_monotonic_ns = fresh_clocks
+            if (
+                fresh_monotonic_ns >= record.expires_monotonic_ns
+                or fresh_monotonic_ns >= state.expires_monotonic_ns
+            ):
+                discard()
+                return ActionCapabilityAdmissionResult(False, "CAPABILITY_EXPIRED")
+
+            discard()
+            return ActionCapabilityAdmissionResult(
+                True, "CAPABILITY_CONSUMED_NO_EXECUTION"
+            )
+

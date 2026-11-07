@@ -17,9 +17,9 @@ The native Android app and the existing Termux/Python runtime are separate produ
 | `core/hermes_gateway.py` | Allowlist contains `get_battery` and `open_app`; validates bounded envelopes and a supplied authenticated flag | Returns admission readiness only; it does not execute a command |
 | `core/agent_sandbox.py` | Validates bounded plans, deadlines and cancellation; returns simulated outcomes | Explicitly offline; `device_actions_executed=false` |
 | `core/command_admission.py` | Verifies signed commands, freshness, policy and a durable single-host SQLite replay reservation | Caller-supplied `transport_authenticated` is a prototype input, not proof of identity; no executor |
-| `core/owner_consent_transport.py` | Binds sessions/challenges to an exact live server-side mTLS `SSLSocket`, configured TLS context, enrolled certificate and bounded lifetime | No listener, production enrollment service, Android client binding or executor |
+| `core/owner_consent_transport.py` | Binds consent to an exact live mTLS socket; can mint an opaque one-use capability for read_screen with empty arguments and revalidate transport/enrollment at consumption | No listener, Android permission check, non-empty-argument protocol, or device executor |
 | `core/owner_consent_verifier.py` | Verifies and consumes bounded one-use screen-action capabilities | In-memory prototype; not the Android Keystore authorization boundary |
-| Android `CommandRouter.kt` | Restricts actions to the current Android allowlist | Its `authenticatedByTransport: Boolean` parameter is not a cryptographic principal and must not be treated as one |
+| Android `CommandRouter.kt` | Accepts only UntrustedCommandRequest and rejects every request with VERIFIED_TRANSPORT_SESSION_REQUIRED | No verifier-created Android session capability is integrated; all agent dispatch remains disabled |
 | Android owner-consent / trust UI | Local credential-confirmed preview and trust-store prototypes exist | Not connected to a live transport or device executor |
 
 **Non-negotiable:** neither a Boolean named `authenticated` nor a JSON field, model output, UI label, package name, or caller-selected device ID is sufficient evidence of an authenticated owner session.
@@ -176,3 +176,20 @@ The Android command path has been made explicitly fail-closed:
 This is an intentional disabled state, not an executor or a completed M3 integration. The user-facing launcher still exposes ordinary owner-initiated app opening separately. The Python `core/command_admission.py` Boolean remains an offline, no-execution prototype and must not be wired into a production call path.
 
 M3 remains **PARTIAL**. The next implementation must introduce a verifier-originated, non-caller-constructible capability bound to owner, device, live session, exact action and canonical argument digest; then add Android permission revalidation, idempotency, cancellation, redacted audit and a fake/no-op executor. No listener, permission grant, shell bridge or device action is enabled by this update.
+
+
+## Implementation update — 2026-11-07: opaque capability and no-op simulation
+
+The mTLS adapter now has a deliberately narrow capability path:
+
+- verify_and_issue_capability first verifies and consumes the owner-signed challenge through the exact live server-side TLS socket and trusted enrollment registry.
+- Protocol v1 is accepted only for read_screen with an exactly empty argument object. The capability stores a domain-separated SHA-256 digest of that fixed action/argument schema. Non-empty arguments and navigate/scroll are refused until a new signed protocol version can bind and visibly preview their arguments.
+- The returned VerifiedOwnerActionCapability is an opaque object handle. The issuing adapter retains the exact object identity and its owner/device/session, transport certificate, credential generation, consent-key digest, nonce, action, argument digest and monotonic expiry in peer-local state. Constructing another handle does not create authority.
+- consume_action_capability rechecks the exact live socket, certificate enrollment, session, consent enrollment, key digest and monotonic expiry. It removes the handle before returning successful one-use admission. Transport or owner-key revocation invalidates it.
+- core/noop_action_executor.py consumes this handle and returns SIMULATED_ONLY; device_actions_executed is always false. It has no Android, shell, process, network or device API.
+- Synthetic mTLS tests cover successful one-use consumption, caller-constructed handles, action/argument mismatch, socket transfer, transport revocation, consent-key rotation, enrollment revocation, expiry and registry outage/retry.
+
+This is a trusted-process capability pattern, not isolation against arbitrary malicious code already executing inside the same Python interpreter. It is not connected to an Android executor, and it does not query Android permissions. The existing Android router remains fail-closed. core/command_admission.py and the offline plan simulator remain prototypes and are not promoted to production paths.
+
+M3 remains PARTIAL. The next step is a versioned consent protocol that signs a canonical digest of non-empty action arguments and presents those exact arguments in owner-visible Android UI before signing. Only after that should the verifier-created capability be mirrored in the JVM layer and Android permission state be revalidated. No listener, shell bridge, screen capture, permission grant or device action is enabled by this update.
+

@@ -65,3 +65,15 @@ Keep M3 partial and M6 in progress. No milestone is complete by this adapter or 
 SEC-019B adds the verifier-side half of this adapter. The adapter retains issued challenges against the exact live SSLSocket object, checks exact challenge equality, uses monotonic session/challenge deadlines, and re-derives the current transport certificate enrollment on every verification. A reconnect or TLS-resumed connection cannot present a challenge from an earlier socket object. The supported verification call has only three arguments: peer, signed envelope and the adapter-issued challenge. Transport booleans and identity snapshots are no longer part of the request-facing API.
 
 The private cryptographic helper remains a testable implementation primitive; production integration must call the adapter method. The adapter still has no socket accept loop or public endpoint. A future executor must revalidate the live peer/session and owner authorization at its own admission boundary; this change returns only ADMITTED_NO_EXECUTION.
+
+
+## M3 one-use action capability (test harness only)
+
+The adapter now supports a narrow read_screen capability after successful owner-signature verification. The v1 wire challenge has no argument field, so this path accepts only an exactly empty argument object and computes a domain-separated digest for that fixed schema. It refuses non-empty arguments and does not authorize navigate or scroll.
+
+The returned opaque handle is recognized only by the adapter instance that minted it and only in the state associated with the exact live server-side SSLSocket. Before consumption, the adapter revalidates the peer certificate, current transport enrollment/generation, owner/device enrollment, consent-key digest, challenge and session expiry. Successful consumption is one-use and returns CAPABILITY_CONSUMED_NO_EXECUTION.
+
+core/noop_action_executor.py is a test harness that consumes the capability and reports SIMULATED_ONLY with device_actions_executed=false. It does not call Android, shell, process, network or device APIs. The opaque object handle is an in-process capability, not protection from arbitrary malicious code already running inside the trusted Python interpreter.
+
+The existing v1 signer/UI still displays action/device/session but does not preview arbitrary arguments. Therefore no non-empty action arguments may be authorized by this path. A versioned signed argument-digest protocol and owner-visible argument preview are required before extending it. The Android CommandRouter remains fail-closed; no listener or real executor is connected.
+
