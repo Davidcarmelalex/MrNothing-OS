@@ -192,9 +192,9 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         SystemClock.sleep(250)
         if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
             // This is the device lockscreen, not the later BiometricPrompt dialog.
-            // Long-press the exact SystemUI device-entry affordance and verify the complete PIN pad before input.
+            // Click the exact SystemUI device-entry affordance and verify the complete PIN pad before input.
             if (!hasVisibleKeyguardPinPad()) {
-                lastCredentialPreflightDiagnostics = longPressSystemDeviceEntryIconToRevealCredentialEntry()
+                lastCredentialPreflightDiagnostics = clickSystemDeviceEntryIconToRevealCredentialEntry()
             } else {
                 lastCredentialPreflightDiagnostics = "exact SystemUI Keyguard PIN pad was already visible"
             }
@@ -371,10 +371,10 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     /**
      * Fallback used only when the Keyguard PIN bouncer is not already visible.
-     * It invokes ACTION_LONG_CLICK only on the exact visible, long-clickable
+     * It invokes ACTION_CLICK only on the exact visible, long-clickable
      * SystemUI device-entry node with screen-bounded accessibility bounds.
      */
-    private fun longPressSystemDeviceEntryIconToRevealCredentialEntry(): String {
+    private fun clickSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -382,7 +382,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
         val identity = shell("id")
         assertTrue(
-            "keyguard long-press requires ordinary adb shell identity; refusing privileged execution",
+            "keyguard entry click requires ordinary adb shell identity; refusing privileged execution",
             identity.contains("uid=2000(shell)")
         )
 
@@ -390,7 +390,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         val viewId = "com.android.systemui:id/device_entry_icon_view"
         val targetBounds = Rect()
         var targetFound = false
-        var longClickAccepted = false
+        var clickAccepted = false
         var observedMatches = "no matching resource ID observed"
         var attempts = 0
         val deadline = SystemClock.elapsedRealtime() + 5_000L
@@ -430,7 +430,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                             it.viewIdResourceName == viewId &&
                                 it.className?.toString() == "android.widget.FrameLayout" &&
                                 it.isVisibleToUser && it.isEnabled &&
-                                it.isClickable && it.isLongClickable
+                                it.isClickable
                         }
                         if (target != null) {
                             val bounds = Rect()
@@ -441,7 +441,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                             ) {
                                 targetBounds.set(bounds)
                                 targetFound = true
-                                longClickAccepted = target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+                                clickAccepted = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                                 break
                             }
                         }
@@ -459,21 +459,21 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
         if (!targetFound) {
             fail(
-                "one visible, long-clickable SystemUI device-entry icon was not found within 5 seconds; " +
+                "one visible, clickable SystemUI device-entry icon was not found within 5 seconds; " +
                     "refusing coordinate guessing; attempts=$attempts; observedMatches=$observedMatches; " +
                     "ui=${credentialUiSnapshot()}"
             )
         }
-        if (!longClickAccepted) {
+        if (!clickAccepted) {
             fail(
-                "SystemUI device-entry icon rejected ACTION_LONG_CLICK; target=$viewId " +
+                "SystemUI device-entry icon rejected ACTION_CLICK; target=$viewId " +
                     "bounds=$targetBounds; ui=${credentialUiSnapshot()}"
             )
         }
         SystemClock.sleep(250)
         return "identity=" + identity.trim() +
             "; target=$viewId class=android.widget.FrameLayout bounds=$targetBounds" +
-            "; action=ACTION_LONG_CLICK accepted=true; attempts=$attempts"
+            "; action=ACTION_CLICK accepted=true; attempts=$attempts"
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {

@@ -170,7 +170,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("prepareInteractiveUnlockedEmulator()", source)
         self.assertIn("keyguard.isDeviceSecure", source)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
-        self.assertIn("longPressSystemDeviceEntryIconToRevealCredentialEntry()", source)
+        self.assertIn("clickSystemDeviceEntryIconToRevealCredentialEntry()", source)
         self.assertIn("awaitKeyguardPinPad", source)
         self.assertIn("enterSyntheticKeyguardPin(identity)", source)
         self.assertIn('identity.contains("uid=2000(shell)")', source)
@@ -269,9 +269,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertEqual(1, line.count("\\"))
         self.assertIn("printf '%s\\n'", line)
 
-    def test_systemui_device_entry_uses_exact_long_click_action(self):
+    def test_systemui_device_entry_uses_exact_click_action(self):
         source = (WORKFLOW.parents[2] / "android/app/src/androidTest/java/tech/mrnothing/os/OwnerAuthorityTrustActivityCommitLifecycleTest.kt").read_text(encoding="utf-8")
-        start = source.index("private fun longPressSystemDeviceEntryIconToRevealCredentialEntry")
+        start = source.index("private fun clickSystemDeviceEntryIconToRevealCredentialEntry")
         end = source.index("private fun awaitCredentialPrompt", start)
         helper = source[start:end]
         for required in (
@@ -279,13 +279,15 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             'root.packageName?.toString() != "com.android.systemui"',
             'it.className?.toString() == "android.widget.FrameLayout"',
             "it.isVisibleToUser && it.isEnabled",
-            "it.isClickable && it.isLongClickable",
+            "it.isClickable",
             "getBoundsInScreen",
             "bounds.right <= width && bounds.bottom <= height",
-            "target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)",
+            "target.performAction(AccessibilityNodeInfo.ACTION_CLICK)",
             'identity.contains("uid=2000(shell)")',
         ):
             self.assertIn(required, helper)
+        self.assertNotIn("it.isLongClickable", helper)
+        self.assertNotIn("ACTION_LONG_CLICK", helper)
         self.assertNotIn("input tap", helper)
         self.assertNotIn("input swipe", helper)
 
