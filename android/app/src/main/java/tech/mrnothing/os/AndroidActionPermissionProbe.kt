@@ -77,7 +77,7 @@ internal class AndroidActionPermissionProbe(
     }
 }
 
-/** Convenience wrapper. It remains unconnected to CommandRouter and all executors. */
+/** Convenience wrapper; it is not wired into any request dispatcher or executor. */
 internal class AndroidActionPermissionGate(
     context: Context,
     accessibilityConnectionProbe: AccessibilityServiceConnectionProbe =
