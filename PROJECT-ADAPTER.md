@@ -779,3 +779,11 @@ This is instrumentation-only. No production Android source, manifest, permission
 
 M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
 
+## Audit and implementation update — 2026-11-07, AGENT-005D
+
+At parent `dd5980ee9fb6636a65f77b048dafc9332a6f5878`, Phase 1 push/PR passed with 721 Python tests each; Android debug unit/build, repeat APK comparison, strict dependency verification and negative control passed. CI-003 push/PR passed independent unsigned APK reproducibility (7,862,996 bytes; SHA-256 `1283cc77cb9756f336c931d7db6cb97d6724ac0717995f94757eb101fb31c05b`); provenance reports `release_ready=false`.
+
+QA-005 [42401631073](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42401631073) executed 30 instrumentation tests: 28 passed and 2 failed. Both AccessibilityDisclosureActivity tests passed after AGENT-005C. The two SEC-020B4D lifecycle tests failed because the exact visible, long-clickable SystemUI device-entry node was not found. The pre-cleanup screenshot shows the lockscreen; PowerManager reported awake/interactive and Keyguard secure/showing; no ANR was reported. The helper did not include its existing bounded UI hierarchy snapshot in this failure path.
+
+AGENT-005D adds a five-second/100-ms bounded retry for the exact SystemUI node and includes text-free structural node/window diagnostics on failure. It preserves the package/resource/class/visibility/clickability/long-clickability and screen-bound checks, ordinary shell UID 2000, and ACTION_LONG_CLICK. No coordinate guessing or production Android code changes. Exact-head QA-005 rerun is required; no emulator acceptance is claimed.
+

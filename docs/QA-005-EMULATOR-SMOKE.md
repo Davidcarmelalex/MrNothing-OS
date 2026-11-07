@@ -213,3 +213,11 @@ The blocking `IntentFilter(Settings.ACTION_ACCESSIBILITY_SETTINGS)` ActivityMoni
 
 No production application code or manifest changed. This is a harness correction, not proof of a product crash or an emulator acceptance. Exact-head reruns remain mandatory.
 
+
+
+## AGENT-005D — bounded SystemUI node diagnostics (2026-11-07)
+
+At parent `dd5980ee9fb6636a65f77b048dafc9332a6f5878`, Phase 1 push/PR and CI-003 push/PR passed. QA-005 [42401631073](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42401631073) executed 30 tests: 28 passed, 2 failed. Both AccessibilityDisclosureActivity tests passed; the two SEC-020B4D commit-lifecycle tests failed because the exact SystemUI device-entry node did not meet the long-clickable lookup predicate. Evidence artifact [13586350038](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42401631073/artifacts/13586350038) shows the lockscreen and an awake/interactive, secure Keyguard; no ANR was reported.
+
+AGENT-005D adds a bounded retry of the exact SystemUI resource lookup and captures a capped structural accessibility snapshot (resource IDs, class, visibility, clickability and bounds only; no node text/content descriptions) when the node is missing. It retains the exact resource/package/class and screen-bound checks, ordinary shell identity and ACTION_LONG_CLICK. No guessed coordinates, Keyguard-dismiss API or production app behavior is introduced. New-head QA-005 must verify the result.
+

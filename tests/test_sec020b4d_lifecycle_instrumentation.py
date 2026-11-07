@@ -159,6 +159,11 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             'it.className?.toString() == "android.widget.FrameLayout"',
             "it.isVisibleToUser && it.isEnabled",
             "it.isClickable && it.isLongClickable",
+            "val deadline = SystemClock.elapsedRealtime() + 5_000L",
+            "while (!targetFound && SystemClock.elapsedRealtime() < deadline)",
+            "SystemClock.sleep(100)",
+            "observedMatches",
+            "ui=${credentialUiSnapshot()}",
             "getBoundsInScreen",
             "bounds.left >= 0 && bounds.top >= 0",
             "bounds.right <= width && bounds.bottom <= height",
@@ -241,6 +246,12 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("viewIdResourceName", source)
         self.assertIn("getBoundsInScreen", source)
         self.assertIn("credentialNodeSummary", source)
+        self.assertIn('" longClickable=" + node.isLongClickable', source)
+        snapshot_start = source.index("private fun credentialUiSnapshot()")
+        snapshot_end = source.index("private fun credentialNodeSummary", snapshot_start)
+        snapshot = source[snapshot_start:snapshot_end]
+        self.assertNotIn("node.text", snapshot)
+        self.assertNotIn("contentDescription", snapshot)
         self.assertNotIn("takeScreenshot()", source)
         self.assertIn("viewIdResourceName", source)
         self.assertIn("getBoundsInScreen", source)

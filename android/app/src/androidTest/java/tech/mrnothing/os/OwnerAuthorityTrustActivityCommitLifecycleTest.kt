@@ -387,68 +387,93 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         )
 
         val automation = getInstrumentation().uiAutomation
-        val roots = try {
-            automation.windows.mapNotNull { it.root }.toMutableList()
-        } catch (_: RuntimeException) {
-            mutableListOf()
-        }
-        if (roots.isEmpty()) {
-            automation.rootInActiveWindow?.let(roots::add)
-        }
-
         val viewId = "com.android.systemui:id/device_entry_icon_view"
         val targetBounds = Rect()
         var targetFound = false
         var longClickAccepted = false
-        try {
-            for (root in roots) {
-                if (root.packageName?.toString() != "com.android.systemui") continue
-                val matches = try {
-                    root.findAccessibilityNodeInfosByViewId(viewId)
-                } catch (_: RuntimeException) {
-                    emptyList()
-                }
-                try {
-                    val target = matches.singleOrNull {
-                        it.viewIdResourceName == viewId &&
-                            it.className?.toString() == "android.widget.FrameLayout" &&
-                            it.isVisibleToUser && it.isEnabled &&
-                            it.isClickable && it.isLongClickable
-                    }
-                    if (target != null) {
-                        val bounds = Rect()
-                        target.getBoundsInScreen(bounds)
-                        if (bounds.width() > 0 && bounds.height() > 0 &&
-                            bounds.left >= 0 && bounds.top >= 0 &&
-                            bounds.right <= width && bounds.bottom <= height
-                        ) {
-                            targetBounds.set(bounds)
-                            targetFound = true
-                            longClickAccepted = target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
-                            break
-                        }
-                    }
-                } finally {
-                    matches.forEach { it.recycle() }
-                }
-                if (targetFound) break
+        var observedMatches = "no matching resource ID observed"
+        var attempts = 0
+        val deadline = SystemClock.elapsedRealtime() + 5_000L
+
+        // SystemUI can publish its post-wake accessibility tree after the display
+        // becomes interactive. Retry only the exact resource lookup; never guess coordinates.
+        while (!targetFound && SystemClock.elapsedRealtime() < deadline) {
+            attempts += 1
+            val roots = try {
+                automation.windows.mapNotNull { it.root }.toMutableList()
+            } catch (_: RuntimeException) {
+                mutableListOf()
             }
-        } finally {
-            roots.forEach { it.recycle() }
+            if (roots.isEmpty()) {
+                automation.rootInActiveWindow?.let(roots::add)
+            }
+
+            try {
+                for (root in roots) {
+                    if (root.packageName?.toString() != "com.android.systemui") continue
+                    val matches = try {
+                        root.findAccessibilityNodeInfosByViewId(viewId)
+                    } catch (_: RuntimeException) {
+                        emptyList()
+                    }
+                    try {
+                        if (matches.isNotEmpty()) {
+                            observedMatches = matches.take(4).joinToString(" | ") { node ->
+                                val bounds = Rect()
+                                node.getBoundsInScreen(bounds)
+                                "class=${node.className}; visible=${node.isVisibleToUser}; " +
+                                    "enabled=${node.isEnabled}; clickable=${node.isClickable}; " +
+                                    "longClickable=${node.isLongClickable}; bounds=$bounds"
+                            }
+                        }
+                        val target = matches.singleOrNull {
+                            it.viewIdResourceName == viewId &&
+                                it.className?.toString() == "android.widget.FrameLayout" &&
+                                it.isVisibleToUser && it.isEnabled &&
+                                it.isClickable && it.isLongClickable
+                        }
+                        if (target != null) {
+                            val bounds = Rect()
+                            target.getBoundsInScreen(bounds)
+                            if (bounds.width() > 0 && bounds.height() > 0 &&
+                                bounds.left >= 0 && bounds.top >= 0 &&
+                                bounds.right <= width && bounds.bottom <= height
+                            ) {
+                                targetBounds.set(bounds)
+                                targetFound = true
+                                longClickAccepted = target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+                                break
+                            }
+                        }
+                    } finally {
+                        matches.forEach { it.recycle() }
+                    }
+                    if (targetFound) break
+                }
+            } finally {
+                roots.forEach { it.recycle() }
+            }
+
+            if (!targetFound) SystemClock.sleep(100)
         }
 
-        assertTrue(
-            "one visible, long-clickable SystemUI device-entry icon was not found; refusing coordinate guessing",
-            targetFound
-        )
-        assertTrue(
-            "SystemUI device-entry icon rejected ACTION_LONG_CLICK",
-            longClickAccepted
-        )
+        if (!targetFound) {
+            fail(
+                "one visible, long-clickable SystemUI device-entry icon was not found within 5 seconds; " +
+                    "refusing coordinate guessing; attempts=$attempts; observedMatches=$observedMatches; " +
+                    "ui=${credentialUiSnapshot()}"
+            )
+        }
+        if (!longClickAccepted) {
+            fail(
+                "SystemUI device-entry icon rejected ACTION_LONG_CLICK; target=$viewId " +
+                    "bounds=$targetBounds; ui=${credentialUiSnapshot()}"
+            )
+        }
         SystemClock.sleep(250)
         return "identity=" + identity.trim() +
             "; target=$viewId class=android.widget.FrameLayout bounds=$targetBounds" +
-            "; action=ACTION_LONG_CLICK accepted=true"
+            "; action=ACTION_LONG_CLICK accepted=true; attempts=$attempts"
     }
 
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
@@ -555,6 +580,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             " focusable=" + node.isFocusable +
             " focused=" + node.isFocused +
             " clickable=" + node.isClickable +
+            " longClickable=" + node.isLongClickable +
             " password=" + node.isPassword +
             " children=" + node.childCount +
             " bounds=" + bounds
