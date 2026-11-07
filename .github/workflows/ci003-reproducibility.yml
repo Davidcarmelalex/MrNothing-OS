@@ -7,9 +7,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Keep an active independent build/verifier run alive against its pinned commit.
+# GitHub retains one running and one pending run per group; newer pending work may replace older pending work.
 concurrency:
   group: ci003-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone')
