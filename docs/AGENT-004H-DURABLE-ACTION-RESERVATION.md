@@ -1,6 +1,6 @@
 # AGENT-004H — durable consent-bound action reservation
 
-**Status:** Implemented as an isolated Python/SQLite storage primitive with a test-only state machine. It is not wired to the mTLS adapter, Android permission APIs, or an action executor.
+**Status:** The Python/SQLite state machine is integrated behind an adapter-owned reservation method. It still does not query Android permissions, claim dispatch, or connect to an action executor.
 
 ## Why this is not a duplicate replay ledger
 
@@ -85,3 +85,25 @@ Local scratch validation executed against the new module and tests only:
 The full repository preflight, exact-head GitHub Actions, Android runtime permission checks and emulator workflow must still run against the committed tree. No local full-repository test result is claimed.
 
 No mTLS adapter integration, Android PermissionGate, listener, shell bridge, Android executor, device action, runtime permission grant, physical Pixel 9 Pro test or production deployment was added. Independent human security review remains pending.
+
+
+## AGENT-004I — adapter-owned reservation integration
+
+OwnerConsentTlsAdapter.reserve_action_capability(...) is the only new integration point. It accepts the exact live server-side SSLSocket, the adapter-minted opaque capability, the action/argument object, and an exact DurableActionReservationLedger instance. It does not accept an ActionReservationRequest, owner/device/session IDs, certificate fingerprints, key digests, generations, or authentication Booleans from the caller.
+
+The method shares a single private capability-validation routine with consume_action_capability. Before constructing the reservation request it revalidates:
+
+- exact socket object, current file descriptor, negotiated TLS version, ALPN and server-context identity;
+- currently active enrolled transport certificate and owner/device mapping;
+- transport credential generation and adapter-retained session identity;
+- retained challenge nonce, protocol version, action, signed argument digest and wall-clock validity;
+- current owner enrollment state, transport binding, credential generation and consent public-key digest;
+- monotonic session/capability/challenge expiry, with repeated clock and transport-registry reads immediately before reservation.
+
+Only after those checks does the adapter construct ActionReservationRequest from its private _IssuedActionCapability and retained _IssuedChallenge. Caller-supplied identity snapshots cannot populate the durable row.
+
+A successful result is RESERVATION_CREATED_NO_EXECUTION; the row remains RESERVED. The adapter consumes the in-memory capability after any definitive ledger decision. A registry outage or reservation-store exception fails closed and preserves the short-lived capability only for a bounded retry before expiry. An idempotent duplicate is reported as IDEMPOTENT_REPLAY, not as a new reservation.
+
+**Dispatch remains deliberately unavailable through this adapter method.** It never calls claim_dispatch, never queries Android permissions, and never invokes a platform API. A future trusted Android coordinator must query the current action-specific OS permission/role/service state after reservation and again immediately before the platform call. It must revalidate the live transport/enrollment/capability context at the final dispatch boundary; the durable row is not a reusable authorization token. No listener, permission grant, shell bridge, device action, or production execution path was added.
+
+The local mTLS tests cover successful v2 reservation, exact argument binding, transport revocation, consent-key rotation (including rotation between consecutive registry reads), enrollment-registry outage/retry, reservation-store failure/retry, duplicate nonce replay and monotonic expiry/expiry-during-commit. The exact-head Phase 1, CI-003 and QA-005 workflows are the acceptance gate for this change. Independent human security review remains pending.
