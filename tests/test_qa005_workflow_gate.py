@@ -294,5 +294,24 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         boundary = self.workflow[start:end]
         self.assertEqual(1, boundary.count(":app:connectedDebugAndroidTest"))
 
+
+    def test_launcher_start_intent_cannot_be_consumed_by_accessibility_settings_monitor(self):
+        root = WORKFLOW.parents[2]
+        source = (root /
+            "android/app/src/androidTest/java/tech/mrnothing/os/AccessibilityDisclosureActivityTest.kt").read_text(encoding="utf-8")
+        start = source.index("private fun launchMainActivity")
+        end = source.index("private fun openDisclosureFromLauncher", start)
+        launch = source[start:end]
+        self.assertIn("Intent(Intent.ACTION_MAIN)", launch)
+        self.assertIn("Intent.CATEGORY_LAUNCHER", launch)
+        self.assertIn("intent.hasCategory(Intent.CATEGORY_LAUNCHER)", launch)
+        monitor_start = source.index("val settingsMonitor")
+        monitor_end = source.index("getInstrumentation().addMonitor(settingsMonitor)", monitor_start)
+        settings_monitor = source[monitor_start:monitor_end]
+        self.assertIn("IntentFilter(Settings.ACTION_ACCESSIBILITY_SETTINGS)", settings_monitor)
+        self.assertIn("Instrumentation.ActivityResult(Activity.RESULT_OK, null)", settings_monitor)
+        self.assertIn("true", settings_monitor)
+        self.assertNotIn("Intent(instrumentation.targetContext, MainActivity::class.java)", launch)
+
 if __name__ == "__main__":
     unittest.main()

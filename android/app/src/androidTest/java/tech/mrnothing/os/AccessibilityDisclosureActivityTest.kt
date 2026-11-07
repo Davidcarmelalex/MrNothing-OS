@@ -40,8 +40,22 @@ class AccessibilityDisclosureActivityTest : InstrumentationTestCase() {
         instrumentation.addMonitor(monitor)
         application.registerActivityLifecycleCallbacks(lifecycle)
         try {
-            val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
+            // ActivityMonitor's action-filter matching can consume an actionless Intent.
+            // Use the real launcher action so the Accessibility Settings monitor below cannot
+            // intercept this explicit MainActivity launch.
+            val intent = Intent(Intent.ACTION_MAIN)
+                .setClass(instrumentation.targetContext, MainActivity::class.java)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            assertEquals(
+                "launcher test Intent must not be actionless while an action-filtered Settings monitor is active",
+                Intent.ACTION_MAIN,
+                intent.action
+            )
+            assertTrue(
+                "launcher test Intent must carry the LAUNCHER category",
+                intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+            )
             instrumentation.targetContext.startActivity(intent)
             val activity = monitor.waitForActivityWithTimeout(10_000)
             assertNotNull("launcher MainActivity was not observed within 10 seconds", activity)

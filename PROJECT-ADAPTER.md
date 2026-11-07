@@ -757,3 +757,12 @@ The first exact-head policy jobs on candidate `948ae030cf9ec2a605b2f5c5bd056168c
 ## AGENT-005A instrumentation compilation correction
 
 The QA-005 run on candidate `948ae030cf9ec2a605b2f5c5bd056168c5d25af5` completed SDK installation and compiled the main debug APK, then failed at `:app:compileDebugAndroidTestKotlin`: the earlier source-block replacement had left a duplicate, incomplete `awaitCredentialPrompt` declaration immediately before the real method. No emulator was started. The duplicate line is removed here, and a new source regression test requires exactly one complete helper declaration and rejects the incomplete form. This is a test-harness compile defect; it is not evidence of a production application crash. The exact-head AndroidTest build and emulator sequence must be rerun.
+
+
+## Audit and implementation update — 2026-11-07, AGENT-005B
+
+The live authorized branch was audited at `c743588fc298b391c1f541f5140f860142a86ec7`. The complete recursive tree contains 339 entries and is not truncated; `PROJECT-ADAPTER.md` and `docs/ENGINEERING-FACTORY-ROADMAP.md` are present, while repository `SKILL.md` is absent. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed as installed. The branch is 288 commits ahead of `main` and zero behind. PR #1 remains open/draft against `main`; PRs #3–#7 remain open and untouched. PR #1 has no submitted reviews or inline review threads. The feature branch reports unprotected; repository rulesets returned an empty list.
+
+Phase 1 push/PR and CI-003 push/PR all passed at this audit head. QA-005 executed 30 instrumentation tests and reported 29 passed / 1 failed. Inspection of the JUnit XML and per-test logcat identified a test-harness monitor interaction: a blocking `IntentFilter(Settings.ACTION_ACCESSIBILITY_SETTINGS)` monitor was installed before an actionless explicit MainActivity launch. AGENT-005B gives the launcher intent explicit `ACTION_MAIN` and `CATEGORY_LAUNCHER`, asserts both at runtime and adds a Python source gate. Exact-head reruns remain the acceptance authority.
+
+No production Android code, permissions, services, trust store, executor, physical hardware, signing or deployment behavior is changed. M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
