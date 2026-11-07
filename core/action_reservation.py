@@ -307,7 +307,6 @@ class DurableActionReservationLedger:
         if binding is None:
             return ReservationDecision(False, "INVALID_REQUEST", "", None)
         key = derive_idempotency_key(request)
-        now = self._now()
         names = tuple(binding)
         with self._transaction() as db:
             row = db.execute(
@@ -320,6 +319,30 @@ class DurableActionReservationLedger:
                     "WHERE owner_id=? AND device_id=? AND capability_nonce=?",
                     (request.owner_id, request.device_id, request.capability_nonce),
                 ).fetchone()
+
+            # Read the clock only after acquiring the SQLite write transaction.
+            # Waiting for another writer must not let an expired capability slip in.
+            now = self._now()
+            if now < request.issued_at_epoch_ms:
+                return ReservationDecision(
+                    False, "CAPABILITY_NOT_YET_VALID", key,
+                    None if row is None else row["state"],
+                )
+            if now >= request.expires_at_epoch_ms:
+                if row is not None and row["state"] == RESERVED:
+                    db.execute(
+                        "UPDATE action_reservations SET state=?,outcome_code=?,"
+                        "outcome_sha256=NULL,updated_at_epoch_ms=? "
+                        "WHERE idempotency_key=? AND state=?",
+                        (FAILED_NO_EFFECT, "CAPABILITY_EXPIRED", now, row["idempotency_key"], RESERVED),
+                    )
+                    return ReservationDecision(
+                        False, "CAPABILITY_EXPIRED", key, FAILED_NO_EFFECT,
+                    )
+                return ReservationDecision(
+                    False, "CAPABILITY_EXPIRED", key,
+                    None if row is None else row["state"],
+                )
             if row is not None:
                 same = row["idempotency_key"] == key and all(
                     row[name] == binding[name] for name in names
@@ -352,16 +375,36 @@ class DurableActionReservationLedger:
         """Atomically claim RESERVED once; no action is executed by this method."""
         if type(key) is not str or _SHA256.fullmatch(key) is None:
             return ReservationDecision(False, "INVALID_IDEMPOTENCY_KEY", "", None)
-        now = self._now()
         with self._transaction() as db:
             row = db.execute(
-                "SELECT state FROM action_reservations WHERE idempotency_key=?", (key,)
+                "SELECT state,issued_at_epoch_ms,expires_at_epoch_ms "
+                "FROM action_reservations WHERE idempotency_key=?", (key,)
             ).fetchone()
             if row is None:
                 return ReservationDecision(False, "RESERVATION_NOT_FOUND", key, None)
             if row["state"] != RESERVED:
                 reason = "ALREADY_CLAIMED" if row["state"] == DISPATCH_STARTED else "TERMINAL_STATE"
                 return ReservationDecision(False, reason, key, row["state"])
+
+            # Re-read time under the write lock so queueing behind another writer
+            # cannot move the claim past the signed capability's validity window.
+            now = self._now()
+            if now < row["issued_at_epoch_ms"]:
+                return ReservationDecision(
+                    False, "CAPABILITY_NOT_YET_VALID", key, RESERVED,
+                )
+            if now >= row["expires_at_epoch_ms"]:
+                changed = db.execute(
+                    "UPDATE action_reservations SET state=?,outcome_code=?,"
+                    "outcome_sha256=NULL,updated_at_epoch_ms=? "
+                    "WHERE idempotency_key=? AND state=?",
+                    (FAILED_NO_EFFECT, "CAPABILITY_EXPIRED", now, key, RESERVED),
+                ).rowcount
+                if changed != 1:
+                    return ReservationDecision(False, "CLAIM_RACE", key, None)
+                return ReservationDecision(
+                    False, "CAPABILITY_EXPIRED", key, FAILED_NO_EFFECT,
+                )
             changed = db.execute(
                 "UPDATE action_reservations SET state=?,updated_at_epoch_ms=? "
                 "WHERE idempotency_key=? AND state=?",

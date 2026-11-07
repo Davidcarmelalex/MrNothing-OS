@@ -109,6 +109,55 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertFalse(second.applied)
         self.assertEqual(second.reason, "ALREADY_CLAIMED")
 
+    def test_expired_capability_cannot_create_a_reservation(self):
+        request = self.request(expires_at_epoch_ms=self.now)
+        result = self.ledger.reserve(request)
+        self.assertFalse(result.applied)
+        self.assertFalse(result.created)
+        self.assertEqual(result.reason, "CAPABILITY_EXPIRED")
+        self.assertIsNone(self.ledger.get(result.idempotency_key))
+
+    def test_future_dated_capability_cannot_create_a_reservation(self):
+        request = self.request(
+            issued_at_epoch_ms=self.now + 1,
+            expires_at_epoch_ms=self.now + 29_901,
+        )
+        result = self.ledger.reserve(request)
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "CAPABILITY_NOT_YET_VALID")
+        self.assertIsNone(self.ledger.get(result.idempotency_key))
+
+    def test_expired_reserved_capability_becomes_terminal_before_dispatch(self):
+        reserved = self.reserve()
+        record = self.ledger.get(reserved.idempotency_key)
+        self.now = record.expires_at_epoch_ms
+
+        result = self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "CAPABILITY_EXPIRED")
+        self.assertEqual(result.state, FAILED_NO_EFFECT)
+        expired = self.ledger.get(reserved.idempotency_key)
+        self.assertEqual(expired.state, FAILED_NO_EFFECT)
+        self.assertEqual(expired.outcome_code, "CAPABILITY_EXPIRED")
+        retry = self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.assertFalse(retry.applied)
+        self.assertEqual(retry.reason, "TERMINAL_STATE")
+
+    def test_future_dated_reserved_capability_waits_without_becoming_dispatchable(self):
+        reserved = self.reserve()
+        record = self.ledger.get(reserved.idempotency_key)
+        self.now = record.issued_at_epoch_ms - 1
+
+        early = self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.assertFalse(early.applied)
+        self.assertEqual(early.reason, "CAPABILITY_NOT_YET_VALID")
+        self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
+
+        self.now = record.issued_at_epoch_ms
+        valid = self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.assertTrue(valid.applied)
+        self.assertEqual(valid.state, DISPATCH_STARTED)
+
     def test_concurrent_dispatch_claim_has_exactly_one_winner(self):
         reserved = self.reserve()
         ledgers = [

@@ -45,6 +45,8 @@ RESERVED -> FAILED_NO_EFFECT
 - Same nonce and same binding returns IDEMPOTENT_REPLAY; it never creates a second dispatch.
 - Same nonce with a changed action, argument digest, session, certificate, credential generation or consent key returns IDEMPOTENCY_CONFLICT.
 - Exactly one concurrent caller can move RESERVED to DISPATCH_STARTED.
+- Reservation creation and dispatch claim check the signed issue/expiry window using a clock read taken after acquiring the SQLite write transaction. An expired RESERVED row is terminally changed to FAILED_NO_EFFECT with CAPABILITY_EXPIRED; a future-dated row is not claimable yet.
+- These wall-clock checks are defense in depth. The live transport adapter must still enforce its monotonic session/challenge deadlines and current enrollment at the final admission boundary; the ledger alone is not proof of current owner authority.
 - Cancellation and pre-dispatch denial are permitted only while RESERVED.
 - A permission denial before dispatch can be recorded as FAILED_NO_EFFECT and permanently closes that capability.
 - FAILED_NO_EFFECT after dispatch is valid only when the caller can prove no side effect occurred.
@@ -107,3 +109,10 @@ A successful result is RESERVATION_CREATED_NO_EXECUTION; the row remains RESERVE
 **Dispatch remains deliberately unavailable through this adapter method.** It never calls claim_dispatch, never queries Android permissions, and never invokes a platform API. A future trusted Android coordinator must query the current action-specific OS permission/role/service state after reservation and again immediately before the platform call. It must revalidate the live transport/enrollment/capability context at the final dispatch boundary; the durable row is not a reusable authorization token. No listener, permission grant, shell bridge, device action, or production execution path was added.
 
 The local mTLS tests cover successful v2 reservation, exact argument binding, transport revocation, consent-key rotation (including rotation between consecutive registry reads), enrollment-registry outage/retry, reservation-store failure/retry, duplicate nonce replay and monotonic expiry/expiry-during-commit. The exact-head Phase 1, CI-003 and QA-005 workflows are the acceptance gate for this change. Independent human security review remains pending.
+
+
+## AGENT-005K — time-bounded reservation and dispatch claim
+
+The storage state machine now refuses to create a reservation when its signed issue time is still in the future or its expiry has been reached. `claim_dispatch` re-reads the clock only after acquiring the SQLite `BEGIN IMMEDIATE` write transaction and refuses a claim outside the signed validity window. An expired RESERVED record is atomically made terminal as `FAILED_NO_EFFECT/CAPABILITY_EXPIRED`; a future-dated record remains RESERVED but cannot be claimed until its issue time.
+
+The clock read occurs inside the write transaction so a caller queued behind another writer cannot rely on a stale pre-lock timestamp. These checks are defense in depth only: the adapter must still validate the exact live TLS peer, monotonic capability/session expiry, current enrollment generation and Android permission state immediately before any future platform call. This change does not connect `claim_dispatch` to the transport adapter or an executor and does not authorize device actions.

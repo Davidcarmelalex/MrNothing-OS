@@ -1567,3 +1567,10 @@ AGENT-005J selects the highest-priority unblocked M1 gap: a consolidated, eviden
 Milestones remain M1 FOUNDATION IN PROGRESS (threat model draft; independent review pending); M2 OS INTERFACE IN PROGRESS (spoken TalkBack not accepted); M3 AGENTIC INTELLIGENCE PARTIAL (no integrated executor); M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending physical Pixel 9 Pro access; M8 BLOCKED. No milestone is complete.
 
 Next task: independent security review of the threat model and existing SEC-017–SEC-020B6 boundaries. In parallel, obtain separate deliberate approval before enabling TalkBack on a disposable emulator for spoken acceptance. Do not connect an executor until the cross-store revocation/reservation race has a reviewed atomic final-admission design.
+
+
+## AGENT-005K — durable reservation expiry hardening (2026-11-08)
+
+At starting head 63a4d23e4d97117a342ae831600736fcd0797ae7, all five exact-head Phase 1/CI-003/QA-005 workflows were green. AGENT-004H's storage-only ledger was missing its own issue/expiry check: reserve could create an already-expired row and claim_dispatch could transition a stale RESERVED row to DISPATCH_STARTED. The ledger now checks time inside its SQLite write transaction, refuses future/expired creation, refuses future claim, and terminally records an expired reservation as FAILED_NO_EFFECT/CAPABILITY_EXPIRED. Four focused regression cases were added. This is defense in depth only; the live TLS adapter's monotonic deadline and current enrollment checks remain required. The adapter still does not claim dispatch and CommandRouter remains fail-closed. Exact-head CI and independent review are pending. Upstream shared SKILL.md remains unverified.
+
+**Next security priority:** serialize current owner-enrollment generation/revocation with the durable DISPATCH_STARTED claim. The present owner registry and action reservation ledger are separate SQLite databases, so their current checks do not yet establish one cross-store linearization point. Do not connect an executor until this is resolved and reviewed.
