@@ -168,6 +168,10 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("ERROR: null root node returned by UiTestAutomationBridge.", script)
         self.assertIn("qa005-keyguard-attempt-", script)
         self.assertIn("max_attempts: int = 5", script)
+        self.assertIn('DEVICE_ENTRY_ID = f"{SYSTEM_UI}:id/device_entry_icon_view"', script)
+        self.assertIn('DEVICE_ENTRY_FG_ID = f"{SYSTEM_UI}:id/device_entry_icon_fg"', script)
+        self.assertIn('DEVICE_LOCKED_DESC = "Device locked"', script)
+        self.assertIn("collect_keyguard_entry_center", script)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
@@ -213,6 +217,29 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         script = (WORKFLOW.parents[2] / "scripts/qa005_emulator_smoke.sh").read_text(encoding="utf-8")
         self.assertIn("Refusing non-emulator target", script)
         self.assertIn("ro.kernel.qemu", script)
+
+
+    def test_lock_entry_handoff_requires_exact_systemui_identity_and_bounded_retry(self):
+        script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
+        start = script.index("def collect_keyguard_entry_center")
+        end = script.index("\ndef _adb_result", start)
+        parser = script[start:end]
+        for required in (
+            "DEVICE_ENTRY_ID",
+            "DEVICE_ENTRY_FG_ID",
+            "DEVICE_LOCKED_DESC",
+            "content-desc",
+            "clickable=True",
+            "parse_bounds",
+        ):
+            self.assertIn(required, parser)
+        capture_start = script.index("def capture_fresh_systemui_keypad_hierarchy")
+        capture_end = script.index("\ndef unlock_with_visible_systemui_pinpad", capture_start)
+        capture = script[capture_start:capture_end]
+        self.assertIn("entry_tapped = False", capture)
+        self.assertIn('"_adb(serial, "shell", "input", "tap"', capture)
+        self.assertIn("max_attempts: int = 5", capture)
+        self.assertNotIn('shell", "input", "text"', script)
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,10 @@ from qa005_unlock_keyguard import (  # noqa: E402
     CONTAINER_ID,
     SUBMIT_ID,
     SYSTEM_UI,
+    DEVICE_ENTRY_ID,
+    DEVICE_ENTRY_FG_ID,
+    DEVICE_LOCKED_DESC,
+    collect_keyguard_entry_center,
     KeyguardUnlockError,
     capture_fresh_systemui_keypad_hierarchy,
     collect_keypad_centers,
@@ -92,6 +96,41 @@ def fixture_xml(
     return ET.tostring(root, encoding="unicode")
 
 
+def fixture_lockscreen_xml(
+    *,
+    wrong_package: bool = False,
+    wrong_description: bool = False,
+    clickable: bool = True,
+) -> str:
+    root = ET.Element("hierarchy", {"rotation": "0"})
+    package = "com.example.untrusted" if wrong_package else SYSTEM_UI
+    entry = ET.SubElement(
+        root,
+        "node",
+        {
+            "package": package,
+            "resource-id": DEVICE_ENTRY_ID,
+            "class": "android.widget.FrameLayout",
+            "enabled": "true",
+            "clickable": "true" if clickable else "false",
+            "bounds": "[446,1538][634,1726]",
+        },
+    )
+    ET.SubElement(
+        entry,
+        "node",
+        {
+            "package": SYSTEM_UI,
+            "resource-id": DEVICE_ENTRY_FG_ID,
+            "class": "android.widget.ImageView",
+            "content-desc": "Locked" if wrong_description else DEVICE_LOCKED_DESC,
+            "enabled": "true",
+            "bounds": "[446,1538][634,1726]",
+        },
+    )
+    return ET.tostring(root, encoding="unicode")
+
+
 class Qa005KeyguardUnlockTests(unittest.TestCase):
     def _parse(self, xml: str):
         with tempfile.TemporaryDirectory() as directory:
@@ -135,6 +174,154 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
         with self.assertRaises(KeyguardUnlockError):
             parse_display_size("Physical size: unknown")
 
+
+
+    def test_accepts_exact_visible_systemui_device_entry_affordance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "lockscreen.xml"
+            path.write_text(fixture_lockscreen_xml(), encoding="utf-8")
+            self.assertEqual(
+                collect_keyguard_entry_center(path, 1080, 1920),
+                (540, 1632),
+            )
+
+    def test_rejects_untrusted_or_noninteractive_device_entry_affordance(self):
+        for xml in (
+            fixture_lockscreen_xml(wrong_package=True),
+            fixture_lockscreen_xml(wrong_description=True),
+            fixture_lockscreen_xml(clickable=False),
+        ):
+            with self.subTest(xml=xml):
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "lockscreen.xml"
+                    path.write_text(xml, encoding="utf-8")
+                    with self.assertRaises(KeyguardUnlockError):
+                        collect_keyguard_entry_center(path, 1080, 1920)
+
+    def test_capture_taps_exact_device_entry_then_requires_fresh_pinpad(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+            dump_count = 0
+            taps = []
+
+            def fake_run(command, **kwargs):
+                nonlocal dump_count
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    dump_count += 1
+                    remote = command[-1]
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=f"UI hierchary dumped to: {remote}",
+                        stderr="",
+                    )
+                if command[-3] == "pull":
+                    xml = fixture_lockscreen_xml() if dump_count == 1 else fixture_xml()
+                    Path(command[-1]).write_text(xml, encoding="utf-8")
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-3] == "tap":
+                    taps.append((int(command[-2]), int(command[-1])))
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
+                "qa005_unlock_keyguard.time.sleep"
+            ) as sleep:
+                attempts = capture_fresh_systemui_keypad_hierarchy(
+                    "emulator-5554", hierarchy
+                )
+
+            self.assertEqual(attempts, 2)
+            self.assertEqual(dump_count, 2)
+            self.assertEqual(taps, [(540, 1632)])
+            self.assertEqual(sleep.call_count, 1)
+
+    def test_capture_taps_device_entry_at_most_once_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+            dump_count = 0
+            taps = []
+
+            def fake_run(command, **kwargs):
+                nonlocal dump_count
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    dump_count += 1
+                    remote = command[-1]
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=f"UI hierchary dumped to: {remote}",
+                        stderr="",
+                    )
+                if command[-3] == "pull":
+                    Path(command[-1]).write_text(
+                        fixture_lockscreen_xml(), encoding="utf-8"
+                    )
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-3] == "tap":
+                    taps.append((int(command[-2]), int(command[-1])))
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
+                "qa005_unlock_keyguard.time.sleep"
+            ) as sleep:
+                with self.assertRaisesRegex(
+                    KeyguardUnlockError, "PIN bouncer did not appear"
+                ):
+                    capture_fresh_systemui_keypad_hierarchy(
+                        "emulator-5554", hierarchy
+                    )
+
+            self.assertEqual(dump_count, 5)
+            self.assertEqual(taps, [(540, 1632)])
+            self.assertEqual(sleep.call_count, 4)
+
+    def test_capture_refuses_unknown_lockscreen_surface_without_tapping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+
+            def fake_run(command, **kwargs):
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    remote = command[-1]
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=f"UI hierchary dumped to: {remote}",
+                        stderr="",
+                    )
+                if command[-3] == "pull":
+                    Path(command[-1]).write_text(
+                        fixture_lockscreen_xml(wrong_description=True),
+                        encoding="utf-8",
+                    )
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-3] == "tap":
+                    self.fail("Unknown SystemUI surface must never be tapped")
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run):
+                with self.assertRaisesRegex(
+                    KeyguardUnlockError, "device-entry label"
+                ):
+                    capture_fresh_systemui_keypad_hierarchy(
+                        "emulator-5554", hierarchy
+                    )
 
     def test_capture_retries_null_root_with_unique_fresh_remote_paths(self):
         with tempfile.TemporaryDirectory() as directory:

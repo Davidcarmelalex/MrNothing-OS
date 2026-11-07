@@ -1322,3 +1322,12 @@ AGENT-004R moves hierarchy capture into the QA helper. Each attempt uses a uniqu
 M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
 
 Next: accept only exact-head Phase 1/CI-003 success and full QA-005 emulator evidence, then obtain independent security/accessibility review before considering any AccessibilityService declaration. MediaProjection remains separate and CommandRouter remains fail-closed.
+
+
+## 2026-11-07 follow-up — AGENT-004S exact SystemUI lock-entry handoff
+
+At audit head 43351639df5d82bdec0593b27a7ec71d24c17f64, Phase 1 push/PR and CI-003 push/PR passed, but QA-005 failed before instrumentation. Artifact 13574063028 showed the disposable API 35 emulator still on the lockscreen after the swipe. Its fresh hierarchy exposed the exact enabled/clickable SystemUI `device_entry_icon_view` and child `device_entry_icon_fg` with content description `Device locked`; the PIN keypad was absent. The synthetic test PIN was cleared by the workflow EXIT trap.
+
+AGENT-004S adds a QA-only exact-node parser and one-tap handoff: only the exact SystemUI parent/child identity, locked-state description and display-bounded matching bounds are accepted. The helper taps the derived center at most once, recaptures fresh unique hierarchies within five attempts, and requires the full PIN keypad before synthetic PIN entry. Negative tests reject wrong package/description/non-clickable controls and prove no repeated tap. This changes no production Android behavior, permissions, services, owner-consent flow, CommandRouter or executor. Exact-head CI and full QA-005 remain required before acceptance.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete.
