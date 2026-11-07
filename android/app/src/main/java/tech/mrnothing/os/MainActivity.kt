@@ -141,6 +141,11 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
 
+        addAction(root, "Accessibility access & revocation",
+            "Review Mr. Nothing accessibility status and open Android Accessibility settings to disable access") {
+            startActivity(Intent(this, AccessibilityDisclosureActivity::class.java))
+        }
+
         addAction(root, "Offline authority trust",
             "Open the owner-visible offline authority import and credential confirmation ceremony") {
             startActivity(Intent(this, OwnerAuthorityTrustActivity::class.java))

@@ -1222,3 +1222,16 @@ reserve_action_capability creates only a durable RESERVED row and consumes the i
 **Milestones:** M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION BLOCKED; M8 PRODUCTION READINESS BLOCKED. No milestone is complete.
 
 **Next task:** owner-visible disclosure/revocation UX and narrowly scoped AccessibilityService lifecycle design. Keep the service undeclared until independent security/accessibility review accepts the disclosure, settings handoff, revocation and stop behavior. MediaProjection remains separate.
+
+
+## Engineering Factory run — 2026-11-07, AGENT-004L owner Accessibility disclosure
+
+Audit baseline: 43ad1c83fa46d3d3305d5a96948cb171d8f0e8f7; complete recursive tree 312 entries, not truncated; 20 recent commits inspected; branch 260 ahead of main, zero behind. Six PRs (#1, #3–#7) are open/draft. PR #1 matches the authorized branch and has no submitted reviews or inline threads. PROJECT-ADAPTER.md is present; repository SKILL.md is absent; upstream shared package remains unverified. Branch metadata reports protected=false; rulesets are empty and the protection-detail endpoint returned 403, so required-review enforcement is unverified.
+
+Baseline exact-head workflows at 43ad1c83 passed: Phase 1 push/PR, CI-003 push/PR and QA-005 emulator PR. The two Python policy jobs each reported 668 tests passed; Android debug unit/build/repeat-build/dependency gates passed; CI-003 unsigned release reproducibility passed; QA-005 completed all steps on a disposable API 35 x86_64 emulator. QA-011 is only a TalkBack availability preflight and QA-012 structural semantics, not spoken acceptance.
+
+AGENT-004L adds a non-exported owner-visible Accessibility disclosure Activity, a fresh exact-component status reader, explicit Settings handoff, launcher entry, pure-JVM state tests, instrumentation tests and Python source-boundary tests. ScreenActionPreflight now shares the centralized future service component name. The current manifest still declares no AccessibilityService or MediaProjection service and no new permissions. No automatic Settings launch, programmatic service toggle, screen capture, gesture, permission grant, executor or CommandRouter connection was added.
+
+Local pure-JVM harness: five state scenarios passed. Exact-head Phase 1, CI-003 and QA-005 reruns are pending at commit preparation. No local Android Gradle build/emulator is claimed because the local container has no Android SDK. Independent human security/accessibility review remains pending. No milestone is complete: M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7 blocked; M8 blocked.
+
+Next gate: independent security/accessibility review before declaring a narrowly scoped AccessibilityService; then wire only real service lifecycle callbacks to the exact session lease and test reconnect, process death, stale callbacks, revocation, stop behavior and TalkBack coexistence. MediaProjection remains separate.

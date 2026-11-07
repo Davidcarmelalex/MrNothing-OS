@@ -26,8 +26,7 @@ internal data class ScreenPreflightSignals(
 )
 
 internal object ScreenActionPreflight {
-    private const val OWN_SERVICE =
-        "tech.mrnothing.os.OwnerScreenControlAccessibilityService"
+    private const val OWN_SERVICE = AccessibilityServiceContract.COMPONENT_CLASS_NAME
 
     fun evaluate(action: String, signals: ScreenPreflightSignals): ScreenPreflightResult {
         if (!signals.trustedOwnerSession ||

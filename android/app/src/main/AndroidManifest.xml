@@ -10,6 +10,7 @@
     <application android:label="Mr. Nothing OS" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false">
         <activity android:name=".OwnerAuthorityTrustActivity" android:exported="false"/>
         <activity android:name=".OwnerConsentPreviewActivity" android:exported="false"/>
+        <activity android:name=".AccessibilityDisclosureActivity" android:exported="false"/>
         <activity android:name=".OwnerKeyEnrollmentActivity" android:exported="false"/>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
