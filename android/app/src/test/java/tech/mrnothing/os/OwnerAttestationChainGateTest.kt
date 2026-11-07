@@ -35,6 +35,18 @@ class OwnerAttestationChainGateTest {
         assertFalse(OwnerAttestationChainGate.validatesPath(listOf(cert("leaf"), cert("leaf"), cert("root")), setOf(cert("root"))))
     }
 
+    @Test fun oversizedChainFailsClosed() {
+        val leaf = cert("leaf")
+        val root = cert("root")
+        assertFalse(OwnerAttestationChainGate.validatesPath(List(9) { leaf }, setOf(root)))
+    }
+
+    @Test fun untrustedCertificateInsertedBeforeRootFailsClosed() {
+        assertFalse(OwnerAttestationChainGate.validatesPath(
+            listOf(cert("leaf"), cert("rogue"), cert("root")), setOf(cert("root"))
+        ))
+    }
+
     @Test fun missingAnchorsFailClosed() {
         assertFalse(OwnerAttestationChainGate.validatesPath(listOf(cert("leaf")), emptySet()))
     }
