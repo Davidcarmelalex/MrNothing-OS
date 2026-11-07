@@ -20,7 +20,7 @@ Artifact 13591805010, SHA-256 3da97e398385d46a63e89171fe129d172a6bacb3a7d5caae62
 ## Implementation
 
 - QA-012 now captures the top viewport, then uses at most five display-size-derived upward swipes on the disposable emulator until Installed apps becomes visible.
-- The parser accepts repeated --hierarchy inputs, merges snapshots in top-to-bottom order and removes one occurrence of nodes overlapping the immediately previous viewport.
+- The parser accepts repeated --hierarchy inputs, merges snapshots in top-to-bottom order and removes one occurrence of nodes overlapping the immediately previous viewport using class, resource ID, text, content description and sibling index. Distinct sibling indices and duplicate controls remain visible to ambiguity checks.
 - Duplicate controls within a snapshot or newly introduced in a later snapshot remain visible to ambiguity checks; overlap de-duplication must not hide duplicate actions.
 - Both top and bottom hierarchy XML plus screenshots are retained.
 - No TalkBack service is enabled. semantics.json continues to set spoken_navigation_verified=false and acceptance_passed=false.
@@ -29,11 +29,12 @@ Artifact 13591805010, SHA-256 3da97e398385d46a63e89171fe129d172a6bacb3a7d5caae62
 ## Tests executed locally
 
 In an isolated temporary harness containing the changed QA-012 source/test files and a workflow reference stub:
-- python -m unittest -v tests.test_qa012_semantics — 20 passed.
+- python -m unittest -v tests.test_qa012_semantics — 21 passed.
 - python -m compileall -q scripts tests — passed.
 - bash -n scripts/qa012_semantics_smoke.sh — passed.
+- Fake-ADB shell integration harness with synthetic top/bottom viewport XML — passed; parser reported structural_checks_passed=true, hierarchy_snapshots=2, spoken_navigation_verified=false and acceptance_passed=false.
 
-The focused local harness is not a substitute for the complete repository policy suite or an emulator run. Exact-head GitHub CI and QA-005 reruns are required after this correction.
+The fake-ADB harness validates shell argument flow and parser integration only; it is not an Android emulator. The focused local harness is not a substitute for the complete repository policy suite or an emulator run. Exact-head GitHub CI and QA-005 reruns are required after this correction.
 
 ## Milestones and next gate
 

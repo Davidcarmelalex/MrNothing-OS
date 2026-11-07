@@ -12,10 +12,10 @@ SHELL = (ROOT / "scripts/qa012_semantics_smoke.sh").read_text()
 WORKFLOW = (ROOT / ".github/workflows/qa005-emulator.yml").read_text()
 
 
-def node(kind, text="", desc="", bounds="[0,0][200,120]", clickable=None):
+def node(kind, text="", desc="", bounds="[0,0][200,120]", clickable=None, index="0"):
     if clickable is None:
         clickable = kind == "android.widget.Button"
-    attrs = {"package": "tech.mrnothing.os", "class": kind, "text": text,
+    attrs = {"package": "tech.mrnothing.os", "class": kind, "index": index, "text": text,
              "content-desc": desc, "bounds": bounds,
              "clickable": str(clickable).lower(),
              "focusable": str(kind == "android.widget.Button").lower(),
@@ -114,11 +114,20 @@ class Qa012Tests(unittest.TestCase):
 
     def test_duplicate_action_in_later_viewport_is_not_hidden_by_overlap(self):
         text = lambda value: node("android.widget.TextView", text=value)
-        button = lambda desc: node("android.widget.Button", desc=desc)
+        button = lambda desc, index="0": node("android.widget.Button", desc=desc, index=index)
         top = ("<hierarchy>" + text("MR. NOTHING") + text("Device status") +
-               button(RECOVERY) + button(SETTINGS) + "</hierarchy>")
-        bottom = ("<hierarchy>" + button(RECOVERY) + button(RECOVERY) +
-                  button(SETTINGS) + text("Installed apps") + "</hierarchy>")
+               button(RECOVERY, "3") + button(SETTINGS, "4") + "</hierarchy>")
+        bottom = ("<hierarchy>" + button(RECOVERY, "3") +
+                  node("android.widget.Button", desc=RECOVERY, index="7") +
+                  button(SETTINGS, "4") + text("Installed apps") + "</hierarchy>")
+        with self.assertRaisesRegex(ValueError, "duplicate system action"):
+            audit([top, bottom], 2)
+
+    def test_distinct_sibling_index_is_not_treated_as_viewport_overlap(self):
+        text = lambda value: node("android.widget.TextView", text=value)
+        button = lambda desc, index="0": node("android.widget.Button", desc=desc, index=index)
+        top = "<hierarchy>" + text("MR. NOTHING") + text("Device status") + button(RECOVERY, "3") + button(SETTINGS, "4") + "</hierarchy>"
+        bottom = "<hierarchy>" + button(RECOVERY, "3") + button(RECOVERY, "7") + button(SETTINGS, "4") + text("Installed apps") + "</hierarchy>"
         with self.assertRaisesRegex(ValueError, "duplicate system action"):
             audit([top, bottom], 2)
 

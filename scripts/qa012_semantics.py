@@ -15,7 +15,7 @@ BOUND = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\Z")
 def _ordered_package_nodes(hierarchies: list[str]) -> list[dict[str, str]]:
     """Merge top-to-bottom viewport snapshots without double-counting overlap."""
     nodes: list[dict[str, str]] = []
-    previous_snapshot: set[tuple[str, str, str, str]] = set()
+    previous_snapshot: set[tuple[str, str, str, str, str]] = set()
     for xml in hierarchies:
         try:
             snapshot = ET.fromstring(xml)
@@ -31,6 +31,7 @@ def _ordered_package_nodes(hierarchies: list[str]) -> list[dict[str, str]]:
                 attrs.get("resource-id", ""),
                 attrs.get("text", ""),
                 attrs.get("content-desc", ""),
+                attrs.get("index", ""),
             )
             # Drop one occurrence only when it overlaps the immediately prior
             # viewport. Preserve duplicates within a snapshot so ambiguity is
