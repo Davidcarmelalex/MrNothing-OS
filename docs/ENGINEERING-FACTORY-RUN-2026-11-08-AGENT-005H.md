@@ -52,3 +52,10 @@ No milestone is complete.
 ## Next task — AGENT-005I
 
 Inspect exact-head QA-005. Confirm both lifecycle tests pass the device-entry preflight and reach the fake-store commit boundaries. If ACTION_CLICK is accepted but the PIN bouncer does not appear, inspect the new UI hierarchy and screenshot before changing the interaction. Do not weaken the exact-node, PIN-pad, UID, cleanup or lifecycle assertions.
+
+
+## Candidate regression and correction
+
+The first exact-head Phase 1 Python jobs for candidate `a1bb94a818921d594dc0d4eba420d2826d50dca7` failed in the separate `tests/test_sec020b4d_lifecycle_instrumentation.py` source gate. Two tests attempted to locate the old helper name and raised `ValueError: substring not found`; a third assertion still required the old helper name. The new QA-005 workflow-gate test itself passed. This was stale test-gate drift after the helper rename, not a Kotlin compilation failure or emulator result.
+
+The follow-up updates the SEC-020B4D Python source gate to require the new helper name and `ACTION_CLICK`, and to reject the old long-click predicate. Candidate CI is not accepted. Exact-head Phase 1, CI-003 and QA-005 reruns after the follow-up determine acceptance.

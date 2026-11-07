@@ -276,3 +276,8 @@ Both failed in `prepareInteractiveUnlockedEmulator()` before the owner-trust Act
 AGENT-005H changes the test-only helper to invoke `AccessibilityNodeInfo.ACTION_CLICK` on the unique exact SystemUI resource node. It retains the package, class, visibility, enabled, clickable, screen-bounds and ordinary shell UID 2000 checks; it continues to wait for the exact SystemUI PIN keypad before entering only the synthetic test PIN. No coordinate guessing, shell tap/swipe, Keyguard-dismiss API or authentication bypass is added. The Python source gate now requires ACTION_CLICK and rejects a long-click requirement.
 
 Exact-head Phase 1, CI-003 and QA-005 reruns determine acceptance. No current-head emulator success is claimed by this entry. The upstream shared `SKILL.md` remains unverified and is not claimed installed. Independent human security/accessibility review remains pending.
+
+
+### AGENT-005H source-gate correction
+
+The first exact-head Python policy jobs for candidate `a1bb94a818921d594dc0d4eba420d2826d50dca7` failed because `tests/test_sec020b4d_lifecycle_instrumentation.py` still expected the previous helper name and `ACTION_LONG_CLICK`. The new QA-005 workflow-gate test already passed; the stale SEC-020B4D source tests produced two `ValueError: substring not found` errors and one old-name assertion failure. This is test-gate drift caused by the helper rename, not a Kotlin compile or emulator failure. The follow-up updates those assertions to require `ACTION_CLICK` and reject the obsolete long-click predicate. The candidate is not accepted; the new exact-head Phase 1 and QA-005 runs determine acceptance.

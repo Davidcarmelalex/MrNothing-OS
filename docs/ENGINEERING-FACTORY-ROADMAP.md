@@ -1541,3 +1541,8 @@ QA-005 [run 42412685924](https://github.com/Davidcarmelalex/MrNothing-OS/actions
 AGENT-005H updates only the Android instrumentation helper, its Python source regression gate and QA/roadmap evidence. The helper now uses `AccessibilityNodeInfo.ACTION_CLICK` on the exact visible, enabled, clickable SystemUI node with screen-bounded bounds and retains UID 2000 checks. No production Android source, permission, service, trust, consent, executor or device-control behavior changed. Exact-head reruns remain required.
 
 Milestones remain M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
+
+
+### AGENT-005H follow-up — source regression gate alignment
+
+The first exact-head Phase 1 Python runs on candidate `a1bb94a818921d594dc0d4eba420d2826d50dca7` failed in `tests/test_sec020b4d_lifecycle_instrumentation.py`: two tests could not find the renamed helper, and one assertion still required the old long-click helper. The new `test_qa005_workflow_gate.py` click-action test passed. This follow-up aligns the SEC-020B4D source gate with the observed Android 15 clickable/not-long-clickable SystemUI node. No product code or Android permissions change. Candidate CI is not accepted; exact-head reruns are required.

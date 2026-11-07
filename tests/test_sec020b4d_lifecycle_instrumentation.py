@@ -139,26 +139,26 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("matches.forEach { it.recycle() }", node_gate)
         self.assertNotIn("expectedClassName", node_gate)
 
-    def test_locked_keyguard_long_presses_exact_systemui_device_entry_with_unprivileged_shell(self):
+    def test_locked_keyguard_clicks_exact_systemui_device_entry_with_unprivileged_shell(self):
         source = TEST.read_text(encoding="utf-8")
         prepare_start = source.index("private fun prepareInteractiveUnlockedEmulator()")
         pin_helper_start = source.index("private fun enterSyntheticKeyguardPin", prepare_start)
-        long_press_start = source.index("private fun longPressSystemDeviceEntryIconToRevealCredentialEntry", pin_helper_start)
-        prompt_start = source.index("private fun awaitCredentialPrompt", long_press_start)
+        device_entry_click_start = source.index("private fun clickSystemDeviceEntryIconToRevealCredentialEntry", pin_helper_start)
+        prompt_start = source.index("private fun awaitCredentialPrompt", device_entry_click_start)
         prepare = source[prepare_start:pin_helper_start]
-        long_press = source[long_press_start:prompt_start]
+        device_entry_click = source[device_entry_click_start:prompt_start]
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', prepare)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", prepare)
         self.assertIn("if (!hasVisibleKeyguardPinPad())", prepare)
-        self.assertIn("longPressSystemDeviceEntryIconToRevealCredentialEntry()", prepare)
-        self.assertLess(prepare.index("longPressSystemDeviceEntryIconToRevealCredentialEntry()"), prepare.index("awaitKeyguardPinPad"))
+        self.assertIn("clickSystemDeviceEntryIconToRevealCredentialEntry()", prepare)
+        self.assertLess(prepare.index("clickSystemDeviceEntryIconToRevealCredentialEntry()"), prepare.index("awaitKeyguardPinPad"))
         self.assertLess(prepare.index("awaitKeyguardPinPad"), prepare.index("enterSyntheticKeyguardPin(identity)"))
         for required in (
             'val viewId = "com.android.systemui:id/device_entry_icon_view"',
             'root.packageName?.toString() != "com.android.systemui"',
             'it.className?.toString() == "android.widget.FrameLayout"',
             "it.isVisibleToUser && it.isEnabled",
-            "it.isClickable && it.isLongClickable",
+            "it.isClickable",
             "val deadline = SystemClock.elapsedRealtime() + 5_000L",
             "while (!targetFound && SystemClock.elapsedRealtime() < deadline)",
             "SystemClock.sleep(100)",
@@ -167,12 +167,14 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             "getBoundsInScreen",
             "bounds.left >= 0 && bounds.top >= 0",
             "bounds.right <= width && bounds.bottom <= height",
-            "target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)",
+            "target.performAction(AccessibilityNodeInfo.ACTION_CLICK)",
             'identity.contains("uid=2000(shell)")',
         ):
-            self.assertIn(required, long_press)
-        self.assertNotIn("input tap", long_press)
-        self.assertNotIn("input swipe", long_press)
+            self.assertIn(required, device_entry_click)
+        self.assertNotIn("it.isLongClickable", device_entry_click)
+        self.assertNotIn("ACTION_LONG_CLICK", device_entry_click)
+        self.assertNotIn("input tap", device_entry_click)
+        self.assertNotIn("input swipe", device_entry_click)
         self.assertNotIn("requestDismissKeyguard", source)
         self.assertNotIn("wm dismiss-keyguard", source)
         self.assertNotIn("adb root", source)
@@ -182,7 +184,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         biometric_start = source.index("private fun enterSyntheticBiometricPromptPin", pin_start)
         tap_start = source.index("private fun tapVisibleSystemUiNode", biometric_start)
         device_entry_start = source.index(
-            "private fun longPressSystemDeviceEntryIconToRevealCredentialEntry", tap_start
+            "private fun clickSystemDeviceEntryIconToRevealCredentialEntry", tap_start
         )
         keyguard_helper = source[pin_start:biometric_start]
         node_tap = source[tap_start:device_entry_start]
@@ -271,7 +273,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertIn("prepareInteractiveUnlockedEmulator()", source)
         self.assertIn('shell("input keyevent KEYCODE_WAKEUP")', source)
         self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
-        self.assertIn("longPressSystemDeviceEntryIconToRevealCredentialEntry()", source)
+        self.assertIn("clickSystemDeviceEntryIconToRevealCredentialEntry()", source)
         self.assertIn("com.android.systemui:id/device_entry_icon_view", source)
         self.assertIn("awaitKeyguardPinPad", source)
         self.assertIn("private fun enterSyntheticKeyguardPin", source)
