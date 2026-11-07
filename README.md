@@ -1,3 +1,5 @@
+> **Development status (2026-11-02):** This repository contains legacy Termux prototypes and an experimental native Android launcher on `feat/phase1-agentic-phone`. It is **not** a production-ready Android OS or verified Pixel firmware. The historical beta/version badges and one-line Termux examples below do not establish a working installer. See [the project adapter](PROJECT-ADAPTER.md), [milestone gates](docs/ENGINEERING-FACTORY-ROADMAP.md), and [current scorecard](docs/ENGINEERING-SCORECARD.md). No root, OTA, native cellular AI audio or physical Pixel validation has been demonstrated.
+
 <div align="center">
 
 <img src="https://capsule-render.vercel.app/api?type=venom&color=0f0f0f&height=200&section=header&text=MrNothing%20OS&fontSize=60&fontColor=7f52ff&animation=fadeIn&fontAlignY=38&desc=Autonomous%20AI%20Agent%20OS%20for%20Android%20%E2%80%94%20Runs%20Locally.%20Zero%20Cloud.%20Zero%20Cost.&descAlignY=58&descSize=16&descColor=cccccc" width="100%"/>
