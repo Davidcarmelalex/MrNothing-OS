@@ -334,9 +334,10 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             'timeout 15s adb -s "$ANDROID_SERIAL" logcat -b events -d -t 10000',
             'timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os',
             'timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os.test',
+            'timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys dropbox --print data_app_anr',
         ):
             self.assertIn(required, diagnostics)
-        for artifact_name in ("events-tail.txt", "app-exit-info.txt", "test-exit-info.txt"):
+        for artifact_name in ("events-tail.txt", "app-exit-info.txt", "test-exit-info.txt", "dropbox-data-app-anr.txt"):
             self.assertIn(artifact_name, diagnostics)
         self.assertNotIn("adb root", diagnostics)
 

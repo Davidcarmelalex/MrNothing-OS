@@ -252,6 +252,8 @@ jobs:
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os > "$QA005_OUTPUT/app-exit-info.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os.test > "$QA005_OUTPUT/test-exit-info.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity lastanr > "$QA005_OUTPUT/last-anr.txt" 2>&1 || true
+          # Startup ANRs can be absent from lastanr/exit-info; DropBox may retain the app ANR trace.
+          timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys dropbox --print data_app_anr > "$QA005_OUTPUT/dropbox-data-app-anr.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys meminfo tech.mrnothing.os > "$QA005_OUTPUT/app-meminfo.txt" 2>&1 || true
           df -h > "$QA005_OUTPUT/disk.txt" || true
           free -h > "$QA005_OUTPUT/memory.txt" || true
