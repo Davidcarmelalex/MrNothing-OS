@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -17,6 +19,7 @@ from qa005_unlock_keyguard import (  # noqa: E402
     SUBMIT_ID,
     SYSTEM_UI,
     KeyguardUnlockError,
+    capture_fresh_systemui_keypad_hierarchy,
     collect_keypad_centers,
     parse_display_size,
 )
@@ -131,6 +134,102 @@ class Qa005KeyguardUnlockTests(unittest.TestCase):
         self.assertEqual(parse_display_size("Physical size: 1080x1920"), (1080, 1920))
         with self.assertRaises(KeyguardUnlockError):
             parse_display_size("Physical size: unknown")
+
+
+    def test_capture_retries_null_root_with_unique_fresh_remote_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+            dump_paths = []
+
+            def fake_run(command, **kwargs):
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    remote = command[-1]
+                    dump_paths.append(remote)
+                    if len(dump_paths) == 1:
+                        return SimpleNamespace(
+                            returncode=0,
+                            stdout="",
+                            stderr="ERROR: null root node returned by UiTestAutomationBridge.",
+                        )
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=f"UI hierchary dumped to: {remote}",
+                        stderr="",
+                    )
+                if command[-3] == "pull":
+                    Path(command[-1]).write_text(fixture_xml(), encoding="utf-8")
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
+                "qa005_unlock_keyguard.time.sleep"
+            ) as sleep:
+                attempts = capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
+
+            self.assertEqual(attempts, 2)
+            self.assertEqual(len(dump_paths), 2)
+            self.assertEqual(len(set(dump_paths)), 2)
+            self.assertTrue(hierarchy.is_file())
+            sleep.assert_called_once_with(1)
+
+    def test_capture_fails_closed_on_non_null_root_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+
+            def fake_run(command, **kwargs):
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    return SimpleNamespace(returncode=1, stdout="", stderr="permission denied")
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run):
+                with self.assertRaises(KeyguardUnlockError):
+                    capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
+
+            self.assertFalse(hierarchy.exists())
+
+    def test_capture_has_a_hard_attempt_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hierarchy = Path(directory) / "keyguard.xml"
+            dump_count = 0
+
+            def fake_run(command, **kwargs):
+                nonlocal dump_count
+                if command[-2:] == ["shell", "id"]:
+                    return SimpleNamespace(returncode=0, stdout="uid=2000(shell)", stderr="")
+                if command[-3:] == ["shell", "wm", "size"]:
+                    return SimpleNamespace(returncode=0, stdout="Physical size: 1080x1920", stderr="")
+                if command[-3] == "rm":
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if command[-4:-1] == ["uiautomator", "dump", "--compressed"]:
+                    dump_count += 1
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout="",
+                        stderr="ERROR: null root node returned by UiTestAutomationBridge.",
+                    )
+                raise AssertionError(f"Unexpected ADB command: {command}")
+
+            with patch("qa005_unlock_keyguard.subprocess.run", side_effect=fake_run), patch(
+                "qa005_unlock_keyguard.time.sleep"
+            ) as sleep:
+                with self.assertRaises(KeyguardUnlockError):
+                    capture_fresh_systemui_keypad_hierarchy("emulator-5554", hierarchy)
+
+            self.assertEqual(dump_count, 5)
+            self.assertEqual(sleep.call_count, 4)
+
 
 
 if __name__ == "__main__":

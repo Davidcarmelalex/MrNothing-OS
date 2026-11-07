@@ -118,9 +118,9 @@ def collect_keypad_centers(
     return centers
 
 
-def _adb(serial: str, *args: str, timeout: int = 10) -> str:
+def _adb_result(serial: str, *args: str, timeout: int = 10):
     try:
-        result = subprocess.run(
+        return subprocess.run(
             ["adb", "-s", serial, *args],
             check=False,
             capture_output=True,
@@ -129,6 +129,10 @@ def _adb(serial: str, *args: str, timeout: int = 10) -> str:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise KeyguardUnlockError("Bounded ADB operation failed") from exc
+
+
+def _adb(serial: str, *args: str, timeout: int = 10) -> str:
+    result = _adb_result(serial, *args, timeout=timeout)
     if result.returncode != 0:
         raise KeyguardUnlockError("ADB rejected a required Keyguard operation")
     return result.stdout
@@ -143,6 +147,54 @@ def parse_display_size(output: str) -> Tuple[int, int]:
         raise KeyguardUnlockError("Invalid emulator display dimensions")
     return width, height
 
+
+
+def capture_fresh_systemui_keypad_hierarchy(
+    serial: str, hierarchy: Path, max_attempts: int = 5
+) -> int:
+    """Capture a fresh exact SystemUI PIN hierarchy, retrying only null-root results."""
+    if not serial.startswith("emulator-"):
+        raise KeyguardUnlockError("Refusing non-emulator target")
+    if not 1 <= max_attempts <= 5:
+        raise KeyguardUnlockError("Hierarchy capture attempts must be between 1 and 5")
+    identity = _adb(serial, "shell", "id")
+    if "uid=2000(shell)" not in identity:
+        raise KeyguardUnlockError("Refusing non-shell or privileged ADB identity")
+    width, height = parse_display_size(_adb(serial, "shell", "wm", "size"))
+    hierarchy.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        hierarchy.unlink()
+    except FileNotFoundError:
+        pass
+
+    for attempt in range(1, max_attempts + 1):
+        remote_path = f"/sdcard/qa005-keyguard-attempt-{attempt}.xml"
+        _adb(serial, "shell", "rm", "-f", remote_path)
+        result = _adb_result(
+            serial,
+            "shell",
+            "uiautomator",
+            "dump",
+            "--compressed",
+            remote_path,
+            timeout=15,
+        )
+        output = (result.stdout or "") + "\n" + (result.stderr or "")
+        success_marker = f"UI hierchary dumped to: {remote_path}"
+        if result.returncode == 0 and success_marker in output:
+            _adb(serial, "pull", remote_path, str(hierarchy), timeout=10)
+            if not hierarchy.is_file() or hierarchy.stat().st_size == 0:
+                raise KeyguardUnlockError("Fresh SystemUI hierarchy was not materialized")
+            collect_keypad_centers(hierarchy, width, height)
+            return attempt
+        if "ERROR: null root node returned by UiTestAutomationBridge." in output:
+            if attempt < max_attempts:
+                time.sleep(1)
+                continue
+            break
+        raise KeyguardUnlockError("UIAutomator did not confirm a fresh SystemUI hierarchy dump")
+
+    raise KeyguardUnlockError("UIAutomator returned a null root for all bounded capture attempts")
 
 def unlock_with_visible_systemui_pinpad(
     serial: str, hierarchy: Path, pin: str
@@ -172,9 +224,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", required=True)
     parser.add_argument("--hierarchy", required=True, type=Path)
+    parser.add_argument("--capture", action="store_true")
     args = parser.parse_args(argv)
     pin = os.environ.get("TEST_PIN", "")
     try:
+        if args.capture:
+            attempts = capture_fresh_systemui_keypad_hierarchy(args.serial, args.hierarchy)
+            print(f"Captured a fresh SystemUI PIN hierarchy after {attempts} bounded attempt(s).")
         count = unlock_with_visible_systemui_pinpad(args.serial, args.hierarchy, pin)
     except KeyguardUnlockError as exc:
         print(f"QA-005 Keyguard unlock refused: {exc}", file=sys.stderr)

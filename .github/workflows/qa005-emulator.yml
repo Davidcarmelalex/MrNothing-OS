@@ -219,10 +219,9 @@ jobs:
           display_width="${display_size%x*}"
           display_height="${display_size#*x}"
           timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
-          # Dump the actual SystemUI hierarchy and tap only its exact visible PIN controls.
-          timeout 15s adb -s "$ANDROID_SERIAL" shell uiautomator dump --compressed /sdcard/qa005-keyguard.xml > "$QA005_OUTPUT/keyguard-uiautomator-dump.txt"
-          timeout 10s adb -s "$ANDROID_SERIAL" pull /sdcard/qa005-keyguard.xml "$QA005_OUTPUT/keyguard-hierarchy.xml"
-          TEST_PIN="$TEST_PIN" timeout 45s python3 ../scripts/qa005_unlock_keyguard.py --serial "$ANDROID_SERIAL" --hierarchy "$QA005_OUTPUT/keyguard-hierarchy.xml"
+          # Let the lockscreen bouncer settle; capture a fresh hierarchy with bounded null-root retries.
+          sleep 1
+          TEST_PIN="$TEST_PIN" timeout 120s python3 ../scripts/qa005_unlock_keyguard.py --serial "$ANDROID_SERIAL" --hierarchy "$QA005_OUTPUT/keyguard-hierarchy.xml" --capture
           unlocked=0
           for attempt in $(seq 1 20); do
             keyguard_policy="$(read_keyguard_policy || true)"

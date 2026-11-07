@@ -107,7 +107,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "mIsShowing=",
             "keyguard_is_showing",
             "shell wm size",
-            "uiautomator dump --compressed",
+            "--capture",
             "keyguard-hierarchy.xml",
             "qa005_unlock_keyguard.py",
             "Disposable emulator keyguard dismissed",
@@ -118,8 +118,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertLess(boundary.index("dumpsys power"), boundary.index("input keyevent KEYCODE_WAKEUP"))
         self.assertLess(boundary.index("input keyevent KEYCODE_WAKEUP"), boundary.index("keyguard_showing=0"))
         self.assertLess(boundary.index("keyguard_showing=0"), boundary.index("if keyguard_is_showing"))
-        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index("uiautomator dump --compressed"))
-        self.assertLess(boundary.index("uiautomator dump --compressed"), boundary.index("qa005_unlock_keyguard.py"))
+        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index("--capture"))
+        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index("--capture"))
         self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
         self.assertLess(boundary.index('if keyguard_is_hidden "$keyguard_policy"'), boundary.index(":app:connectedDebugAndroidTest"))
         self.assertNotIn('shell input text "$TEST_PIN"', boundary)
@@ -135,8 +135,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake", boundary)
         self.assertIn("keyguard-state-after-instrumentation-unlock.txt", boundary)
         self.assertLess(boundary.index("keyguard_showing=0"), boundary.index('if keyguard_is_showing "$keyguard_policy"'))
-        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index("uiautomator dump --compressed"))
-        self.assertLess(boundary.index("uiautomator dump --compressed"), boundary.index("qa005_unlock_keyguard.py"))
+        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index("--capture"))
+        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index("--capture"))
         self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
 
     def test_keyguard_unlock_uses_exact_systemui_resource_ids_without_text_injection(self):
@@ -144,7 +144,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
-        self.assertIn("uiautomator dump --compressed", boundary)
+        self.assertIn("--capture", boundary)
         self.assertIn("qa005_unlock_keyguard.py", boundary)
         self.assertNotIn('shell input text "$TEST_PIN"', boundary)
         for required in (
@@ -162,7 +162,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertNotIn("adb root", script)
         self.assertIn("working-directory: android", self.workflow)
         self.assertIn("TEST_PIN=2468", boundary)
-        self.assertIn('TEST_PIN="$TEST_PIN" timeout 45s python3 ../scripts/qa005_unlock_keyguard.py', boundary)
+        self.assertIn('TEST_PIN="$TEST_PIN" timeout 120s python3 ../scripts/qa005_unlock_keyguard.py', boundary)
+        self.assertIn("--capture", boundary)
+        self.assertIn("UI hierchary dumped to:", script)
+        self.assertIn("ERROR: null root node returned by UiTestAutomationBridge.", script)
+        self.assertIn("qa005-keyguard-attempt-", script)
+        self.assertIn("max_attempts: int = 5", script)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
