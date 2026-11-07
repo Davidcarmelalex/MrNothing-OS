@@ -103,11 +103,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "input keyevent KEYCODE_WAKEUP",
             "keyguard-state-after-wake.txt",
             "power-state-after-wake.txt",
-            "mWakefulness=Awake",
-            "mWakefulnessChanging=false",
-            "mHalInteractiveModeEnabled=true",
-            "mLastWakeTime=",
-            "wake_age_ms",
+            "qa005_power_state.py",
+            "--min-wake-age-ms 1500",
+            "navigation-mode.txt",
             "screen_is_awake",
             "Disposable emulator display did not reach a fully interactive awake state after wake",
             "KeyguardServiceDelegate",
@@ -119,7 +117,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "--capture",
             "keyguard-hierarchy.xml",
             "qa005_unlock_keyguard.py",
-            'swipe_start_y="$((display_height - 180))"',
+            'swipe_start_y="$((display_height - 440))"',
             'swipe_end_y="$((display_height / 2))"',
             '"$swipe_start_y"',
             '"$swipe_end_y"',
@@ -146,9 +144,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("mWakefulness=Awake", boundary)
-        self.assertIn("mWakefulnessChanging=false", boundary)
-        self.assertIn("mHalInteractiveModeEnabled=true", boundary)
+        parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
+        self.assertIn('("mWakefulness", "Awake")', parser)
+        self.assertIn('("mWakefulnessChanging", "false")', parser)
+        self.assertIn('("mHalInteractiveModeEnabled", "true")', parser)
+        self.assertIn("qa005_power_state.py", boundary)
+        self.assertIn("--min-wake-age-ms 1500", boundary)
         self.assertIn('if screen_is_awake "$power_state_after_wake"; then', boundary)
         self.assertIn('[[ "$service_state" == "true" && "$monitor_state" == "true" ]]', boundary)
         self.assertLess(boundary.index("KEYCODE_WAKEUP"), boundary.index("power-state-after-wake.txt"))
@@ -160,29 +161,32 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("grep -Eq 'mWakefulness=Asleep'", boundary)
-        self.assertIn("grep -Eq 'mHalInteractiveModeEnabled=false'", boundary)
-        self.assertIn("grep -Eq 'mWakefulness=Awake'", boundary)
-        self.assertIn("grep -Eq 'mHalInteractiveModeEnabled=true'", boundary)
-        self.assertNotIn("mInteractive=false", boundary)
-        self.assertNotIn("mInteractive=true", boundary)
+        parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
+        self.assertIn('("mWakefulness", "Awake")', parser)
+        self.assertIn('("mWakefulnessChanging", "false")', parser)
+        self.assertIn('("mHalInteractiveModeEnabled", "true")', parser)
+        self.assertIn("mLastWakeTime=", parser)
+        self.assertNotIn("mInteractive=true", parser)
+        self.assertNotIn("mInteractive=false", parser)
 
     def test_wake_gate_waits_for_power_manager_transition_to_finish(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("grep -Eq 'mWakefulnessChanging=false'", boundary)
-        self.assertNotIn("grep -Eq 'mWakefulnessChanging=true'", boundary)
-        self.assertLess(boundary.index("mWakefulnessChanging=false"), boundary.index("input swipe"))
+        parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
+        self.assertIn('("mWakefulnessChanging", "false")', parser)
+        self.assertIn("screen_is_awake", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("input swipe"))
 
     def test_wake_gate_requires_minimum_post_wake_settle_interval(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("mLastWakeTime=", boundary)
-        self.assertIn("wake_age_ms", boundary)
-        self.assertIn("wake_age_ms >= 1500", boundary)
-        self.assertLess(boundary.index("wake_age_ms >= 1500"), boundary.index("input swipe"))
+        parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
+        self.assertIn("minimum_wake_age_ms: int = 1500", parser)
+        self.assertIn("age_ms < minimum_wake_age_ms", parser)
+        self.assertIn("--min-wake-age-ms 1500", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("input swipe"))
 
     def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
@@ -314,7 +318,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertNotIn("sed -nE", self.workflow)
 
     def test_lock_screen_swipe_is_clear_of_the_bottom_gesture_edge(self):
-        self.assertIn('swipe_start_y="$((display_height - 180))"', self.workflow)
+        self.assertIn('swipe_start_y="$((display_height - 440))"', self.workflow)
+        self.assertLess(1920 - 440, 1538)
+        self.assertGreater(1920 - 440, 1444)
         self.assertIn("settings get secure navigation_mode", self.workflow)
         self.assertIn("navigation-mode.txt", self.workflow)
         self.assertLess(

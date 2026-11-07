@@ -240,8 +240,8 @@ jobs:
           display_height="${display_size#*x}"
           # Record the configured navigation mode for post-failure gesture diagnosis.
           timeout 10s adb -s "$ANDROID_SERIAL" shell settings get secure navigation_mode | tr -d '\r' > "$QA005_OUTPUT/navigation-mode.txt" || true
-          # Start farther above the bottom edge to avoid the gestural-navigation exclusion area.
-          swipe_start_y="$((display_height - 180))"
+          # Start in the observed gap between the clock and device-entry icon, well above the bottom gesture-navigation edge.
+          swipe_start_y="$((display_height - 440))"
           swipe_end_y="$((display_height / 2))"
           timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$swipe_start_y" "$((display_width / 2))" "$swipe_end_y" 450
           # Let the lockscreen bouncer settle; capture a fresh hierarchy with bounded null-root retries.
