@@ -69,3 +69,6 @@ No milestone is complete.
 ## Next task
 
 Rerun QA-005 at the new exact head. If it passes, request independent security/accessibility review of AGENT-004L before considering any AccessibilityService declaration. Keep MediaProjection separate and `CommandRouter` fail-closed.
+
+
+AGENT-004N follow-up correction: the first implementation commit removed the global-idle wait from the disclosure-launch helper but left two calls in the explicit-tap test. The new Python source guard detects either call. Both remaining calls were removed in this follow-up; all activity observation remains bounded by ActivityMonitor and the resume latch. No production source changed.

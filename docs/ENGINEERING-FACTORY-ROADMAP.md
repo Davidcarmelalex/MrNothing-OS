@@ -1269,3 +1269,6 @@ At 95051f15, Phase 1 push/PR and CI-003 push/PR passed (42359107206, 42359110939
 AGENT-004N changes only instrumentation and static source gates: launch MainActivity with targetContext.startActivity; observe it through ActivityMonitor within 10 seconds; require onActivityResumed within 10 seconds; retain the real launcher-button route to the non-exported disclosure Activity; remove waitForIdleSync; add a regression gate against both unbounded helpers. Exact-head CI pending. No manifest/service/permission/executor/router changes.
 
 Next: verify exact-head Phase 1, CI-003 and full QA-005; then independent security/accessibility review before any AccessibilityService declaration. MediaProjection remains separate. All M1–M8 remain incomplete; M7/M8 blocked.
+
+
+AGENT-004N follow-up correction: the first implementation commit removed the global-idle wait from the disclosure-launch helper but left two calls in the explicit-tap test. The new Python source guard detects either call. Both remaining calls were removed in this follow-up; all activity observation remains bounded by ActivityMonitor and the resume latch. No production source changed.

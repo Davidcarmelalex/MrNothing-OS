@@ -130,12 +130,10 @@ class AccessibilityDisclosureActivityTest : InstrumentationTestCase() {
         try {
             launcher = launchMainActivity()
             activity = openDisclosureFromLauncher(launcher!!)
-            getInstrumentation().waitForIdleSync()
             assertEquals(0, settingsMonitor.hits)
             val button = findButton(activity!!.window.decorView, "Review Android Accessibility settings")
             assertNotNull(button)
             getInstrumentation().runOnMainSync { button!!.performClick() }
-            getInstrumentation().waitForIdleSync()
             assertTrue("explicit tap did not request Accessibility settings", settingsMonitor.hits > 0)
         } finally {
             getInstrumentation().removeMonitor(settingsMonitor)
