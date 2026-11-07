@@ -77,6 +77,14 @@ class AccessibilityDisclosureSourceTests(unittest.TestCase):
         self.assertIn("AccessibilityDisclosureActivity::class.java", self.main)
         self.assertIn("Accessibility access & revocation", self.main)
 
+    def test_instrumentation_enters_private_disclosure_through_owner_visible_launcher_route(self):
+        instrumentation = (ROOT / "android/app/src/androidTest/java/tech/mrnothing/os/AccessibilityDisclosureActivityTest.kt").read_text(encoding="utf-8")
+        self.assertIn("MainActivity::class.java", instrumentation)
+        self.assertIn("Accessibility access & revocation", instrumentation)
+        self.assertIn("ActivityMonitor(\n            AccessibilityDisclosureActivity::class.java.name", instrumentation)
+        self.assertIn("waitForActivityWithTimeout", instrumentation)
+        self.assertNotIn("Intent(getInstrumentation().targetContext, AccessibilityDisclosureActivity::class.java)", instrumentation)
+
     def test_existing_preflight_uses_the_same_service_identity(self):
         self.assertIn(
             "private const val OWN_SERVICE = AccessibilityServiceContract.COMPONENT_CLASS_NAME",
