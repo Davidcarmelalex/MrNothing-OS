@@ -594,3 +594,12 @@ Phase 1 push/PR and CI-003 push/PR passed at the audit head. QA-005 attempt 2 fa
 ## Engineering Factory follow-up — 2026-11-07, AGENT-004P
 
 At exact head 0b27ec5c8b0e527ab653cedbc5ad60182ba1d789, Phase 1 and CI-003 passed; QA-005 forced sleep/wake successfully but the shell input-text method left the Android SystemUI PIN field empty. The failure screenshot and state snapshots were inspected. AGENT-004P replaces text injection only in the disposable-emulator preflight with a host-side parser that requires the exact SystemUI Keyguard PIN hierarchy and uniquely visible, enabled, clickable, screen-bounded key0–key9/key_enter controls. It checks ordinary shell UID 2000 and emulator serial, omits the PIN from logs, and adds parser unit tests. No production app, manifest, permission, service or executor change is made. Exact-head QA-005 is required before acceptance.
+
+
+## Engineering Factory follow-up — AGENT-004Q (2026-11-07)
+
+Audit baseline 11cd5ae4ca0d84aabd146c04dcd40d990c613fd9: recursive tree 326 entries, not truncated; 20 recent branch commits inspected; 269 commits ahead of main, zero behind. Six open PRs (#1 and #3–#7) inspected; PR #1 remains the open draft umbrella and matched the authorized branch. No submitted reviews or inline threads. PROJECT-ADAPTER.md and roadmap are present; repository SKILL.md is absent; upstream shared package remains unverified/not installed. Branch metadata reports unprotected; rulesets empty; protection enforcement unverified.
+
+The current-head Phase 1 push/PR Python policy ran 690 tests and failed one source guard because the helper duplicated the SystemUI package literal instead of deriving its key IDs from SYSTEM_UI. Android debug build/unit gates passed. CI-003 push/PR passed independent unsigned release reproducibility. QA-005 failed before instrumentation because the step working directory is android/ while the helper path omitted ../; additionally the shell's synthetic TEST_PIN variable was not exported to the helper.
+
+AGENT-004Q fixes the package-derived key-ID expression, uses the correct relative helper path and passes the synthetic PIN only in the helper process environment. The source gate now protects those exact invocation assumptions. This is QA-only; no production app, manifest, permission, service, executor, router or device behavior changes. Exact-head CI and emulator evidence are pending after the correction. No milestone is complete; independent human security/accessibility review remains pending.

@@ -20,7 +20,7 @@ from typing import Dict, Tuple
 SYSTEM_UI = "com.android.systemui"
 PIN_VIEW_ID = "com.android.systemui:id/keyguard_pin_view"
 CONTAINER_ID = "com.android.systemui:id/pin_container"
-KEY_IDS = {str(digit): f"com.android.systemui:id/key{digit}" for digit in range(10)}
+KEY_IDS = {str(digit): f"{SYSTEM_UI}:id/key{digit}" for digit in range(10)}
 SUBMIT_ID = "com.android.systemui:id/key_enter"
 BOUNDS_RE = re.compile(r"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$")
 SIZE_RE = re.compile(r"(\d+)x(\d+)")

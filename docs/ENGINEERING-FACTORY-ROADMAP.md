@@ -1296,3 +1296,16 @@ QA-005 42369272181 failed after the new sleep/wake precondition succeeded. Artif
 AGENT-004P replaces only the emulator preflight PIN entry with exact UIAutomator hierarchy parsing and taps for the SystemUI keyguard_pin_view/pin_container/key0–key9/key_enter controls. Every target must be uniquely present, enabled, clickable and within actual emulator display bounds. The helper requires emulator serial and UID 2000, never logs the synthetic PIN, and uses bounded ADB calls. Parser tests cover valid and adversarial hierarchies. No production app/manifest/service/executor change. Exact-head QA-005 acceptance is pending.
 
 M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete; independent human security/accessibility review remains pending.
+
+
+## Engineering Factory run — 2026-11-07, AGENT-004Q QA-005 helper invocation repair
+
+At audit head 11cd5ae4ca0d84aabd146c04dcd40d990c613fd9, the recursive tree contained 326 entries and was not truncated; 20 recent branch commits were inspected; the branch was 269 commits ahead of main and zero behind. Six open PRs (#1 and #3–#7) were inspected; PR #1 remained the open draft umbrella and matched the authorized branch. PROJECT-ADAPTER.md and this roadmap exist; repository SKILL.md is absent; the upstream shared package remains unverified and is not claimed installed.
+
+Phase 1 push 42370252796 and PR 42370256677 each ran 690 Python tests and failed one source-boundary assertion: the QA-005 helper built key IDs with a duplicated package literal instead of the expected SYSTEM_UI constant. Android debug build/unit tests passed. CI-003 push 42370252811 and PR 42370256658 passed independent unsigned release reproducibility.
+
+QA-005 42370256924 booted the disposable API 35 emulator, observed the keyguard and captured its UI hierarchy, then failed before instrumentation because the step working directory is android/ but the helper path was root-relative. The helper also reads TEST_PIN from its process environment, while the workflow only assigned a non-exported shell variable. AGENT-004Q corrects the source expression, helper relative path, explicit environment handoff and regression gate. This is QA-only; no production Android source, manifest, permission, service, executor, CommandRouter or device behavior changes. Post-fix exact-head CI and emulator acceptance remain pending.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
+
+Next: accept only exact-head Phase 1 and CI-003 success plus complete QA-005 emulator evidence; then obtain independent security/accessibility review before any AccessibilityService declaration. MediaProjection remains separate and CommandRouter remains fail-closed.

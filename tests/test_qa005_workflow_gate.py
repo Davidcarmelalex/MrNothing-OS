@@ -160,6 +160,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         ):
             self.assertIn(required, script)
         self.assertNotIn("adb root", script)
+        self.assertIn("working-directory: android", self.workflow)
+        self.assertIn("TEST_PIN=2468", boundary)
+        self.assertIn('TEST_PIN="$TEST_PIN" timeout 45s python3 ../scripts/qa005_unlock_keyguard.py', boundary)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
