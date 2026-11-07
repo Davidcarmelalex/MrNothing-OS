@@ -273,5 +273,10 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
         self.assertNotIn("wm dismiss-keyguard", source)
         self.assertNotIn("adb root", source)
 
+    def test_instrumentation_helper_declarations_are_unique(self):
+        source = TEST.read_text(encoding="utf-8")
+        self.assertEqual(1, source.count("private fun awaitCredentialPrompt("))
+        self.assertNotIn("private fun awaitCredentialPrompt\\n", source)
+
 if __name__ == "__main__":
     unittest.main()

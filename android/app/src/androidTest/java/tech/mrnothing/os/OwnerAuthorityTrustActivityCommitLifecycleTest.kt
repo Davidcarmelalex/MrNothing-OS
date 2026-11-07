@@ -451,7 +451,6 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
             "; action=ACTION_LONG_CLICK accepted=true"
     }
 
-    private fun awaitCredentialPrompt
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
         val deadline = SystemClock.elapsedRealtime() + 10_000L
         var status = ""

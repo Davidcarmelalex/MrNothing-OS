@@ -1468,3 +1468,8 @@ Independent review of the first candidate commit `8c70ebe36ed2396659b56d72cb1a45
 ## AGENT-005A test-gate correction
 
 The first exact-head policy jobs on candidate `948ae030cf9ec2a605b2f5c5bd056168c5d25af5` ran 719 tests and reported one error: the newly added exactly-once assertion referenced `boundary_step` before the test assigned it. The failure is confined to the new Python test's statement order; the long-click source test itself passed. This follow-up moves the assertion immediately after the boundary slice is assigned. The candidate policy jobs are not accepted; a fresh exact-head rerun is required.
+
+
+## AGENT-005A instrumentation compilation correction
+
+The QA-005 run on candidate `948ae030cf9ec2a605b2f5c5bd056168c5d25af5` completed SDK installation and compiled the main debug APK, then failed at `:app:compileDebugAndroidTestKotlin`: the earlier source-block replacement had left a duplicate, incomplete `awaitCredentialPrompt` declaration immediately before the real method. No emulator was started. The duplicate line is removed here, and a new source regression test requires exactly one complete helper declaration and rejects the incomplete form. This is a test-harness compile defect; it is not evidence of a production application crash. The exact-head AndroidTest build and emulator sequence must be rerun.
