@@ -179,6 +179,25 @@ jobs:
             exit 1
           fi
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
+          screen_is_awake() {
+            grep -Eq 'mWakefulness=Awake' <<< "$1" &&
+              grep -Eq 'mInteractive=true' <<< "$1"
+          }
+          awake=0
+          power_state_after_wake=""
+          for attempt in $(seq 1 20); do
+            power_state_after_wake="$(read_power_state || true)"
+            printf '%s\\n' "$power_state_after_wake" > "$QA005_OUTPUT/power-state-after-wake.txt"
+            if screen_is_awake "$power_state_after_wake"; then
+              awake=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$awake" != 1 ]]; then
+            echo "Disposable emulator display did not reach a fully interactive awake state after wake" >&2
+            exit 1
+          fi
           read_keyguard_policy() {
             timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy | tr -d '\r'
           }
@@ -194,7 +213,7 @@ jobs:
             local service_state monitor_state
             service_state="$(awk '/KeyguardServiceDelegate/{in_service=1; next} in_service && /showing=/{sub(/^.*showing=/, ""); print $1; exit}' <<< "$policy")"
             monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
-            [[ "$service_state" == "true" || "$monitor_state" == "true" ]]
+            [[ "$service_state" == "true" && "$monitor_state" == "true" ]]
           }
           keyguard_showing=0
           keyguard_policy=""

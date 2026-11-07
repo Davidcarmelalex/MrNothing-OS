@@ -1340,3 +1340,18 @@ AGENT-004S follow-up evidence: QA-005 artifact 13574907764 showed the exact lock
 
 
 AGENT-004S source-gate follow-up: the read-only helper correction renamed the lockscreen parser from `collect_keyguard_entry_center` to `validate_keyguard_locked_surface`, but the static gate retained the old symbol and an obsolete `entry_tapped` assertion. Both push and PR Python-policy jobs ran 699 tests and failed with this single test-only ValueError. The gate now checks the read-only parser and asserts the capture helper contains no input tap. No runtime code changed in this correction; exact-head reruns are required.
+
+
+## Engineering Factory run — 2026-11-07, AGENT-004T QA-005 wake-state gate
+
+Audit baseline: `38596a6b138cf039e26f244e780c63d5bd6032f7`; complete recursive tree 329 entries, not truncated; latest 20 authorized-branch commits inspected; branch comparison 275 ahead of main and zero behind. Six open PRs (#1 and #3–#7) inspected. PR #1 remains the open draft umbrella targeting main and matched the authorized branch head; PRs #3–#7 target separate scoped branches and were left untouched. PROJECT-ADAPTER.md and the engineering roadmap are present; repository SKILL.md is absent; the upstream shared package remains unverified and is not claimed installed.
+
+At exact head, Phase 1 push/PR runs 42375117580 and 42375122847 passed Android build/unit/dependency checks and Python policy checks. CI-003 push/PR runs 42375117743 and 42375122831 passed independent unsigned APK reproducibility. QA-005 run 42375122823 failed before instrumentation in the SEC-020B4D disposable-emulator credential preflight. Artifact 13575706693 was downloaded and inspected. Its screenshot and fresh UIAutomator hierarchy show the Android 15 lockscreen (exact SystemUI device-entry surface), not the PIN bouncer. The saved post-wake policy snapshot reports KeyguardServiceDelegate showing=true and KeyguardStateMonitor mIsShowing=true, but also screenState=SCREEN_STATE_TURNING_ON and interactiveState=INTERACTIVE_STATE_WAKING. The workflow previously treated either Keyguard flag as sufficient and sent the swipe before the display was fully interactive. The EXIT cleanup log confirms the synthetic emulator PIN was cleared; last-anr reports no ANR and no app crash was established.
+
+AGENT-004T changes only the QA-005 workflow and source regression gate. After KEYCODE_WAKEUP, the workflow now waits up to 20 seconds for both mWakefulness=Awake and mInteractive=true, records power-state-after-wake.txt, and requires both Keyguard policy flags to be true before the single existing bounded swipe. The swipe, helper and PIN entry remain emulator-only and ordinary ADB shell UID 2000; no root or physical-device target is introduced. No Android production source, manifest, permission, service declaration, owner-consent behavior, CommandRouter or executor changes.
+
+Post-change exact-head Phase 1, CI-003 and full QA-005 runs are required. No post-change test pass or emulator acceptance is claimed until those runs complete. Independent human security/accessibility review remains pending.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete.
+
+Next: verify exact-head Phase 1 and CI-003, then inspect the full QA-005 emulator artifact and JUnit results. Do not declare SEC-020B4D accepted or add an AccessibilityService declaration until the full emulator gate and independent security/accessibility review pass. MediaProjection remains separate; CommandRouter remains fail-closed.
