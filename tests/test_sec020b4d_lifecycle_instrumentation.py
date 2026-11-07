@@ -173,6 +173,7 @@ class Sec020B4DLifecycleInstrumentationTests(unittest.TestCase):
             self.assertIn(required, device_entry_click)
         self.assertNotIn("it.isLongClickable", device_entry_click)
         self.assertNotIn("ACTION_LONG_CLICK", device_entry_click)
+        self.assertNotIn("long-clickable", device_entry_click)
         self.assertNotIn("input tap", device_entry_click)
         self.assertNotIn("input swipe", device_entry_click)
         self.assertNotIn("requestDismissKeyguard", source)

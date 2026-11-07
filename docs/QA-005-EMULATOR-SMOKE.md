@@ -281,3 +281,6 @@ Exact-head Phase 1, CI-003 and QA-005 reruns determine acceptance. No current-he
 ### AGENT-005H source-gate correction
 
 The first exact-head Python policy jobs for candidate `a1bb94a818921d594dc0d4eba420d2826d50dca7` failed because `tests/test_sec020b4d_lifecycle_instrumentation.py` still expected the previous helper name and `ACTION_LONG_CLICK`. The new QA-005 workflow-gate test already passed; the stale SEC-020B4D source tests produced two `ValueError: substring not found` errors and one old-name assertion failure. This is test-gate drift caused by the helper rename, not a Kotlin compile or emulator failure. The follow-up updates those assertions to require `ACTION_CLICK` and reject the obsolete long-click predicate. The candidate is not accepted; the new exact-head Phase 1 and QA-005 runs determine acceptance.
+
+
+A final source review found one stale KDoc phrase still describing the clickable node as long-clickable. The follow-up corrects that comment and adds a source assertion so the old description cannot return. This is documentation/test-gate-only; the runtime action remains `ACTION_CLICK`.

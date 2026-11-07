@@ -371,7 +371,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
 
     /**
      * Fallback used only when the Keyguard PIN bouncer is not already visible.
-     * It invokes ACTION_CLICK only on the exact visible, long-clickable
+     * It invokes ACTION_CLICK only on the exact visible, clickable
      * SystemUI device-entry node with screen-bounded accessibility bounds.
      */
     private fun clickSystemDeviceEntryIconToRevealCredentialEntry(): String {
