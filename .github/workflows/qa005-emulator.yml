@@ -153,50 +153,31 @@ jobs:
           adb -s "$ANDROID_SERIAL" shell locksettings set-pin "$TEST_PIN" \
             > "$RUNNER_TEMP/sec020b4d-pin-set.txt" 2>&1
           PIN_CONFIGURED=1
-          # Force a deterministic lock transition after configuring the synthetic test PIN.
-          # The initial policy snapshot can be briefly unlocked before Keyguard appears.
+          # The lifecycle test needs a secure, unlocked, interactive device.
+          # A fresh AVD is already unlocked; do not force a lockscreen cycle or
+          # synthesize a Keyguard dismissal just to reach that required state.
           timeout 10s adb -s "$ANDROID_SERIAL" shell settings put system screen_off_timeout 600000
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_SLEEP
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           read_power_state() {
             timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys power | tr -d '\r'
           }
-          screen_is_asleep() {
-            grep -Eq 'mWakefulness=Asleep' <<< "$1" &&
-              grep -Eq 'mHalInteractiveModeEnabled=false' <<< "$1"
-          }
-          screen_asleep=0
-          power_state=""
-          for attempt in $(seq 1 10); do
-            power_state="$(read_power_state || true)"
-            printf '%s\n' "$power_state" > "$QA005_OUTPUT/power-state-before-wake.txt"
-            if screen_is_asleep "$power_state"; then
-              screen_asleep=1
-              break
-            fi
-            sleep 1
-          done
-          if [[ "$screen_asleep" != 1 ]]; then
-            echo "Disposable emulator did not enter a confirmed non-interactive state" >&2
-            exit 1
-          fi
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           screen_is_awake() {
             python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 --quiet 2>/dev/null <<< "$1"
           }
           awake=0
-          power_state_after_wake=""
+          power_state=""
           for attempt in $(seq 1 20); do
-            power_state_after_wake="$(read_power_state || true)"
-            printf '%s\n' "$power_state_after_wake" > "$QA005_OUTPUT/power-state-after-wake.txt"
-            if screen_is_awake "$power_state_after_wake"; then
+            power_state="$(read_power_state || true)"
+            printf '%s\n' "$power_state" > "$QA005_OUTPUT/power-state-before-instrumentation.txt"
+            if screen_is_awake "$power_state"; then
               awake=1
               break
             fi
             sleep 1
           done
           if [[ "$awake" != 1 ]]; then
-            python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state_after_wake" || true
-            echo "Disposable emulator display did not reach a fully interactive awake state after wake" >&2
+            python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state" || true
+            echo "Disposable emulator display did not reach a fully interactive awake state before instrumentation" >&2
             exit 1
           fi
           read_keyguard_policy() {
@@ -209,59 +190,22 @@ jobs:
             monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
             [[ "$service_state" == "false" && "$monitor_state" == "false" ]]
           }
-          keyguard_is_showing() {
-            local policy="$1"
-            local service_state monitor_state
-            service_state="$(awk '/KeyguardServiceDelegate/{in_service=1; next} in_service && /showing=/{sub(/^.*showing=/, ""); print $1; exit}' <<< "$policy")"
-            monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
-            [[ "$service_state" == "true" && "$monitor_state" == "true" ]]
-          }
-          keyguard_showing=0
+          keyguard_hidden=0
           keyguard_policy=""
           for attempt in $(seq 1 20); do
             keyguard_policy="$(read_keyguard_policy || true)"
-            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-wake.txt"
-            if keyguard_is_showing "$keyguard_policy"; then
-              keyguard_showing=1
-              break
-            fi
-            sleep 1
-          done
-          if [[ "$keyguard_showing" != 1 ]]; then
-            echo "Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake" >&2
-            exit 1
-          fi
-          display_size="$(timeout 10s adb -s "$ANDROID_SERIAL" shell wm size | sed -n 's/.*size: //p' | tr -d '\r' | tail -n 1)"
-          if [[ ! "$display_size" =~ ^[0-9]+x[0-9]+$ ]]; then
-            echo "Could not determine disposable emulator display size for keyguard dismissal" >&2
-            exit 1
-          fi
-          display_width="${display_size%x*}"
-          display_height="${display_size#*x}"
-          # Record the configured navigation mode for post-failure gesture diagnosis.
-          timeout 10s adb -s "$ANDROID_SERIAL" shell settings get secure navigation_mode | tr -d '\r' > "$QA005_OUTPUT/navigation-mode.txt" || true
-          # Start in the observed gap between the clock and device-entry icon, well above the bottom gesture-navigation edge.
-          swipe_start_y="$((display_height - 440))"
-          swipe_end_y="$((display_height / 2))"
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$swipe_start_y" "$((display_width / 2))" "$swipe_end_y" 450
-          # Let the lockscreen bouncer settle; capture a fresh hierarchy with bounded null-root retries.
-          sleep 1
-          TEST_PIN="$TEST_PIN" timeout 120s python3 ../scripts/qa005_unlock_keyguard.py --serial "$ANDROID_SERIAL" --hierarchy "$QA005_OUTPUT/keyguard-hierarchy.xml" --capture
-          unlocked=0
-          for attempt in $(seq 1 20); do
-            keyguard_policy="$(read_keyguard_policy || true)"
-            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-instrumentation-unlock.txt"
+            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt"
             if keyguard_is_hidden "$keyguard_policy"; then
-              unlocked=1
+              keyguard_hidden=1
               break
             fi
             sleep 1
           done
-          if [[ "$unlocked" != 1 ]]; then
-            echo "Disposable emulator remained locked after synthetic test-PIN dismissal" >&2
+          if [[ "$keyguard_hidden" != 1 ]]; then
+            echo "Fresh disposable emulator is not already unlocked after synthetic PIN provisioning; refusing to synthesize a Keyguard dismissal" >&2
             exit 1
           fi
-          echo "Disposable emulator keyguard dismissed; starting instrumentation"
+          echo "Disposable emulator is secure, interactive and unlocked; starting instrumentation"
           timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
