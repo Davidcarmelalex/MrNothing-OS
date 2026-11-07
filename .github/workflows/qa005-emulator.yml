@@ -181,9 +181,12 @@ jobs:
           fi
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           screen_is_awake() {
+            local wake_age_ms
             grep -Eq 'mWakefulness=Awake' <<< "$1" &&
               grep -Eq 'mWakefulnessChanging=false' <<< "$1" &&
-              grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1"
+              grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1" || return 1
+            wake_age_ms="$(sed -nE 's/.*mLastWakeTime=[^()]*\\(([0-9]+) ms ago\\).*/\\1/p' <<< "$1")"
+            [[ "$wake_age_ms" =~ ^[0-9]+$ ]] && (( wake_age_ms >= 1500 ))
           }
           awake=0
           power_state_after_wake=""

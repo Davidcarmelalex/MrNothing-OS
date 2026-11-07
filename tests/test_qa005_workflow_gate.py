@@ -106,6 +106,8 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "mWakefulness=Awake",
             "mWakefulnessChanging=false",
             "mHalInteractiveModeEnabled=true",
+            "mLastWakeTime=",
+            "wake_age_ms",
             "screen_is_awake",
             "Disposable emulator display did not reach a fully interactive awake state after wake",
             "KeyguardServiceDelegate",
@@ -172,6 +174,15 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("grep -Eq 'mWakefulnessChanging=false'", boundary)
         self.assertNotIn("grep -Eq 'mWakefulnessChanging=true'", boundary)
         self.assertLess(boundary.index("mWakefulnessChanging=false"), boundary.index("input swipe"))
+
+    def test_wake_gate_requires_minimum_post_wake_settle_interval(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        self.assertIn("mLastWakeTime=", boundary)
+        self.assertIn("wake_age_ms", boundary)
+        self.assertIn("wake_age_ms >= 1500", boundary)
+        self.assertLess(boundary.index("wake_age_ms >= 1500"), boundary.index("input swipe"))
 
     def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
