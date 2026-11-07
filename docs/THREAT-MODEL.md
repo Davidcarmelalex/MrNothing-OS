@@ -10,7 +10,7 @@
 
 This document consolidates the security assumptions and unresolved risks that must be reviewed before Mr Nothing OS connects an AI-generated plan to Android device effects.
 
-The current deliverable is an experimental Kotlin Android HOME launcher plus separate Python/Termux orchestration and security prototypes. It is not currently a replacement Android operating-system image, custom kernel, verified Pixel firmware distribution, signed OTA system or production autonomous executor. The native Android application and legacy Termux runtime are separate build/runtime boundaries.
+The current deliverable is an experimental Kotlin Android HOME launcher plus separate Python/Termux orchestration and security prototypes. It is not currently a replacement Android operating-system image, custom kernel, verified Pixel firmware distribution, signed OTA system or production autonomous executor. The native Android application and legacy Termux runtime are separate build/runtime boundaries. At this source head, the Android CommandRouter rejects every request because no verifier-created transport-session capability is integrated.
 
 In scope:
 

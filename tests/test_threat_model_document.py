@@ -63,8 +63,8 @@ class ThreatModelDocumentTests(unittest.TestCase):
 
     def test_legacy_shell_and_executor_boundaries_are_documented(self):
         self.assertIn("subprocess shell execution", self.text)
-        self.assertIn("No integrated executor", self.text)
-        self.assertIn("CommandRouter rejects all requests", self.text)
+        self.assertIn("production autonomous executor", self.text)
+        self.assertIn("rejects every request", self.text)
 
     def test_independent_review_is_required(self):
         self.assertIn("The document author cannot self-approve.", self.text)

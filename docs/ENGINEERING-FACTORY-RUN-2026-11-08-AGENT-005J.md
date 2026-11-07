@@ -54,3 +54,8 @@ No milestone is complete.
 ## Next task — AGENT-005K
 
 Obtain independent security review of the threat model and SEC-017–SEC-020B6. Resolve the cross-store enrollment/replay/action-reservation race before any executor work. Separately, obtain deliberate approval before enabling TalkBack on a disposable emulator for spoken acceptance. Do not connect device execution, AccessibilityService or MediaProjection as part of this documentation task.
+
+
+### AGENT-005J pre-push source review correction
+
+A pre-push review of the new structural test found two assertions that used wording not present in the threat model. The test now checks the document's actual production-executor limitation and the exact fail-closed CommandRouter statement; the threat model explicitly records that every request is rejected until a verifier-created transport-session capability is integrated. This is a documentation/test wording correction only. No product code changed.
