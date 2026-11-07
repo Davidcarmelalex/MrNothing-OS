@@ -161,9 +161,23 @@ jobs:
           read_keyguard_policy() {
             timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy | tr -d '\r'
           }
+          keyguard_is_hidden() {
+            local policy="$1"
+            local service_state monitor_state
+            service_state="$(awk '/KeyguardServiceDelegate/{in_service=1; next} in_service && /showing=/{sub(/^.*showing=/, ""); print $1; exit}' <<< "$policy")"
+            monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
+            [[ "$service_state" == "false" && "$monitor_state" == "false" ]]
+          }
+          keyguard_is_showing() {
+            local policy="$1"
+            local service_state monitor_state
+            service_state="$(awk '/KeyguardServiceDelegate/{in_service=1; next} in_service && /showing=/{sub(/^.*showing=/, ""); print $1; exit}' <<< "$policy")"
+            monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
+            [[ "$service_state" == "true" || "$monitor_state" == "true" ]]
+          }
           keyguard_policy="$(read_keyguard_policy)"
           printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt"
-          if grep -q 'mShowingLockscreen=true' <<< "$keyguard_policy"; then
+          if keyguard_is_showing "$keyguard_policy"; then
             display_size="$(timeout 10s adb -s "$ANDROID_SERIAL" shell wm size | sed -n 's/.*size: //p' | tr -d '\r' | tail -n 1)"
             if [[ ! "$display_size" =~ ^[0-9]+x[0-9]+$ ]]; then
               echo "Could not determine disposable emulator display size for keyguard dismissal" >&2
@@ -174,14 +188,14 @@ jobs:
             timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
             timeout 10s adb -s "$ANDROID_SERIAL" shell input text "$TEST_PIN"
             timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_ENTER
-          elif ! grep -q 'mShowingLockscreen=false' <<< "$keyguard_policy"; then
+          elif ! keyguard_is_hidden "$keyguard_policy"; then
             echo "Could not determine disposable emulator keyguard state; refusing to start UI instrumentation" >&2
             exit 1
           fi
           unlocked=0
           for attempt in $(seq 1 20); do
             keyguard_policy="$(read_keyguard_policy || true)"
-            if grep -q 'mShowingLockscreen=false' <<< "$keyguard_policy"; then
+            if keyguard_is_hidden "$keyguard_policy"; then
               unlocked=1
               break
             fi

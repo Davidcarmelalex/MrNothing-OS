@@ -1248,3 +1248,8 @@ AGENT-004M prebuilds the instrumentation APK, extends the disposable AVD screen 
 M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent security/accessibility review remains pending.
 
 Next: accept the QA-005 rerun only on exact-head evidence, then obtain independent security/accessibility review before considering any AccessibilityService declaration. MediaProjection remains separate.
+
+
+## AGENT-004M QA-005 parser correction
+
+The first AGENT-004M rerun (commit 19f24ab3) passed prebuild, dependency negative control and AVD startup, then failed closed before instrumentation because Android 15's `dumpsys window policy` did not expose the assumed `mShowingLockscreen` field. The artifact recorded `KeyguardServiceDelegate showing=false` and `KeyguardStateMonitor mIsShowing=false`; the synthetic PIN cleanup trap succeeded. The workflow now parses those exact observed fields and requires both to be false before instrumentation. This correction is harness-only; no Android application code changed. Exact-head rerun pending.

@@ -34,7 +34,7 @@ Repair the disposable-emulator test precondition without weakening app tests:
 2. Set the disposable AVD screen-off timeout to ten minutes.
 3. Wake the emulator immediately before instrumentation.
 4. Read `dumpsys window policy`; if keyguard is showing, use ordinary `uid=2000(shell)` ADB input to swipe to the credential pad, enter only the fixed synthetic test PIN, and submit.
-5. Require an observed `mShowingLockscreen=false` state before launching UI instrumentation; unknown state fails closed with diagnostic capture.
+5. Require an observed `KeyguardServiceDelegate showing=false and KeyguardStateMonitor mIsShowing=false` state before launching UI instrumentation; unknown state fails closed with diagnostic capture.
 6. Preserve the existing EXIT cleanup that clears the synthetic PIN.
 
 The workflow remains pinned to `ANDROID_SERIAL=emulator-5554`, verifies the emulator identity and ordinary shell UID, and does not use `adb root`. The AVD is disposable. No physical device is targeted.
@@ -69,3 +69,8 @@ No milestone is complete.
 ## Next task
 
 After the QA-005 exact-head rerun passes, obtain independent security/accessibility review of AGENT-004L disclosure and revocation design. Only after that review may a narrowly scoped AccessibilityService provider be considered. MediaProjection remains separate. Keep `CommandRouter` fail-closed.
+
+
+## QA-005 parser correction — Android 15 keyguard policy fields
+
+The first AGENT-004M exact-head rerun passed SDK installation, debug plus instrumentation APK assembly, dependency negative control and disposable AVD boot, then failed closed before instrumentation because the parser expected `mShowingLockscreen`, a field not present in this Android 15 emulator's `dumpsys window policy` output. The captured policy explicitly reported `KeyguardServiceDelegate showing=false` and `KeyguardStateMonitor mIsShowing=false`; the PIN cleanup trap completed successfully. This was a QA harness parser mismatch, not an application test failure. The parser now reads those two observed Android 15 fields and requires both false before UI tests; if either is true it attempts the synthetic-PIN dismissal, and if either field is unavailable it fails closed. The next exact-head QA-005 run is required.
