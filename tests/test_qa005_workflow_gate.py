@@ -95,67 +95,47 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         for required in (
-            "settings put system screen_off_timeout 600000",
-            "input keyevent KEYCODE_SLEEP",
-            "dumpsys power",
-            "mWakefulness=Asleep",
-            "mHalInteractiveModeEnabled=false",
+            "locksettings set-pin",
+            "locksettings clear --old",
+            "trap cleanup EXIT INT TERM",
             "input keyevent KEYCODE_WAKEUP",
-            "keyguard-state-after-wake.txt",
-            "power-state-after-wake.txt",
+            "dumpsys power",
             "qa005_power_state.py",
             "--min-wake-age-ms 1500",
-            "navigation-mode.txt",
-            "screen_is_awake",
-            "Disposable emulator display did not reach a fully interactive awake state after wake",
+            "power-state-before-instrumentation.txt",
             "KeyguardServiceDelegate",
             "showing=",
             "KeyguardStateMonitor",
             "mIsShowing=",
-            "keyguard_is_showing",
-            "shell wm size",
-            "--capture",
-            "keyguard-hierarchy.xml",
-            "qa005_unlock_keyguard.py",
-            'swipe_start_y="$((display_height - 440))"',
-            'swipe_end_y="$((display_height / 2))"',
-            '"$swipe_start_y"',
-            '"$swipe_end_y"',
-            " 450",
-            "Disposable emulator keyguard dismissed",
+            "keyguard_is_hidden",
+            "keyguard-state-before-instrumentation.txt",
+            "Fresh disposable emulator is not already unlocked after synthetic PIN provisioning",
+            "Disposable emulator is secure, interactive and unlocked; starting instrumentation",
+            ":app:connectedDebugAndroidTest",
+            "uid=2000(shell)",
         ):
             self.assertIn(required, boundary)
-        self.assertLess(boundary.index("locksettings set-pin"), boundary.index("input keyevent KEYCODE_SLEEP"))
-        self.assertLess(boundary.index("input keyevent KEYCODE_SLEEP"), boundary.index("dumpsys power"))
-        self.assertLess(boundary.index("dumpsys power"), boundary.index("input keyevent KEYCODE_WAKEUP"))
-        self.assertLess(boundary.index("input keyevent KEYCODE_WAKEUP"), boundary.index("keyguard_showing=0"))
-        self.assertLess(boundary.index("swipe_start_y="), boundary.index("input swipe"))
-        self.assertLess(boundary.index("input swipe"), boundary.index("--capture"))
-        self.assertLess(boundary.index("keyguard_showing=0"), boundary.index("if keyguard_is_showing"))
-        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index("--capture"))
-        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index("--capture"))
-        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
-        self.assertLess(boundary.index('if keyguard_is_hidden "$keyguard_policy"'), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertLess(boundary.index("locksettings set-pin"), boundary.index("KEYCODE_WAKEUP"))
+        self.assertLess(boundary.index("KEYCODE_WAKEUP"), boundary.index("power-state-before-instrumentation.txt"))
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
+        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn("KEYCODE_SLEEP", boundary)
+        self.assertNotIn("input swipe", boundary)
+        self.assertNotIn("qa005_unlock_keyguard.py", boundary)
         self.assertNotIn('shell input text "$TEST_PIN"', boundary)
         self.assertNotIn("adb root", boundary)
-        self.assertIn("uid=2000(shell)", boundary)
 
-    def test_keyguard_swipe_waits_for_fully_awake_display_and_consistent_policy(self):
+    def test_both_keyguard_indicators_must_be_hidden_before_instrumentation(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
-        self.assertIn('("mWakefulness", "Awake")', parser)
-        self.assertIn('("mWakefulnessChanging", "false")', parser)
-        self.assertIn('("mHalInteractiveModeEnabled", "true")', parser)
-        self.assertIn("qa005_power_state.py", boundary)
-        self.assertIn("--min-wake-age-ms 1500", boundary)
-        self.assertIn('if screen_is_awake "$power_state_after_wake"; then', boundary)
-        self.assertIn('[[ "$service_state" == "true" && "$monitor_state" == "true" ]]', boundary)
-        self.assertLess(boundary.index("KEYCODE_WAKEUP"), boundary.index("power-state-after-wake.txt"))
-        self.assertLess(boundary.index("power-state-after-wake.txt"), boundary.index("input swipe"))
-        self.assertLess(boundary.index("keyguard_is_showing"), boundary.index("input swipe"))
-        self.assertLess(boundary.index("input swipe"), boundary.index("--capture"))
+        self.assertIn("KeyguardServiceDelegate", boundary)
+        self.assertIn("KeyguardStateMonitor", boundary)
+        self.assertIn('[[ "$service_state" == "false" && "$monitor_state" == "false" ]]', boundary)
+        self.assertIn("keyguard-state-before-instrumentation.txt", boundary)
+        self.assertIn("keyguard_is_hidden", boundary)
+        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn("keyguard_is_showing", boundary)
 
     def test_android15_power_manager_dump_uses_hal_interactive_mode_field(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
@@ -169,14 +149,15 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertNotIn("mInteractive=true", parser)
         self.assertNotIn("mInteractive=false", parser)
 
-    def test_wake_gate_waits_for_power_manager_transition_to_finish(self):
+    def test_wake_gate_precedes_the_unlocked_keyguard_gate(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
         self.assertIn('("mWakefulnessChanging", "false")', parser)
         self.assertIn("screen_is_awake", boundary)
-        self.assertLess(boundary.index("screen_is_awake"), boundary.index("input swipe"))
+        self.assertIn("keyguard_is_hidden", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
 
     def test_wake_gate_requires_minimum_post_wake_settle_interval(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
@@ -186,54 +167,26 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("minimum_wake_age_ms: int = 1500", parser)
         self.assertIn("age_ms < minimum_wake_age_ms", parser)
         self.assertIn("--min-wake-age-ms 1500", boundary)
-        self.assertLess(boundary.index("screen_is_awake"), boundary.index("input swipe"))
+        self.assertIn("power-state-before-instrumentation.txt", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
 
-    def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
+    def test_workflow_fails_closed_if_fresh_avd_is_not_already_unlocked(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn('if screen_is_asleep "$power_state"; then', boundary)
-        self.assertIn('if keyguard_is_showing "$keyguard_policy"; then', boundary)
-        self.assertIn("Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake", boundary)
-        self.assertIn("keyguard-state-after-instrumentation-unlock.txt", boundary)
-        self.assertLess(boundary.index("keyguard_showing=0"), boundary.index('if keyguard_is_showing "$keyguard_policy"'))
-        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index("--capture"))
-        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index("--capture"))
-        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
+        self.assertIn("Fresh disposable emulator is not already unlocked after synthetic PIN provisioning", boundary)
+        self.assertIn("refusing to synthesize a Keyguard dismissal", boundary)
+        self.assertIn('if [[ "$keyguard_hidden" != 1 ]]; then', boundary)
+        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index('if [[ "$keyguard_hidden" != 1 ]]'))
+        self.assertLess(boundary.index('if [[ "$keyguard_hidden" != 1 ]]'), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertIn("locksettings clear --old", boundary)
 
-    def test_keyguard_unlock_uses_exact_systemui_resource_ids_without_text_injection(self):
-        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
-        end = self.workflow.index("Verify launcher runtime and recovery route", start)
-        boundary = self.workflow[start:end]
-        script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
-        self.assertIn("--capture", boundary)
-        self.assertIn("qa005_unlock_keyguard.py", boundary)
-        self.assertNotIn('shell input text "$TEST_PIN"', boundary)
-        for required in (
-            "com.android.systemui:id/keyguard_pin_view",
-            "com.android.systemui:id/pin_container",
-            "com.android.systemui:id/key_enter",
-            'f"{SYSTEM_UI}:id/key{digit}"',
-            "uid=2000(shell)",
-            "clickable",
-            "enabled",
-            "bounds",
-            '"input", "tap"',
-        ):
-            self.assertIn(required, script)
-        self.assertNotIn("adb root", script)
-        self.assertIn("working-directory: android", self.workflow)
-        self.assertIn("TEST_PIN=2468", boundary)
-        self.assertIn('TEST_PIN="$TEST_PIN" timeout 120s python3 ../scripts/qa005_unlock_keyguard.py', boundary)
-        self.assertIn("--capture", boundary)
-        self.assertIn("UI hierchary dumped to:", script)
-        self.assertIn("ERROR: null root node returned by UiTestAutomationBridge.", script)
-        self.assertIn("qa005-keyguard-attempt-", script)
-        self.assertIn("max_attempts: int = 5", script)
-        self.assertIn('DEVICE_ENTRY_ID = f"{SYSTEM_UI}:id/device_entry_icon_view"', script)
-        self.assertIn('DEVICE_ENTRY_FG_ID = f"{SYSTEM_UI}:id/device_entry_icon_fg"', script)
-        self.assertIn('DEVICE_LOCKED_DESC = "Device locked"', script)
-        self.assertIn("validate_keyguard_locked_surface", script)
+    def test_active_preflight_never_synthesizes_keyguard_dismissal(self):
+        self.assertNotIn("qa005_unlock_keyguard.py", self.workflow)
+        self.assertNotIn("input swipe", self.workflow)
+        self.assertNotIn("KEYCODE_SLEEP", self.workflow)
+        self.assertNotIn('shell input text "$TEST_PIN"', self.workflow)
+        self.assertNotIn("adb root", self.workflow)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
@@ -281,30 +234,22 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("ro.kernel.qemu", script)
 
 
-    def test_locked_surface_validation_and_capture_are_read_only(self):
-        script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
-        start = script.index("def validate_keyguard_locked_surface")
-        end = script.index("\ndef _adb_result", start)
-        parser = script[start:end]
-        for required in (
-            "DEVICE_ENTRY_ID",
-            "DEVICE_ENTRY_FG_ID",
-            "DEVICE_LOCKED_DESC",
-            "content-desc",
-            "clickable=True",
-            "parse_bounds",
-        ):
-            self.assertIn(required, parser)
-        capture_start = script.index("def capture_fresh_systemui_keypad_hierarchy")
-        capture_end = script.index("\ndef unlock_with_visible_systemui_pinpad", capture_start)
-        capture = script[capture_start:capture_end]
-        self.assertIn("validate_keyguard_locked_surface(hierarchy, width, height)", capture)
-        self.assertNotIn('"input", "tap"', capture)
-        self.assertNotIn("entry_tapped", capture)
-        self.assertIn("max_attempts: int = 5", capture)
-        self.assertNotIn('shell", "input", "text"', script)
-
-
+    def test_instrumentation_preflight_matches_owner_credential_safety_gate(self):
+        root = WORKFLOW.parents[2]
+        instrumentation = (root /
+            "android/app/src/androidTest/java/tech/mrnothing/os/OwnerAuthorityTrustActivityCommitLifecycleTest.kt").read_text(encoding="utf-8")
+        safety_gate = (root /
+            "android/app/src/main/java/tech/mrnothing/os/OwnerCredentialSafetyGate.kt").read_text(encoding="utf-8")
+        self.assertIn("keyguard.isDeviceSecure", instrumentation)
+        self.assertIn("keyguard.isDeviceLocked", instrumentation)
+        self.assertIn("keyguard.isKeyguardLocked", instrumentation)
+        self.assertIn("OwnerCredentialSafetyGate.isSafe(context)", instrumentation)
+        self.assertIn("secureLockConfigured = keyguard.isDeviceSecure", safety_gate)
+        self.assertIn("deviceLocked = keyguard.isDeviceLocked", safety_gate)
+        self.assertIn("keyguardLocked = keyguard.isKeyguardLocked", safety_gate)
+        self.assertIn("screenInteractive = power.isInteractive", safety_gate)
+        self.assertIn("!signals.deviceLocked", safety_gate)
+        self.assertIn("!signals.keyguardLocked", safety_gate)
 
     def test_wake_gate_uses_the_unit_tested_fail_closed_parser(self):
         self.assertIn(
@@ -312,24 +257,22 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow,
         )
         self.assertIn(
-            'python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state_after_wake" || true',
+            'python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state" || true',
             self.workflow,
         )
         self.assertNotIn("sed -nE", self.workflow)
 
-    def test_lock_screen_swipe_is_clear_of_the_bottom_gesture_edge(self):
-        self.assertIn('swipe_start_y="$((display_height - 440))"', self.workflow)
-        self.assertLess(1920 - 440, 1538)
-        self.assertGreater(1920 - 440, 1444)
-        self.assertIn("settings get secure navigation_mode", self.workflow)
-        self.assertIn("navigation-mode.txt", self.workflow)
-        self.assertLess(
-            self.workflow.index("navigation-mode.txt"),
-            self.workflow.index("shell input swipe"),
-        )
+    def test_active_workflow_has_no_lockscreen_gesture_or_credential_helper(self):
+        self.assertNotIn("shell input swipe", self.workflow)
+        self.assertNotIn("qa005_unlock_keyguard.py", self.workflow)
+        self.assertNotIn("settings get secure navigation_mode", self.workflow)
+        self.assertNotIn("navigation-mode.txt", self.workflow)
 
-    def test_wake_snapshot_writer_uses_a_real_newline(self):
-        line = next(line for line in self.workflow.splitlines() if "power-state-after-wake.txt" in line and "printf" in line)
+    def test_power_snapshot_writer_uses_a_real_newline(self):
+        line = next(
+            line for line in self.workflow.splitlines()
+            if "power-state-before-instrumentation.txt" in line and "printf" in line
+        )
         self.assertEqual(1, line.count("\\"))
         self.assertIn("printf '%s\\n'", line)
 
