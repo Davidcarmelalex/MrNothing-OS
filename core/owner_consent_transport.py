@@ -527,6 +527,14 @@ class OwnerConsentTlsAdapter:
             admission = self.verify_and_consume(peer, envelope, challenge)
             if not admission.admitted:
                 return ActionCapabilityIssueResult(False, admission.reason)
+            verified_public_key_sha256 = admission.verified_public_key_sha256
+            if (
+                type(verified_public_key_sha256) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", verified_public_key_sha256) is None
+            ):
+                return ActionCapabilityIssueResult(
+                    False, "VERIFIED_KEY_BINDING_MISSING"
+                )
 
             clocks, clock_error = self._read_clocks()
             if clock_error is not None:
@@ -603,6 +611,13 @@ class OwnerConsentTlsAdapter:
                 or not 1 <= len(owner_record.public_key_spki_der) <= 512
             ):
                 return ActionCapabilityIssueResult(False, "INVALID_TRUSTED_KEY")
+            if (
+                hashlib.sha256(owner_record.public_key_spki_der).hexdigest()
+                != verified_public_key_sha256
+            ):
+                return ActionCapabilityIssueResult(
+                    False, "ENROLLMENT_KEY_CHANGED_DURING_ADMISSION"
+                )
 
             capability = VerifiedOwnerActionCapability()
             record = _IssuedActionCapability(
@@ -615,9 +630,7 @@ class OwnerConsentTlsAdapter:
                 arguments_sha256=arguments_digest,
                 transport_certificate_sha256=fingerprint,
                 credential_generation=enrolled.credential_generation,
-                consent_public_key_sha256=hashlib.sha256(
-                    owner_record.public_key_spki_der
-                ).hexdigest(),
+                consent_public_key_sha256=verified_public_key_sha256,
                 expires_monotonic_ns=expires_monotonic_ns,
             )
             state.capabilities[id(capability)] = record
@@ -701,7 +714,10 @@ class OwnerConsentTlsAdapter:
                 state.session.owner_id != record.owner_id
                 or state.session.device_id != record.device_id
                 or state.session.session_id != record.session_id
+                or state.certificate_sha256 != record.transport_certificate_sha256
                 or fingerprint != record.transport_certificate_sha256
+                or enrolled.owner_id != record.owner_id
+                or enrolled.device_id != record.device_id
             ):
                 discard()
                 return ActionCapabilityAdmissionResult(
@@ -718,6 +734,8 @@ class OwnerConsentTlsAdapter:
             issued = state.challenges.get(record.nonce)
             if (
                 issued is None
+                or issued.challenge.owner_id != record.owner_id
+                or issued.challenge.device_id != record.device_id
                 or issued.challenge.action != record.action
                 or issued.challenge.session_id != record.session_id
                 or now_epoch_ms >= issued.challenge.expires_at_epoch_ms

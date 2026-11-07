@@ -193,3 +193,14 @@ This is a trusted-process capability pattern, not isolation against arbitrary ma
 
 M3 remains PARTIAL. The next step is a versioned consent protocol that signs a canonical digest of non-empty action arguments and presents those exact arguments in owner-visible Android UI before signing. Only after that should the verifier-created capability be mirrored in the JVM layer and Android permission state be revalidated. No listener, shell bridge, screen capture, permission grant or device action is enabled by this update.
 
+### Independent review correction — verified key provenance and transport remapping
+
+A second review found two capability-binding gaps and closed them before acceptance:
+
+1. The verifier result now carries the SHA-256 digest of the exact enrolled consent public key whose signature was verified and whose nonce was atomically consumed. Capability minting compares that digest with the current enrollment record and refuses a key change between verification and minting.
+2. Capability consumption now compares the current transport registry owner and device mapping, as well as the certificate fingerprint and credential generation, with the values captured at issuance. The retained challenge owner/device identity is also checked.
+
+New adversarial tests cover a consent-key rotation immediately after nonce consumption, transport owner/device remapping, and transport credential-generation changes. A failure consumes no device action; the key-rotation race consumes the consent nonce but deliberately returns no capability, requiring a fresh challenge.
+
+This closes the identified in-process admission gaps for the no-op harness only. It does not make registry lookup and a future real side effect atomic. Any real executor still requires a durable authorization/idempotency reservation transaction that binds the current enrollment generation at the final side-effect boundary.
+

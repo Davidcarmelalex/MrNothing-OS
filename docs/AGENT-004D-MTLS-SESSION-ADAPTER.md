@@ -77,3 +77,9 @@ core/noop_action_executor.py is a test harness that consumes the capability and 
 
 The existing v1 signer/UI still displays action/device/session but does not preview arbitrary arguments. Therefore no non-empty action arguments may be authorized by this path. A versioned signed argument-digest protocol and owner-visible argument preview are required before extending it. The Android CommandRouter remains fail-closed; no listener or real executor is connected.
 
+### Follow-up verifier-provenance review
+
+The verifier admission result now carries the SHA-256 digest of the exact public key used for signature verification and nonce consumption. Capability minting compares that verified digest with the current registry key; if the key changes during the interval, no capability is returned. Capability consumption also compares the current transport registry owner/device mapping and credential generation with the issuance record, and checks the retained challenge owner/device values.
+
+These checks protect the no-op admission harness against the identified key-rotation and transport-remapping races. They do not provide an atomic authorization-plus-side-effect transaction. A real executor remains blocked until a durable final admission/idempotency reservation can atomically validate the current enrollment generation and reserve the action.
+

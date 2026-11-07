@@ -64,3 +64,8 @@ No milestone is complete.
 ## Next task
 
 Define a versioned owner-consent protocol that signs a canonical digest of non-empty action arguments and presents those exact arguments in owner-visible Android UI before signing. Keep real device execution disconnected.
+
+## Independent review correction
+
+Before accepting the capability harness, a second pass identified two race conditions: a consent public-key rotation between signature/nonce verification and capability minting, and a transport registry owner/device remap after capability issuance. The verifier result now exposes the digest of the exact key used by the successful signature/nonce transaction; capability minting compares it with the current record and fails without issuing a capability on mismatch. Consumption now also rechecks transport owner/device identity and credential generation, and checks the challenge owner/device binding. Three new adversarial tests cover these cases. A future real executor still requires atomic final authorization/idempotency reservation; this no-op path has no device effects.
+

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+import hashlib
 import hmac
 import json
 import re
@@ -60,6 +61,7 @@ class ConsentChallenge:
 class ConsentAdmissionResult:
     admitted: bool
     reason: str
+    verified_public_key_sha256: str | None = None
 
 
 class OwnerConsentEnrollmentRegistry(Protocol):
@@ -279,7 +281,11 @@ def _verify_and_consume_bound(
     except Exception:
         return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_UNAVAILABLE")
     if admission == "ADMITTED":
-        return ConsentAdmissionResult(True, "ADMITTED_NO_EXECUTION")
+        return ConsentAdmissionResult(
+            True,
+            "ADMITTED_NO_EXECUTION",
+            hashlib.sha256(trusted_public_key_spki_der).hexdigest(),
+        )
     if type(admission) is not str:
         return ConsentAdmissionResult(False, "ENROLLMENT_REGISTRY_INVALID")
     if admission in {

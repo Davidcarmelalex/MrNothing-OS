@@ -1101,3 +1101,7 @@ Next task: audit and enforce the boundary between legacy Termux shell-based agen
 
 **Next bounded task:** define protocol v2 with a canonical, signed digest of non-empty action arguments and an owner-visible Android preview that renders those exact arguments before per-use signing. Add shared Kotlin/Python fixtures and mutation tests. Keep actual device execution disabled until the verifier capability is mirrored into the JVM boundary and Android runtime permissions are revalidated.
 
+## Independent review correction — M3 capability provenance
+
+A follow-up security review of the opaque no-op capability found and corrected two TOCTOU/context issues before acceptance: the verifier result now returns the digest of the exact consent public key used for signature verification and nonce consumption, and capability minting refuses if the registry key has changed since that verification. Consumption now also checks the current transport registry owner/device mapping and credential generation against the captured capability context, and verifies challenge owner/device identity. Three new adversarial tests cover post-consumption key rotation, owner/device remapping and generation change. These corrections remain admission/no-op only; a real executor still needs an atomic durable final authorization/idempotency reservation.
+

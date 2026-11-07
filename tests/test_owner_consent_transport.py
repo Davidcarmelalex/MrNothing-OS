@@ -505,6 +505,10 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             result = self.adapter.verify_and_consume(server, envelope, challenge)
             self.assertTrue(result.admitted, result.reason)
             self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
+            self.assertEqual(
+                result.verified_public_key_sha256,
+                hashlib.sha256(self.consent_public_der).hexdigest(),
+            )
             replay = self.adapter.verify_and_consume(server, envelope, challenge)
             self.assertFalse(replay.admitted)
             self.assertEqual(replay.reason, "REPLAY_OR_CAPACITY")
@@ -859,6 +863,77 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             )
             self.assertFalse(rejected.accepted)
             self.assertEqual(rejected.reason, "DEVICE_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
+
+
+    def test_key_rotation_after_signature_and_nonce_verification_blocks_capability_mint(self):
+        server, client = self._pair()
+        try:
+            issued = self.adapter.issue_challenge(server, action="read_screen")
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            envelope = self._signed_envelope(challenge)
+            original_consume = self.consent_registry.consume_consent_nonce
+
+            def consume_then_rotate(**kwargs):
+                outcome = original_consume(**kwargs)
+                self.consent_registry.record = replace(
+                    self.consent_record, public_key_spki_der=b"\x30\x00"
+                )
+                return outcome
+
+            self.consent_registry.consume_consent_nonce = consume_then_rotate
+            result = self.adapter.verify_and_issue_capability(
+                server, envelope, challenge, arguments={}
+            )
+            self.assertFalse(result.issued)
+            self.assertIsNone(result.capability)
+            self.assertEqual(
+                result.reason, "ENROLLMENT_KEY_CHANGED_DURING_ADMISSION"
+            )
+        finally:
+            server.close()
+            client.close()
+
+    def test_transport_owner_or_device_rebind_discards_issued_capability(self):
+        for changes in (
+            {"owner_id": "other-owner"},
+            {"device_id": "other-device"},
+        ):
+            server, client = self._pair()
+            try:
+                capability, _challenge = self._issue_read_screen_capability(server)
+                self.transport_registry.record = replace(
+                    self.transport_record, **changes
+                )
+                executor = NoOpActionExecutor(self.adapter)
+                rejected = executor.simulate(
+                    server, capability, action="read_screen", arguments={}
+                )
+                self.assertFalse(rejected.accepted)
+                self.assertEqual(
+                    rejected.reason, "CAPABILITY_CONTEXT_MISMATCH"
+                )
+            finally:
+                self.transport_registry.record = self.transport_record
+                server.close()
+                client.close()
+
+    def test_transport_generation_change_after_capability_mint_discards_it(self):
+        server, client = self._pair()
+        try:
+            capability, _challenge = self._issue_read_screen_capability(server)
+            self.transport_registry.record = replace(
+                self.transport_record, credential_generation=2
+            )
+            executor = NoOpActionExecutor(self.adapter)
+            rejected = executor.simulate(
+                server, capability, action="read_screen", arguments={}
+            )
+            self.assertFalse(rejected.accepted)
+            self.assertEqual(rejected.reason, "TRANSPORT_CREDENTIAL_CHANGED")
         finally:
             server.close()
             client.close()
