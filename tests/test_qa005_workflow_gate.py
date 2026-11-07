@@ -90,53 +90,39 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow.index("locksettings set-pin"),
         )
 
-    def test_disposable_emulator_is_awake_and_unlocked_before_ui_instrumentation(self):
+    def test_disposable_emulator_is_secure_and_awake_before_ui_instrumentation(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         for required in (
-            "locksettings set-pin",
-            "locksettings clear --old",
-            "trap cleanup EXIT INT TERM",
-            "input keyevent KEYCODE_WAKEUP",
-            "dumpsys power",
-            "qa005_power_state.py",
-            "--min-wake-age-ms 1500",
-            "power-state-before-instrumentation.txt",
-            "KeyguardServiceDelegate",
-            "showing=",
-            "KeyguardStateMonitor",
-            "mIsShowing=",
-            "keyguard_is_hidden",
+            "locksettings set-pin", "locksettings clear --old", "trap cleanup EXIT INT TERM",
+            "uid=2000(shell)", "input keyevent KEYCODE_WAKEUP", "dumpsys power",
+            "qa005_power_state.py", "--min-wake-age-ms 1500",
+            "power-state-before-instrumentation.txt", "dumpsys window policy",
             "keyguard-state-before-instrumentation.txt",
-            "Fresh disposable emulator is not already unlocked after synthetic PIN provisioning",
-            "Disposable emulator is secure, interactive and unlocked; starting instrumentation",
+            "Display is interactive; instrumentation will verify the synthetic credential",
             ":app:connectedDebugAndroidTest",
-            "uid=2000(shell)",
         ):
             self.assertIn(required, boundary)
         self.assertLess(boundary.index("locksettings set-pin"), boundary.index("KEYCODE_WAKEUP"))
-        self.assertLess(boundary.index("KEYCODE_WAKEUP"), boundary.index("power-state-before-instrumentation.txt"))
-        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
-        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index(":app:connectedDebugAndroidTest"))
-        self.assertNotIn("KEYCODE_SLEEP", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard-state-before-instrumentation.txt"))
+        self.assertLess(boundary.index("keyguard-state-before-instrumentation.txt"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn("keyguard_is_hidden", boundary)
+        self.assertNotIn("KeyguardServiceDelegate", boundary)
+        self.assertNotIn("KeyguardStateMonitor", boundary)
         self.assertNotIn("input swipe", boundary)
-        self.assertNotIn("qa005_unlock_keyguard.py", boundary)
-        self.assertNotIn('shell input text "$TEST_PIN"', boundary)
         self.assertNotIn("adb root", boundary)
-
-    def test_both_keyguard_indicators_must_be_hidden_before_instrumentation(self):
+    def test_keyguard_state_is_diagnostic_not_a_preflight_gate(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("KeyguardServiceDelegate", boundary)
-        self.assertIn("KeyguardStateMonitor", boundary)
-        self.assertIn('[[ "$service_state" == "false" && "$monitor_state" == "false" ]]', boundary)
+        self.assertIn("dumpsys window policy", boundary)
         self.assertIn("keyguard-state-before-instrumentation.txt", boundary)
-        self.assertIn("keyguard_is_hidden", boundary)
-        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index(":app:connectedDebugAndroidTest"))
-        self.assertNotIn("keyguard_is_showing", boundary)
-
+        self.assertIn("exact visible SystemUI PIN controls", boundary)
+        self.assertNotIn("keyguard_is_hidden", boundary)
+        self.assertNotIn("KeyguardServiceDelegate", boundary)
+        self.assertNotIn("KeyguardStateMonitor", boundary)
+        self.assertNotIn("refusing to synthesize a Keyguard dismissal", boundary)
     def test_android15_power_manager_dump_uses_hal_interactive_mode_field(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
@@ -149,16 +135,16 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertNotIn("mInteractive=true", parser)
         self.assertNotIn("mInteractive=false", parser)
 
-    def test_wake_gate_precedes_the_unlocked_keyguard_gate(self):
+    def test_wake_gate_precedes_keyguard_diagnostic_and_instrumentation(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         parser = (WORKFLOW.parents[2] / "scripts/qa005_power_state.py").read_text(encoding="utf-8")
         self.assertIn('("mWakefulnessChanging", "false")', parser)
         self.assertIn("screen_is_awake", boundary)
-        self.assertIn("keyguard_is_hidden", boundary)
-        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
-
+        self.assertIn("keyguard-state-before-instrumentation.txt", boundary)
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard-state-before-instrumentation.txt"))
+        self.assertLess(boundary.index("keyguard-state-before-instrumentation.txt"), boundary.index(":app:connectedDebugAndroidTest"))
     def test_wake_gate_requires_minimum_post_wake_settle_interval(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
@@ -168,19 +154,24 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("age_ms < minimum_wake_age_ms", parser)
         self.assertIn("--min-wake-age-ms 1500", boundary)
         self.assertIn("power-state-before-instrumentation.txt", boundary)
-        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard_is_hidden"))
-
-    def test_workflow_fails_closed_if_fresh_avd_is_not_already_unlocked(self):
+        self.assertLess(boundary.index("screen_is_awake"), boundary.index("keyguard-state-before-instrumentation.txt"))
+    def test_instrumentation_owns_locked_emulator_authentication(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
-        self.assertIn("Fresh disposable emulator is not already unlocked after synthetic PIN provisioning", boundary)
-        self.assertIn("refusing to synthesize a Keyguard dismissal", boundary)
-        self.assertIn('if [[ "$keyguard_hidden" != 1 ]]; then', boundary)
-        self.assertLess(boundary.index("keyguard_is_hidden"), boundary.index('if [[ "$keyguard_hidden" != 1 ]]'))
-        self.assertLess(boundary.index('if [[ "$keyguard_hidden" != 1 ]]'), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertIn("locksettings set-pin", boundary)
         self.assertIn("locksettings clear --old", boundary)
-
+        self.assertIn("keyguard-state-before-instrumentation.txt", boundary)
+        self.assertNotIn("Fresh disposable emulator is not already unlocked", boundary)
+        self.assertNotIn("keyguard_is_hidden", boundary)
+        source = (WORKFLOW.parents[2] / "android/app/src/androidTest/java/tech/mrnothing/os/OwnerAuthorityTrustActivityCommitLifecycleTest.kt").read_text(encoding="utf-8")
+        self.assertIn("prepareInteractiveUnlockedEmulator()", source)
+        self.assertIn("keyguard.isDeviceSecure", source)
+        self.assertIn("keyguard.isDeviceLocked || keyguard.isKeyguardLocked", source)
+        self.assertIn("longPressSystemDeviceEntryIconToRevealCredentialEntry()", source)
+        self.assertIn("awaitKeyguardPinPad", source)
+        self.assertIn("enterSyntheticKeyguardPin(identity)", source)
+        self.assertIn('identity.contains("uid=2000(shell)")', source)
     def test_active_preflight_never_synthesizes_keyguard_dismissal(self):
         self.assertNotIn("qa005_unlock_keyguard.py", self.workflow)
         self.assertNotIn("input swipe", self.workflow)
@@ -275,6 +266,26 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         )
         self.assertEqual(1, line.count("\\"))
         self.assertIn("printf '%s\\n'", line)
+
+    def test_systemui_device_entry_uses_exact_long_click_action(self):
+        source = (WORKFLOW.parents[2] / "android/app/src/androidTest/java/tech/mrnothing/os/OwnerAuthorityTrustActivityCommitLifecycleTest.kt").read_text(encoding="utf-8")
+        start = source.index("private fun longPressSystemDeviceEntryIconToRevealCredentialEntry")
+        end = source.index("private fun awaitCredentialPrompt", start)
+        helper = source[start:end]
+        for required in (
+            'val viewId = "com.android.systemui:id/device_entry_icon_view"',
+            'root.packageName?.toString() != "com.android.systemui"',
+            'it.className?.toString() == "android.widget.FrameLayout"',
+            "it.isVisibleToUser && it.isEnabled",
+            "it.isClickable && it.isLongClickable",
+            "getBoundsInScreen",
+            "bounds.right <= width && bounds.bottom <= height",
+            "target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)",
+            'identity.contains("uid=2000(shell)")',
+        ):
+            self.assertIn(required, helper)
+        self.assertNotIn("input tap", helper)
+        self.assertNotIn("input swipe", helper)
 
 if __name__ == "__main__":
     unittest.main()

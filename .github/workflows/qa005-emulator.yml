@@ -180,33 +180,14 @@ jobs:
             echo "Disposable emulator display did not reach a fully interactive awake state before instrumentation" >&2
             exit 1
           fi
-          read_keyguard_policy() {
-            timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy | tr -d '\r'
-          }
-          keyguard_is_hidden() {
-            local policy="$1"
-            local service_state monitor_state
-            service_state="$(awk '/KeyguardServiceDelegate/{in_service=1; next} in_service && /showing=/{sub(/^.*showing=/, ""); print $1; exit}' <<< "$policy")"
-            monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
-            [[ "$service_state" == "false" && "$monitor_state" == "false" ]]
-          }
-          keyguard_hidden=0
-          keyguard_policy=""
-          for attempt in $(seq 1 20); do
-            keyguard_policy="$(read_keyguard_policy || true)"
-            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt"
-            if keyguard_is_hidden "$keyguard_policy"; then
-              keyguard_hidden=1
-              break
-            fi
-            sleep 1
-          done
-          if [[ "$keyguard_hidden" != 1 ]]; then
-            echo "Fresh disposable emulator is not already unlocked after synthetic PIN provisioning; refusing to synthesize a Keyguard dismissal" >&2
-            exit 1
-          fi
-          echo "Disposable emulator is secure, interactive and unlocked; starting instrumentation"
-          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+          # A configured synthetic PIN can leave the disposable AVD on Keyguard.
+          # The instrumentation test owns authentication: it verifies the exact
+          # visible SystemUI PIN surface and enters only the known synthetic PIN.
+          # Capture Keyguard state for diagnosis, but do not preempt that tested flow.
+          timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy \
+            | tr -d '\r' > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt" || true
+          echo "Display is interactive; instrumentation will verify the synthetic credential and use exact visible SystemUI PIN controls when Keyguard is locked"
+          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"

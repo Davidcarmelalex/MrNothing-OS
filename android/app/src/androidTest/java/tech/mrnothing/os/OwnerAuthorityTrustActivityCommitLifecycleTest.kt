@@ -192,9 +192,9 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         SystemClock.sleep(250)
         if (keyguard.isDeviceLocked || keyguard.isKeyguardLocked) {
             // This is the device lockscreen, not the later BiometricPrompt dialog.
-            // Reveal and verify the complete SystemUI Keyguard PIN pad before input.
+            // Long-press the exact SystemUI device-entry affordance and verify the complete PIN pad before input.
             if (!hasVisibleKeyguardPinPad()) {
-                lastCredentialPreflightDiagnostics = tapSystemDeviceEntryIconToRevealCredentialEntry()
+                lastCredentialPreflightDiagnostics = longPressSystemDeviceEntryIconToRevealCredentialEntry()
             } else {
                 lastCredentialPreflightDiagnostics = "exact SystemUI Keyguard PIN pad was already visible"
             }
@@ -374,11 +374,17 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
      * It taps only the exact visible SystemUI device-entry control and its
      * on-screen accessibility bounds; it never guesses a coordinate.
      */
-    private fun tapSystemDeviceEntryIconToRevealCredentialEntry(): String {
+    private fun longPressSystemDeviceEntryIconToRevealCredentialEntry(): String {
         val metrics = getInstrumentation().targetContext.resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
         assertTrue("emulator display metrics are unavailable", width > 0 && height > 0)
+
+        val identity = shell("id")
+        assertTrue(
+            "keyguard long-press requires ordinary adb shell identity; refusing privileged execution",
+            identity.contains("uid=2000(shell)")
+        )
 
         val automation = getInstrumentation().uiAutomation
         val roots = try {
@@ -393,6 +399,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         val viewId = "com.android.systemui:id/device_entry_icon_view"
         val targetBounds = Rect()
         var targetFound = false
+        var longClickAccepted = false
         try {
             for (root in roots) {
                 if (root.packageName?.toString() != "com.android.systemui") continue
@@ -402,10 +409,11 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                     emptyList()
                 }
                 try {
-                    val target = matches.firstOrNull {
+                    val target = matches.singleOrNull {
                         it.viewIdResourceName == viewId &&
                             it.className?.toString() == "android.widget.FrameLayout" &&
-                            it.isVisibleToUser && it.isEnabled && it.isClickable
+                            it.isVisibleToUser && it.isEnabled &&
+                            it.isClickable && it.isLongClickable
                     }
                     if (target != null) {
                         val bounds = Rect()
@@ -416,6 +424,7 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
                         ) {
                             targetBounds.set(bounds)
                             targetFound = true
+                            longClickAccepted = target.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
                             break
                         }
                     }
@@ -429,28 +438,20 @@ class OwnerAuthorityTrustActivityCommitLifecycleTest : InstrumentationTestCase()
         }
 
         assertTrue(
-            "visible clickable SystemUI device-entry icon was not found; refusing coordinate guessing",
+            "one visible, long-clickable SystemUI device-entry icon was not found; refusing coordinate guessing",
             targetFound
         )
-        val identity = shell("id")
         assertTrue(
-            "keyguard tap requires ordinary adb shell identity; refusing privileged execution",
-            identity.contains("uid=2000(shell)")
-        )
-
-        val command = "input tap ${targetBounds.centerX()} ${targetBounds.centerY()}"
-        val result = shell(command)
-        assertFalse(
-            "Android input utility rejected the SystemUI device-entry tap: $result",
-            result.contains("usage", ignoreCase = true) ||
-                result.contains("error", ignoreCase = true)
+            "SystemUI device-entry icon rejected ACTION_LONG_CLICK",
+            longClickAccepted
         )
         SystemClock.sleep(250)
         return "identity=" + identity.trim() +
             "; target=$viewId class=android.widget.FrameLayout bounds=$targetBounds" +
-            "; command=$command; output=" + result.trim().take(200)
+            "; action=ACTION_LONG_CLICK accepted=true"
     }
 
+    private fun awaitCredentialPrompt
     private fun awaitCredentialPrompt(activity: OwnerAuthorityTrustActivityTestHost) {
         val deadline = SystemClock.elapsedRealtime() + 10_000L
         var status = ""
