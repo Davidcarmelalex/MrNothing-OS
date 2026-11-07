@@ -1,21 +1,59 @@
 package tech.mrnothing.os
 
 import android.app.Activity
+import android.app.Application
 import android.app.Instrumentation
 import android.content.Intent
 import android.content.IntentFilter
 import android.provider.Settings
+import android.os.Bundle
 import android.test.InstrumentationTestCase
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class AccessibilityDisclosureActivityTest : InstrumentationTestCase() {
+    /**
+     * Launch without Instrumentation.startActivitySync/waitForIdleSync, whose
+     * global-idle wait can hang the whole QA job when the emulator UI is stuck.
+     * Both activity observation and resume are bounded so a failure is localised.
+     */
     private fun launchMainActivity(): MainActivity {
-        val intent = Intent(getInstrumentation().targetContext, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return getInstrumentation().startActivitySync(intent) as MainActivity
+        val instrumentation = getInstrumentation()
+        val monitor = Instrumentation.ActivityMonitor(MainActivity::class.java.name, null, false)
+        val application = instrumentation.targetContext.applicationContext as Application
+        val resumed = CountDownLatch(1)
+        val lifecycle = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityResumed(activity: Activity) {
+                if (activity is MainActivity) resumed.countDown()
+            }
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        }
+        instrumentation.addMonitor(monitor)
+        application.registerActivityLifecycleCallbacks(lifecycle)
+        try {
+            val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            instrumentation.targetContext.startActivity(intent)
+            val activity = monitor.waitForActivityWithTimeout(10_000)
+            assertNotNull("launcher MainActivity was not observed within 10 seconds", activity)
+            assertTrue(
+                "launcher MainActivity did not resume within 10 seconds",
+                resumed.await(10, TimeUnit.SECONDS)
+            )
+            return activity as MainActivity
+        } finally {
+            application.unregisterActivityLifecycleCallbacks(lifecycle)
+            instrumentation.removeMonitor(monitor)
+        }
     }
 
     /** Exercise the real owner-visible launcher entry into this non-exported Activity. */
@@ -32,7 +70,6 @@ class AccessibilityDisclosureActivityTest : InstrumentationTestCase() {
             getInstrumentation().runOnMainSync { entry!!.performClick() }
             val activity = monitor.waitForActivityWithTimeout(5_000)
             assertNotNull("launcher entry did not open the private disclosure Activity", activity)
-            getInstrumentation().waitForIdleSync()
             return activity as AccessibilityDisclosureActivity
         } finally {
             getInstrumentation().removeMonitor(monitor)

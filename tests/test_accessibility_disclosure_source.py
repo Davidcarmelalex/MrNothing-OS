@@ -85,6 +85,14 @@ class AccessibilityDisclosureSourceTests(unittest.TestCase):
         self.assertIn("waitForActivityWithTimeout", instrumentation)
         self.assertNotIn("Intent(getInstrumentation().targetContext, AccessibilityDisclosureActivity::class.java)", instrumentation)
 
+    def test_launcher_activity_launch_has_bounded_lifecycle_waits(self):
+        instrumentation = (ROOT / "android/app/src/androidTest/java/tech/mrnothing/os/AccessibilityDisclosureActivityTest.kt").read_text(encoding="utf-8")
+        self.assertIn("targetContext.startActivity(intent)", instrumentation)
+        self.assertIn("waitForActivityWithTimeout(10_000)", instrumentation)
+        self.assertIn("resumed.await(10, TimeUnit.SECONDS)", instrumentation)
+        self.assertNotIn("startActivitySync(", instrumentation)
+        self.assertNotIn("waitForIdleSync()", instrumentation)
+
     def test_existing_preflight_uses_the_same_service_identity(self):
         self.assertIn(
             "private const val OWN_SERVICE = AccessibilityServiceContract.COMPONENT_CLASS_NAME",
