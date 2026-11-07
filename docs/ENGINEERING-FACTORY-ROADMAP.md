@@ -1549,3 +1549,21 @@ The first exact-head Phase 1 Python runs on candidate `a1bb94a818921d594dc0d4eba
 
 
 AGENT-005H KDoc cleanup: the AndroidTest helper's comment now accurately describes the exact SystemUI node as clickable (not long-clickable). The SEC-020B4D Python source gate rejects the stale `long-clickable` wording. No runtime behavior changed.
+
+
+## 2026-11-08 — AGENT-005J exact-head QA acceptance and M1 threat model
+
+The authorized branch parent at run start was 680d5cbd52630e685fb1ada69126a6555b1685f4; recursive tree 347 entries, not truncated; branch comparison is 300 commits ahead of main and zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 matches the branch, remains draft against main, and has no submitted reviews or inline review threads. The branch is unprotected; repository rulesets are empty. PROJECT-ADAPTER.md and this roadmap exist; repository SKILL.md is absent. The upstream shared factory package remains unverified and is not claimed installed.
+
+Exact-parent verification is now complete:
+- Phase 1 push run 42417459789 and PR run 42417463397 passed. Both Python policy jobs reported 730 tests passed. Android :app:testDebugUnitTest, :app:assembleDebug, repeat debug APK comparison, strict Gradle dependency verification, modified-dependency negative control and manifest security gate passed.
+- CI-003 push run 42417459698 and PR run 42417463410 passed independent-runner verification. Two unsigned release-variant APKs were byte-identical (7,862,996 bytes; SHA-256 1283cc77cb9756f336c931d7db6cb97d6724ac0717995f94757eb101fb31c05b; normalized-entry SHA-256 fc4aa03eb6754f76fe9fa005495d923da85678aaa3bb5f92cd942f2375575140). The scoped build-environment inventory contains 1,260 components. Provenance reports release_ready=false; the inventory is not a complete hosted-runner image SBOM.
+- QA-005 PR run 42417463430 passed on a disposable Android API 35 x86_64 emulator. JUnit reports 30 tests, zero failures, zero errors and zero skipped. QA-005 through QA-010 passed; QA-013, QA-020B2 and QA-020B3 passed. QA-011 remains blocked_service_disabled; QA-012 passed structural hierarchy checks only, with spoken_navigation_verified=false and acceptance_passed=false. This is emulator evidence, not Pixel 9 Pro hardware evidence.
+
+The previous QA-012 viewport correction is therefore accepted at the exact parent head. The DropBox ANR query returned no data_app_anr entries during this successful run; this is not a guarantee about other devices or future runs.
+
+AGENT-005J selects the highest-priority unblocked M1 gap: a consolidated, evidence-labeled security threat model. The repository had no dedicated threat-model document or STRIDE register. The new docs/THREAT-MODEL.md records assets, trust boundaries, actors, invariants, STRIDE threats, data handling, evidence, residual risks, owners and M1 acceptance criteria. tests/test_threat_model_document.py guards structural completeness. The document is DRAFT pending independent security review and does not authorize execution. No production Android source, manifest, permission, service, trust store, consent, dispatcher or executor changed.
+
+Milestones remain M1 FOUNDATION IN PROGRESS (threat model draft; independent review pending); M2 OS INTERFACE IN PROGRESS (spoken TalkBack not accepted); M3 AGENTIC INTELLIGENCE PARTIAL (no integrated executor); M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending physical Pixel 9 Pro access; M8 BLOCKED. No milestone is complete.
+
+Next task: independent security review of the threat model and existing SEC-017–SEC-020B6 boundaries. In parallel, obtain separate deliberate approval before enabling TalkBack on a disposable emulator for spoken acceptance. Do not connect an executor until the cross-store revocation/reservation race has a reviewed atomic final-admission design.
