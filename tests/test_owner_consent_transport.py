@@ -516,24 +516,88 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             server.close()
             client.close()
 
-    def test_v2_live_mtls_consent_binds_arguments_but_does_not_mint_capability(self):
+    def test_v2_live_mtls_consent_mints_argument_bound_noop_capability(self):
         server, client = self._pair()
         try:
             arguments = {"target_package": "com.example.notes"}
-            issued = self.adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            issued = self.adapter.issue_challenge(
+                server, action="navigate", arguments=arguments
+            )
             self.assertTrue(issued.issued, issued.reason)
             challenge = issued.capability.challenge
             self.assertEqual(challenge.version, 2)
             envelope = self._signed_envelope(challenge)
+
+            # A caller cannot substitute different arguments after owner signing.
+            mismatch = self.adapter.verify_and_issue_capability(
+                server, envelope, challenge,
+                arguments={"target_package": "com.example.other"},
+            )
+            self.assertFalse(mismatch.issued)
+            self.assertEqual(mismatch.reason, "ARGUMENTS_MISMATCH")
+
             capability = self.adapter.verify_and_issue_capability(
                 server, envelope, challenge, arguments=arguments
             )
-            self.assertFalse(capability.issued)
-            self.assertEqual(capability.reason, "V2_CAPABILITY_NOT_INTEGRATED")
-            admitted = self.adapter.verify_and_consume(server, envelope, challenge)
-            self.assertTrue(admitted.admitted, admitted.reason)
-            replay = self.adapter.verify_and_consume(server, envelope, challenge)
-            self.assertEqual(replay.reason, "REPLAY_OR_CAPACITY")
+            self.assertTrue(capability.issued, capability.reason)
+            executor = NoOpActionExecutor(self.adapter)
+
+            altered = executor.simulate(
+                server, capability.capability, action="navigate",
+                arguments={"target_package": "com.example.other"},
+            )
+            self.assertFalse(altered.accepted)
+            self.assertEqual(altered.reason, "ARGUMENTS_MISMATCH")
+
+            accepted = executor.simulate(
+                server, capability.capability, action="navigate",
+                arguments=arguments,
+            )
+            self.assertTrue(accepted.accepted, accepted.reason)
+            self.assertEqual(accepted.reason, "SIMULATED_ONLY")
+            self.assertTrue(accepted.simulated)
+            self.assertFalse(accepted.device_actions_executed)
+
+            replay = executor.simulate(
+                server, capability.capability, action="navigate",
+                arguments=arguments,
+            )
+            self.assertFalse(replay.accepted)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
+
+    def test_v2_scroll_capability_is_argument_bound_and_noop_only(self):
+        server, client = self._pair()
+        try:
+            arguments = {"direction": "down", "distance_dp": 240}
+            issued = self.adapter.issue_challenge(
+                server, action="scroll", arguments=arguments
+            )
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            capability = self.adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(capability.issued, capability.reason)
+
+            executor = NoOpActionExecutor(self.adapter)
+            altered = executor.simulate(
+                server, capability.capability, action="scroll",
+                arguments={"direction": "down", "distance_dp": 241},
+            )
+            self.assertFalse(altered.accepted)
+            self.assertEqual(altered.reason, "ARGUMENTS_MISMATCH")
+
+            accepted = executor.simulate(
+                server, capability.capability, action="scroll",
+                arguments=arguments,
+            )
+            self.assertTrue(accepted.accepted, accepted.reason)
+            self.assertEqual(accepted.reason, "SIMULATED_ONLY")
+            self.assertFalse(accepted.device_actions_executed)
         finally:
             server.close()
             client.close()

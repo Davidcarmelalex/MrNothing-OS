@@ -27,6 +27,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID
 
+from core.owner_action_arguments import action_arguments_sha256
 from core.owner_consent_issuer import (
     AuthenticatedOwnerSession,
     ChallengeIssueResult,
@@ -93,6 +94,7 @@ class _IssuedActionCapability:
     device_id: str
     session_id: str
     action: str
+    protocol_version: int
     arguments_sha256: str
     transport_certificate_sha256: str
     credential_generation: int
@@ -513,19 +515,27 @@ class OwnerConsentTlsAdapter:
             return ActionCapabilityIssueResult(False, "INVALID_ARGUMENTS")
         if type(challenge) is not ConsentChallenge:
             return ActionCapabilityIssueResult(False, "INVALID_CHALLENGE")
-        if challenge.version == 2:
-            return ActionCapabilityIssueResult(
-                False, "V2_CAPABILITY_NOT_INTEGRATED"
-            )
-        if arguments:
-            return ActionCapabilityIssueResult(
-                False, "ARGUMENTS_NOT_SUPPORTED_BY_V1"
-            )
-        arguments_digest = _empty_action_arguments_digest(challenge.action)
-        if arguments_digest is None:
-            return ActionCapabilityIssueResult(
-                False, "ACTION_ARGUMENT_SCHEMA_UNAVAILABLE"
-            )
+        if type(challenge.version) is not int or challenge.version not in {1, 2}:
+            return ActionCapabilityIssueResult(False, "INVALID_CHALLENGE")
+        if challenge.version == 1:
+            if arguments:
+                return ActionCapabilityIssueResult(
+                    False, "ARGUMENTS_NOT_SUPPORTED_BY_V1"
+                )
+            arguments_digest = _empty_action_arguments_digest(challenge.action)
+            if arguments_digest is None:
+                return ActionCapabilityIssueResult(
+                    False, "ACTION_ARGUMENT_SCHEMA_UNAVAILABLE"
+                )
+        else:
+            try:
+                arguments_digest = action_arguments_sha256(
+                    challenge.action, arguments
+                )
+            except (TypeError, ValueError, UnicodeError):
+                return ActionCapabilityIssueResult(False, "INVALID_ARGUMENTS")
+            if arguments_digest != challenge.arguments_sha256:
+                return ActionCapabilityIssueResult(False, "ARGUMENTS_MISMATCH")
 
         # RLock keeps verification and capability registration atomic relative
         # to other operations performed through this adapter instance.
@@ -633,6 +643,7 @@ class OwnerConsentTlsAdapter:
                 device_id=state.session.device_id,
                 session_id=state.session.session_id,
                 action=challenge.action,
+                protocol_version=challenge.version,
                 arguments_sha256=arguments_digest,
                 transport_certificate_sha256=fingerprint,
                 credential_generation=enrolled.credential_generation,
@@ -665,9 +676,6 @@ class OwnerConsentTlsAdapter:
             return ActionCapabilityAdmissionResult(False, "ACTION_MISMATCH")
         if type(arguments) is not dict:
             return ActionCapabilityAdmissionResult(False, "INVALID_ARGUMENTS")
-        if arguments:
-            return ActionCapabilityAdmissionResult(False, "ARGUMENTS_MISMATCH")
-
         with self._lock:
             state = self._sessions.get(peer)
             if state is None:
@@ -682,7 +690,19 @@ class OwnerConsentTlsAdapter:
                 )
             if action != record.action:
                 return ActionCapabilityAdmissionResult(False, "ACTION_MISMATCH")
-            arguments_digest = _empty_action_arguments_digest(action)
+            if record.protocol_version == 1:
+                if arguments:
+                    return ActionCapabilityAdmissionResult(
+                        False, "ARGUMENTS_MISMATCH"
+                    )
+                arguments_digest = _empty_action_arguments_digest(action)
+            elif record.protocol_version == 2:
+                try:
+                    arguments_digest = action_arguments_sha256(action, arguments)
+                except (TypeError, ValueError, UnicodeError):
+                    arguments_digest = None
+            else:
+                arguments_digest = None
             if (
                 arguments_digest is None
                 or arguments_digest != record.arguments_sha256
@@ -744,6 +764,15 @@ class OwnerConsentTlsAdapter:
                 or issued.challenge.device_id != record.device_id
                 or issued.challenge.action != record.action
                 or issued.challenge.session_id != record.session_id
+                or issued.challenge.version != record.protocol_version
+                or (
+                    record.protocol_version == 2
+                    and issued.challenge.arguments_sha256 != record.arguments_sha256
+                )
+                or (
+                    record.protocol_version == 1
+                    and issued.challenge.arguments_sha256 is not None
+                )
                 or now_epoch_ms >= issued.challenge.expires_at_epoch_ms
                 or now_monotonic_ns >= issued.expires_monotonic_ns
             ):

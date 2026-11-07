@@ -1126,3 +1126,16 @@ New/updated tests cover the shared v2 fixture, strict argument schemas, signed d
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION BLOCKED; M8 PRODUCTION READINESS BLOCKED. No milestone is complete.
 
 Next task: independently review v2 canonicalization and add v2 opaque capability minting only after the exact action/argument digest, owner-visible preview and live transport context are verified. Keep real device execution disabled; a future executor must perform atomic final authorization/idempotency reservation and fresh Android runtime-permission checks.
+
+
+## 2026-11-07 — AGENT-004G v2 opaque capability admission (submitted)
+
+Audit baseline: `1a7899c1977a0384ea9e85dd826db00e37afdf05`. The current 298-entry recursive tree is complete and not truncated. The authorized branch remains `feat/phase1-agentic-phone`, 249 commits ahead of `main` and zero behind. PR #1 remains open/draft with no submitted reviews or inline threads; PRs #3–#7 were not modified. `PROJECT-ADAPTER.md` and this roadmap exist; repository `SKILL.md` is absent and the upstream shared factory package remains unverified.
+
+The live mTLS adapter now supports opaque one-use capabilities for protocol v2 as well as the existing v1 path. V1 remains restricted to `read_screen` with empty arguments. V2 recomputes the strict canonical action-argument digest before signature verification/nonce consumption and requires an exact match with the signed challenge. The capability records protocol version and digest; consumption recomputes the digest and checks the retained challenge version/digest plus existing live transport, peer identity, enrollment, credential generation, consent-key and monotonic-expiry bindings. Argument mismatch does not consume a valid challenge or capability. New local-mTLS tests cover `navigate` and `scroll`, altered-argument rejection, one-use consumption and no-op-only outcomes.
+
+The only capability consumer remains `NoOpActionExecutor`; every accepted result reports `SIMULATED_ONLY` and `device_actions_executed=false`. No Android executor, listener, runtime permission grant, screen capture, navigation, scrolling, shell or other device-side effect is connected. Exact-head candidate CI is pending at submission; the five parent-head workflows had passed. Independent human security review remains pending. No physical Pixel 9 Pro, StrongBox, spoken TalkBack, signed release, OTA rollback or production readiness is claimed.
+
+Milestones: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
+
+Next task: design and independently review durable final authorization/idempotency reservation and fresh Android runtime-permission revalidation before any real executor is considered.

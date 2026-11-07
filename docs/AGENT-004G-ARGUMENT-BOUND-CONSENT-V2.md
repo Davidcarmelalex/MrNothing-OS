@@ -1,6 +1,6 @@
 # AGENT-004G — Argument-bound owner consent protocol v2
 
-**Status:** implementation submitted; exact-head CI and independent review pending. Cross-platform canonicalization, host challenge issuance and signature verification are isolated admission primitives. No Android action capability, device executor, listener or production caller is connected.
+**Status:** protocol v2 opaque capability admission is implemented for the synthetic mTLS adapter and no-op simulator only; exact-head CI and independent review are pending. No Android action executor, listener or production caller is connected.
 
 ## Security objective
 
@@ -36,7 +36,7 @@ Unknown keys, extra keys, nested values, wrong primitive types, booleans in inte
 - Signature verification compares every payload field with the host-issued challenge before atomic nonce consumption.
 - Kotlin canonicalization recomputes the digest from a closed typed argument model and refuses if it differs from the host digest.
 - The Android per-use signer includes the same canonical JSON in the owner-visible system authentication prompt.
-- The live mTLS adapter can issue and verify v2 challenges, but verify_and_issue_capability explicitly returns V2_CAPABILITY_NOT_INTEGRATED. The opaque no-op capability path remains v1/read_screen/empty-arguments only.
+- The live mTLS adapter can mint opaque one-use v1/v2 capabilities only after exact challenge, signature, live-socket, enrollment and key-binding checks. V2 minting additionally recomputes the canonical argument digest and compares it with the signed challenge before nonce consumption. Capability consumption recomputes the digest again and revalidates the challenge version/digest, peer, enrollment, key generation and expiry. The only consumer remains the no-op simulator.
 
 ## Tests added
 
@@ -45,9 +45,9 @@ Unknown keys, extra keys, nested values, wrong primitive types, booleans in inte
 - Signed v2 admission and replay rejection.
 - Payload digest tampering rejection without nonce consumption.
 - Live synthetic mTLS v2 challenge verification.
-- Explicit refusal to mint an action capability from v2 until a separately reviewed capability/argument integration exists.
+- V2 argument mismatch is rejected before nonce consumption; changed arguments are rejected at capability consumption; navigate and scroll capabilities are consumed only by the no-op simulator and report no device effects.
 - Android JVM tests verify v2 canonicalization and envelope encoding; they do not exercise AndroidKeyStore, StrongBox or the system biometric UI.
 
 ## Explicit limitations
 
-This is not a production executor or permission integration. No screen capture, navigation, scrolling, accessibility action, package launch, shell, call, message, network listener, remote service, Android runtime permission grant or device-side effect is connected. The v2 capability path remains deliberately disabled. Synthetic keys and certificates are test-only. Independent security review, real Pixel 9 Pro/StrongBox validation and a separately designed atomic final authorization/idempotency reservation remain required before any real executor can be considered.
+This is not a production executor or permission integration. The v2 capability is admission-only and is consumed by a no-op simulator; it does not launch a package, scroll, capture a screen, or cause any device-side effect. No accessibility action, shell, call, message, network listener, remote service, Android runtime permission grant or real executor is connected. Synthetic keys and certificates are test-only. Independent security review, real Pixel 9 Pro/StrongBox validation and a separately designed atomic final authorization/idempotency reservation remain required before any real executor can be considered.
