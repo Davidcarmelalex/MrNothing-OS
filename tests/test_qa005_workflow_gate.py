@@ -107,9 +107,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "mIsShowing=",
             "keyguard_is_showing",
             "shell wm size",
-            "shell input swipe",
-            'shell input text "$TEST_PIN"',
-            "input keyevent KEYCODE_ENTER",
+            "uiautomator dump --compressed",
+            "keyguard-hierarchy.xml",
+            "qa005_unlock_keyguard.py",
             "Disposable emulator keyguard dismissed",
         ):
             self.assertIn(required, boundary)
@@ -118,9 +118,11 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertLess(boundary.index("dumpsys power"), boundary.index("input keyevent KEYCODE_WAKEUP"))
         self.assertLess(boundary.index("input keyevent KEYCODE_WAKEUP"), boundary.index("keyguard_showing=0"))
         self.assertLess(boundary.index("keyguard_showing=0"), boundary.index("if keyguard_is_showing"))
-        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index('shell input text "$TEST_PIN"'))
-        self.assertLess(boundary.index('shell input text "$TEST_PIN"'), boundary.index(":app:connectedDebugAndroidTest"))
-        self.assertNotIn("elif ! keyguard_is_hidden", boundary)
+        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index("uiautomator dump --compressed"))
+        self.assertLess(boundary.index("uiautomator dump --compressed"), boundary.index("qa005_unlock_keyguard.py"))
+        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
+        self.assertLess(boundary.index('if keyguard_is_hidden "$keyguard_policy"'), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn('shell input text "$TEST_PIN"', boundary)
         self.assertNotIn("adb root", boundary)
         self.assertIn("uid=2000(shell)", boundary)
 
@@ -133,8 +135,31 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake", boundary)
         self.assertIn("keyguard-state-after-instrumentation-unlock.txt", boundary)
         self.assertLess(boundary.index("keyguard_showing=0"), boundary.index('if keyguard_is_showing "$keyguard_policy"'))
-        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index('shell input text "$TEST_PIN"'))
-        self.assertLess(boundary.index('shell input text "$TEST_PIN"'), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
+        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index("uiautomator dump --compressed"))
+        self.assertLess(boundary.index("uiautomator dump --compressed"), boundary.index("qa005_unlock_keyguard.py"))
+        self.assertLess(boundary.index("qa005_unlock_keyguard.py"), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
+
+    def test_keyguard_unlock_uses_exact_systemui_resource_ids_without_text_injection(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
+        self.assertIn("uiautomator dump --compressed", boundary)
+        self.assertIn("qa005_unlock_keyguard.py", boundary)
+        self.assertNotIn('shell input text "$TEST_PIN"', boundary)
+        for required in (
+            "com.android.systemui:id/keyguard_pin_view",
+            "com.android.systemui:id/pin_container",
+            "com.android.systemui:id/key_enter",
+            'f"{SYSTEM_UI}:id/key{digit}"',
+            "uid=2000(shell)",
+            "clickable",
+            "enabled",
+            "bounds",
+            '"input", "tap"',
+        ):
+            self.assertIn(required, script)
+        self.assertNotIn("adb root", script)
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")

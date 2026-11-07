@@ -219,8 +219,10 @@ jobs:
           display_width="${display_size%x*}"
           display_height="${display_size#*x}"
           timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input text "$TEST_PIN"
-          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_ENTER
+          # Dump the actual SystemUI hierarchy and tap only its exact visible PIN controls.
+          timeout 15s adb -s "$ANDROID_SERIAL" shell uiautomator dump --compressed /sdcard/qa005-keyguard.xml > "$QA005_OUTPUT/keyguard-uiautomator-dump.txt"
+          timeout 10s adb -s "$ANDROID_SERIAL" pull /sdcard/qa005-keyguard.xml "$QA005_OUTPUT/keyguard-hierarchy.xml"
+          timeout 45s python3 scripts/qa005_unlock_keyguard.py --serial "$ANDROID_SERIAL" --hierarchy "$QA005_OUTPUT/keyguard-hierarchy.xml"
           unlocked=0
           for attempt in $(seq 1 20); do
             keyguard_policy="$(read_keyguard_policy || true)"
@@ -236,7 +238,7 @@ jobs:
             exit 1
           fi
           echo "Disposable emulator keyguard dismissed; starting instrumentation"
-                    timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"

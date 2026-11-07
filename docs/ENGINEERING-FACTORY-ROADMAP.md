@@ -1285,3 +1285,14 @@ AGENT-004O corrects only the disposable-emulator precondition: explicit KEYCODE_
 M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
 
 Next: accept the exact-head QA-005 sleep/wake correction only after emulator evidence passes; then complete independent security/accessibility review before any AccessibilityService declaration. MediaProjection remains separate and CommandRouter remains fail-closed.
+
+
+## Engineering Factory follow-up — 2026-11-07, AGENT-004P exact SystemUI PIN controls
+
+At 0b27ec5c8b0e527ab653cedbc5ad60182ba1d789, Phase 1 42369272145 and CI-003 42369272198 passed. Phase 1 Python policy ran 681 tests; Android debug build/unit/dependency gates passed. CI-003 independent runner verification reported byte-identical unsigned release APKs (7,862,996 bytes; SHA-256 1283cc77cb9756f336c931d7db6cb97d6724ac0717995f94757eb101fb31c05b), identical normalized contents and SBOM, and release_ready=false.
+
+QA-005 42369272181 failed after the new sleep/wake precondition succeeded. Artifact 13572737599 recorded mWakefulness=Asleep before wake and KeyguardServiceDelegate showing=true plus KeyguardStateMonitor mIsShowing=true after wake and after the old input attempt. The screenshot showed an empty Android SystemUI Enter PIN field and keypad. No instrumentation tests started, no ANR occurred and no app crash was established. This isolated the remaining failure to input-text not entering the Keyguard PIN keypad.
+
+AGENT-004P replaces only the emulator preflight PIN entry with exact UIAutomator hierarchy parsing and taps for the SystemUI keyguard_pin_view/pin_container/key0–key9/key_enter controls. Every target must be uniquely present, enabled, clickable and within actual emulator display bounds. The helper requires emulator serial and UID 2000, never logs the synthetic PIN, and uses bounded ADB calls. Parser tests cover valid and adversarial hierarchies. No production app/manifest/service/executor change. Exact-head QA-005 acceptance is pending.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete; independent human security/accessibility review remains pending.
