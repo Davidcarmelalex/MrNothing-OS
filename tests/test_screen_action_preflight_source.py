@@ -30,7 +30,15 @@ class ScreenPreflightSourceTests(unittest.TestCase):
     def test_agent_policy_and_router_remain_nonexecuting(self):
         policy = (SRC / "AgentPolicy.kt").read_text()
         router = (SRC / "CommandRouter.kt").read_text()
-        self.assertIn("action.name in screenActions -> Verdict.APPROVAL_REQUIRED", policy)
+        self.assertIn("fun classify(action: AgentAction)", policy)
+        self.assertIn(
+            "action.name in screenActions -> ActionRisk.OWNER_APPROVAL_REQUIRED",
+            policy,
+        )
+        self.assertIn("VERIFIED_TRANSPORT_SESSION_REQUIRED", router)
+        self.assertNotIn("authenticatedByTransport", router)
+        self.assertNotIn("DeviceDiagnostics.snapshot", router)
+        self.assertNotIn("AppCatalog.launch", router)
         for name in ("read_screen", "navigate", "scroll"):
             self.assertNotIn('"' + name + '"', router)
 

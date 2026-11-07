@@ -52,3 +52,10 @@ No milestone is complete. Independent human security review, spoken TalkBack, ph
 ### Next engineering task
 
 Implement a verifier-originated typed action capability bound to owner, device, exact live transport session, action and canonical argument digest. It must not be constructible from caller-supplied identity fields. Add a fake/no-op executor only after the capability boundary and adversarial tests are accepted.
+
+
+### Exact-head CI correction — stale source assertion
+
+The first exact-head Phase 1 push and PR Python jobs (runs `42329977022` and `42329981830`) each executed 592 tests and reported one failure. The failure was the pre-existing `tests/test_screen_action_preflight_source.py` assertion still expecting the removed `Verdict.APPROVAL_REQUIRED` string after the risk-only API migration. The new command-router source tests themselves passed. This was a stale test contract, not an Android compile or runtime failure.
+
+Updated the existing source gate to assert the new `ActionRisk.OWNER_APPROVAL_REQUIRED` classification and the router's explicit `VERIFIED_TRANSPORT_SESSION_REQUIRED` denial, while retaining checks that no screen-action strings or device dispatch appear in the router. No production Kotlin source changed in this correction. Exact-head Phase 1, CI-003 and QA-005 reruns are pending; the failed parent-head runs are not acceptance evidence.
