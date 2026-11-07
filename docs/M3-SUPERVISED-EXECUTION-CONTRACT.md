@@ -163,3 +163,16 @@ M3 remains **PARTIAL** until a fake/no-op executor demonstrates the full verifie
 M4 remains separate: actual Android permissions and device APIs require their own consent, runtime and hardware gates. M5/M7 require a supervised physical Pixel 9 Pro session. M6 requires independent security review. M8 requires signed reproducible artifacts, provenance, OTA/recovery and release approval.
 
 This design does **not** create a listener, network endpoint, production CA, key provisioning, Android permission grant, accessibility service, screen capture, call/message function, shell bridge, device executor, firmware image, OTA package or signed release. No milestone is completed by this document.
+
+
+## Implementation update — 2026-11-07: Boolean-only Android dispatch removed
+
+The Android command path has been made explicitly fail-closed:
+
+- `AgentPolicy` is now a risk classifier only. It accepts an action name and returns `LOW_RISK`, `OWNER_APPROVAL_REQUIRED`, or `DENY`; it has no caller-supplied authentication or contact-approval Boolean.
+- `CommandRouter` accepts only `UntrustedCommandRequest`. It rejects every request with `VERIFIED_TRANSPORT_SESSION_REQUIRED` (and rejects malformed action names before that check). The previous `authenticatedByTransport: Boolean` parameter and direct `get_battery` / `open_app` dispatch code are removed.
+- A source gate scans all Android main Kotlin sources and fails if a call site is added before the typed verifier boundary exists. JVM tests prove that even low-risk actions are refused by the router.
+
+This is an intentional disabled state, not an executor or a completed M3 integration. The user-facing launcher still exposes ordinary owner-initiated app opening separately. The Python `core/command_admission.py` Boolean remains an offline, no-execution prototype and must not be wired into a production call path.
+
+M3 remains **PARTIAL**. The next implementation must introduce a verifier-originated, non-caller-constructible capability bound to owner, device, live session, exact action and canonical argument digest; then add Android permission revalidation, idempotency, cancellation, redacted audit and a fake/no-op executor. No listener, permission grant, shell bridge or device action is enabled by this update.
