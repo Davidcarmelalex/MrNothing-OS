@@ -104,6 +104,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "keyguard-state-after-wake.txt",
             "power-state-after-wake.txt",
             "mWakefulness=Awake",
+            "mWakefulnessChanging=false",
             "mHalInteractiveModeEnabled=true",
             "screen_is_awake",
             "Disposable emulator display did not reach a fully interactive awake state after wake",
@@ -144,6 +145,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         self.assertIn("mWakefulness=Awake", boundary)
+        self.assertIn("mWakefulnessChanging=false", boundary)
         self.assertIn("mHalInteractiveModeEnabled=true", boundary)
         self.assertIn('if screen_is_awake "$power_state_after_wake"; then', boundary)
         self.assertIn('[[ "$service_state" == "true" && "$monitor_state" == "true" ]]', boundary)
@@ -162,6 +164,14 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("grep -Eq 'mHalInteractiveModeEnabled=true'", boundary)
         self.assertNotIn("mInteractive=false", boundary)
         self.assertNotIn("mInteractive=true", boundary)
+
+    def test_wake_gate_waits_for_power_manager_transition_to_finish(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        self.assertIn("grep -Eq 'mWakefulnessChanging=false'", boundary)
+        self.assertNotIn("grep -Eq 'mWakefulnessChanging=true'", boundary)
+        self.assertLess(boundary.index("mWakefulnessChanging=false"), boundary.index("input swipe"))
 
     def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")

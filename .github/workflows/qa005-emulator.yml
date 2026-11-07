@@ -182,6 +182,7 @@ jobs:
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           screen_is_awake() {
             grep -Eq 'mWakefulness=Awake' <<< "$1" &&
+              grep -Eq 'mWakefulnessChanging=false' <<< "$1" &&
               grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1"
           }
           awake=0
