@@ -221,3 +221,18 @@ At parent `dd5980ee9fb6636a65f77b048dafc9332a6f5878`, Phase 1 push/PR and CI-003
 
 AGENT-005D adds a bounded retry of the exact SystemUI resource lookup and captures a capped structural accessibility snapshot (resource IDs, class, visibility, clickability and bounds only; no node text/content descriptions) when the node is missing. It retains the exact resource/package/class and screen-bound checks, ordinary shell identity and ACTION_LONG_CLICK. No guessed coordinates, Keyguard-dismiss API or production app behavior is introduced. New-head QA-005 must verify the result.
 
+
+
+## 2026-11-08 — AGENT-005E exact-head process-start ANR
+
+At branch head `b63ca632feec80b927884483cc19d44eebd86732`, QA-005 PR run [42402281916](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42402281916) booted the disposable API 35 x86_64 emulator, built the debug and instrumentation APKs, and passed the Gradle dependency-verification negative control. The failure occurred in `:app:connectedDebugAndroidTest` before test discovery.
+
+The retained JUnit XML reports `tests="0" failures="0" errors="0"`; `test-results.log` reports `Process crashed`. Logcat's events buffer contains an `am_anr` record for PID 3917 / `tech.mrnothing.os`: `ProcessRecord ... failed to complete startup`. ActivityManager then killed that process for `bg anr`. This is a process-start ANR in the instrumented target package, not a failed test assertion. No test methods ran. The retained logcat contains no `FATAL EXCEPTION`; `dumpsys activity lastanr` reports no ANR since boot, so that command alone did not preserve this startup event.
+
+The pre-cleanup snapshot shows the Android HOME screen, `mWakefulness=Awake`, `mHalInteractiveModeEnabled=true`, Keyguard hidden and secure, and no process available to `dumpsys meminfo` after the test runner cleanup. The evidence does not identify the blocked initialization phase and does not establish a normal production-launch regression. The synthetic emulator PIN cleanup completed.
+
+AGENT-005E adds bounded post-run diagnostics for the Android event buffer and `dumpsys activity exit-info` for both `tech.mrnothing.os` and `tech.mrnothing.os.test`. New Python source coverage requires those captures and keeps them on ordinary ADB shell; no root, application code, manifest, permission, service, consent, trust-store, CommandRouter or executor behavior changes. The exact-head rerun must show whether Android retains useful exit-history after UTP cleanup.
+
+Phase 1 push/PR [42402277928](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42402277928) / [42402281925](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42402281925) passed; the PR Python policy job ran 721 tests, Android debug unit/build and repeat APK comparison passed, and the manifest/dependency gates passed. CI-003 push/PR [42402277933](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42402277933) / [42402281926](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42402281926) passed independent-runner reproducibility. The 7,862,996-byte unsigned APKs were byte-identical (SHA-256 `1283cc77cb9756f336c931d7db6cb97d6724ac0717995f94757eb101fb31c05b`); provenance reports `reproducible=true`, `release_ready=false`.
+
+No milestone is complete. M1/M2/M6 remain IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending physical Pixel 9 Pro access; M8 BLOCKED. Independent human security/accessibility review remains pending.

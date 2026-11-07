@@ -247,6 +247,10 @@ jobs:
             fi
           done
           timeout 15s adb -s "$ANDROID_SERIAL" logcat -b all -d -t 2000 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
+          # Preserve process-start/exit events separately; lastanr can omit startup ANRs.
+          timeout 15s adb -s "$ANDROID_SERIAL" logcat -b events -d -t 10000 > "$QA005_OUTPUT/events-tail.txt" 2>&1 || true
+          timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os > "$QA005_OUTPUT/app-exit-info.txt" 2>&1 || true
+          timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os.test > "$QA005_OUTPUT/test-exit-info.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity lastanr > "$QA005_OUTPUT/last-anr.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys meminfo tech.mrnothing.os > "$QA005_OUTPUT/app-meminfo.txt" 2>&1 || true
           df -h > "$QA005_OUTPUT/disk.txt" || true

@@ -326,5 +326,20 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         )
         self.assertNotIn("Intent(instrumentation.targetContext, MainActivity::class.java)", launch)
 
+    def test_process_startup_anr_diagnostics_capture_exit_history_and_events(self):
+        marker = self.workflow.index("      - name: Capture emulator diagnostics")
+        upload = self.workflow.index("      - uses: actions/upload-artifact", marker)
+        diagnostics = self.workflow[marker:upload]
+        for required in (
+            'timeout 15s adb -s "$ANDROID_SERIAL" logcat -b events -d -t 10000',
+            'timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os',
+            'timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os.test',
+        ):
+            self.assertIn(required, diagnostics)
+        for artifact_name in ("events-tail.txt", "app-exit-info.txt", "test-exit-info.txt"):
+            self.assertIn(artifact_name, diagnostics)
+        self.assertNotIn("adb root", diagnostics)
+
+
 if __name__ == "__main__":
     unittest.main()

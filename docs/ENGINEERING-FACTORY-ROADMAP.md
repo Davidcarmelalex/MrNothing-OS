@@ -1505,3 +1505,10 @@ QA-005 [42401631073](https://github.com/Davidcarmelalex/MrNothing-OS/actions/run
 
 AGENT-005D adds a five-second/100-ms bounded retry for the exact SystemUI node and includes text-free structural node/window diagnostics on failure. It preserves the package/resource/class/visibility/clickability/long-clickability and screen-bound checks, ordinary shell UID 2000, and ACTION_LONG_CLICK. No coordinate guessing or production Android code changes. Exact-head QA-005 rerun is required; no emulator acceptance is claimed.
 
+
+
+## AGENT-005E — QA-005 instrumentation process-start diagnostics (2026-11-08)
+
+At exact head `b63ca632feec80b927884483cc19d44eebd86732`, Phase 1 push/PR and CI-003 push/PR passed. QA-005 booted the disposable API 35 emulator and compiled both APKs, then failed before test discovery: JUnit reports zero tests, and logcat records ActivityManager `am_anr` for the instrumented `tech.mrnothing.os` process with reason `failed to complete startup`. The app process was killed for a background ANR; no test assertion or `FATAL EXCEPTION` was observed. `dumpsys activity lastanr` did not report this event. Root cause within process startup remains undetermined.
+
+AGENT-005E adds bounded capture of the Android events buffer and app/test `dumpsys activity exit-info` to the QA-005 evidence artifact, with Python source regression coverage. This is CI/diagnostics-only; no production app, permission, service, trust or executor code changed. Exact-head CI and emulator evidence are pending. No milestone status changes: M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
