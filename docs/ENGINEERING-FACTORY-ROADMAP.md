@@ -1272,3 +1272,16 @@ Next: verify exact-head Phase 1, CI-003 and full QA-005; then independent securi
 
 
 AGENT-004N follow-up correction: the first implementation commit removed the global-idle wait from the disclosure-launch helper but left two calls in the explicit-tap test. The new Python source guard detects either call. Both remaining calls were removed in this follow-up; all activity observation remains bounded by ActivityMonitor and the resume latch. No production source changed.
+
+
+## Engineering Factory run — 2026-11-07, AGENT-004O QA-005 keyguard transition race
+
+Audit baseline 57d70638a78e4c8864f1528fd6bebed2df420cf6: recursive tree 322 entries (not truncated), 20 recent commits inspected, 267 ahead of main, zero behind. Six open PRs (#1 and #3–#7) were inspected; PR #1 remains open/draft and matches the authorized branch, with zero submitted reviews and zero inline review threads. PROJECT-ADAPTER.md and this roadmap exist; repository SKILL.md is absent; the upstream shared package remains unverified and is not claimed as installed.
+
+At this exact head, Phase 1 push/PR 42360496305 and 42360499894 passed, each with 680 Python policy tests and Android debug build/unit/dependency gates. CI-003 push/PR 42360496250 and 42360499926 passed independent unsigned release reproducibility. QA-005 42360499918, attempt 2, failed before instrumentation. Downloaded artifact 13571292518 confirmed a keyguard transition race: the initial policy snapshot showed both state fields false, while the post-wait snapshot showed both true. The old workflow had skipped PIN entry after the transient initial unlocked state.
+
+AGENT-004O corrects only the disposable-emulator precondition: explicit KEYCODE_SLEEP, bounded dumpsys power confirmation of a non-interactive state, KEYCODE_WAKEUP, bounded positive Keyguard-showing observation, synthetic PIN entry through ordinary shell UID 2000, and a bounded requirement that both Keyguard state fields are hidden before instrumentation. It adds power/keyguard snapshots and static regression assertions. No production Android source, manifest, permission, service, executor, CommandRouter or physical-device operation is changed. Exact-head CI after this correction is required; no emulator success is claimed until the new QA-005 run and evidence pass.
+
+M1 FOUNDATION — IN PROGRESS; M2 OS INTERFACE — IN PROGRESS; M3 AGENTIC INTELLIGENCE — PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS — NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY — NOT ACCEPTED; M6 SECURITY/PRIVACY — IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION — BLOCKED; M8 PRODUCTION READINESS — BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
+
+Next: accept the exact-head QA-005 sleep/wake correction only after emulator evidence passes; then complete independent security/accessibility review before any AccessibilityService declaration. MediaProjection remains separate and CommandRouter remains fail-closed.

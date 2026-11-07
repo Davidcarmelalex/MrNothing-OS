@@ -582,3 +582,10 @@ Next: accept only exact-head Phase 1, CI-003 and full QA-005 success, then obtai
 
 
 AGENT-004N follow-up correction: the first implementation commit removed the global-idle wait from the disclosure-launch helper but left two calls in the explicit-tap test. The new Python source guard detects either call. Both remaining calls were removed in this follow-up; all activity observation remains bounded by ActivityMonitor and the resume latch. No production source changed.
+
+
+## Engineering Factory audit update — 2026-11-07, AGENT-004O
+
+The authorized branch was audited at 57d70638a78e4c8864f1528fd6bebed2df420cf6: recursive tree 322 entries, not truncated; 20 recent commits inspected; 267 commits ahead of main, zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 remains open/draft and matches the authorized branch; it has no submitted reviews or inline threads. The repository contains this adapter and the roadmap but no SKILL.md; the upstream shared package remains unverified and is not claimed as installed.
+
+Phase 1 push/PR and CI-003 push/PR passed at the audit head. QA-005 attempt 2 failed before instrumentation because the workflow sampled Keyguard too early: its first policy snapshot was unlocked, but the post-wait snapshot showed Keyguard locked. The failure artifact was inspected. AGENT-004O changes only the disposable-emulator QA precondition, static workflow gate and engineering evidence: force a bounded sleep/wake transition, require an observed asleep state, then require Keyguard to be visibly showing before entering the synthetic PIN, and require it hidden before instrumentation. No app runtime, manifest, permission, service, executor or device behavior changes. Exact-head CI and QA-005 acceptance are pending after the correction.

@@ -153,10 +153,31 @@ jobs:
           adb -s "$ANDROID_SERIAL" shell locksettings set-pin "$TEST_PIN" \
             > "$RUNNER_TEMP/sec020b4d-pin-set.txt" 2>&1
           PIN_CONFIGURED=1
-          # The disposable AVD can time out to keyguard while Gradle installs
-          # instrumentation APKs. Keep this emulator awake and explicitly
-          # dismiss only the synthetic test PIN before any UI instrumentation.
+          # Force a deterministic lock transition after configuring the synthetic test PIN.
+          # The initial policy snapshot can be briefly unlocked before Keyguard appears.
           timeout 10s adb -s "$ANDROID_SERIAL" shell settings put system screen_off_timeout 600000
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_SLEEP
+          read_power_state() {
+            timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys power | tr -d '\r'
+          }
+          screen_is_asleep() {
+            grep -Eq 'mWakefulness=Asleep|mInteractive=false' <<< "$1"
+          }
+          screen_asleep=0
+          power_state=""
+          for attempt in $(seq 1 10); do
+            power_state="$(read_power_state || true)"
+            printf '%s\n' "$power_state" > "$QA005_OUTPUT/power-state-before-wake.txt"
+            if screen_is_asleep "$power_state"; then
+              screen_asleep=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$screen_asleep" != 1 ]]; then
+            echo "Disposable emulator did not enter a confirmed non-interactive state" >&2
+            exit 1
+          fi
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           read_keyguard_policy() {
             timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy | tr -d '\r'
@@ -175,39 +196,47 @@ jobs:
             monitor_state="$(awk '/KeyguardStateMonitor/{in_monitor=1; next} in_monitor && /mIsShowing=/{sub(/^.*mIsShowing=/, ""); print $1; exit}' <<< "$policy")"
             [[ "$service_state" == "true" || "$monitor_state" == "true" ]]
           }
-          keyguard_policy="$(read_keyguard_policy)"
-          printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt"
-          if keyguard_is_showing "$keyguard_policy"; then
-            display_size="$(timeout 10s adb -s "$ANDROID_SERIAL" shell wm size | sed -n 's/.*size: //p' | tr -d '\r' | tail -n 1)"
-            if [[ ! "$display_size" =~ ^[0-9]+x[0-9]+$ ]]; then
-              echo "Could not determine disposable emulator display size for keyguard dismissal" >&2
-              exit 1
+          keyguard_showing=0
+          keyguard_policy=""
+          for attempt in $(seq 1 20); do
+            keyguard_policy="$(read_keyguard_policy || true)"
+            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-wake.txt"
+            if keyguard_is_showing "$keyguard_policy"; then
+              keyguard_showing=1
+              break
             fi
-            display_width="${display_size%x*}"
-            display_height="${display_size#*x}"
-            timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
-            timeout 10s adb -s "$ANDROID_SERIAL" shell input text "$TEST_PIN"
-            timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_ENTER
-          elif ! keyguard_is_hidden "$keyguard_policy"; then
-            echo "Could not determine disposable emulator keyguard state; refusing to start UI instrumentation" >&2
+            sleep 1
+          done
+          if [[ "$keyguard_showing" != 1 ]]; then
+            echo "Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake" >&2
             exit 1
           fi
+          display_size="$(timeout 10s adb -s "$ANDROID_SERIAL" shell wm size | sed -n 's/.*size: //p' | tr -d '\r' | tail -n 1)"
+          if [[ ! "$display_size" =~ ^[0-9]+x[0-9]+$ ]]; then
+            echo "Could not determine disposable emulator display size for keyguard dismissal" >&2
+            exit 1
+          fi
+          display_width="${display_size%x*}"
+          display_height="${display_size#*x}"
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$((display_height * 3 / 4))" "$((display_width / 2))" "$((display_height / 4))" 250
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input text "$TEST_PIN"
+          timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_ENTER
           unlocked=0
           for attempt in $(seq 1 20); do
             keyguard_policy="$(read_keyguard_policy || true)"
+            printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-instrumentation-unlock.txt"
             if keyguard_is_hidden "$keyguard_policy"; then
               unlocked=1
               break
             fi
             sleep 1
           done
-          printf '%s\n' "$keyguard_policy" > "$QA005_OUTPUT/keyguard-state-after-instrumentation-unlock.txt"
           if [[ "$unlocked" != 1 ]]; then
             echo "Disposable emulator remained locked after synthetic test-PIN dismissal" >&2
             exit 1
           fi
           echo "Disposable emulator keyguard dismissed; starting instrumentation"
-          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+                    timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"

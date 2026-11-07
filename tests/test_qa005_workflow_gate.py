@@ -96,12 +96,16 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         boundary = self.workflow[start:end]
         for required in (
             "settings put system screen_off_timeout 600000",
+            "input keyevent KEYCODE_SLEEP",
+            "dumpsys power",
+            "mWakefulness=Asleep",
             "input keyevent KEYCODE_WAKEUP",
-            "dumpsys window policy",
+            "keyguard-state-after-wake.txt",
             "KeyguardServiceDelegate",
             "showing=",
             "KeyguardStateMonitor",
             "mIsShowing=",
+            "keyguard_is_showing",
             "shell wm size",
             "shell input swipe",
             'shell input text "$TEST_PIN"',
@@ -109,10 +113,28 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "Disposable emulator keyguard dismissed",
         ):
             self.assertIn(required, boundary)
-        self.assertLess(boundary.index("locksettings set-pin"), boundary.index("input text"))
-        self.assertLess(boundary.index("input text"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertLess(boundary.index("locksettings set-pin"), boundary.index("input keyevent KEYCODE_SLEEP"))
+        self.assertLess(boundary.index("input keyevent KEYCODE_SLEEP"), boundary.index("dumpsys power"))
+        self.assertLess(boundary.index("dumpsys power"), boundary.index("input keyevent KEYCODE_WAKEUP"))
+        self.assertLess(boundary.index("input keyevent KEYCODE_WAKEUP"), boundary.index("keyguard_showing=0"))
+        self.assertLess(boundary.index("keyguard_showing=0"), boundary.index("if keyguard_is_showing"))
+        self.assertLess(boundary.index("if keyguard_is_showing"), boundary.index('shell input text "$TEST_PIN"'))
+        self.assertLess(boundary.index('shell input text "$TEST_PIN"'), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertNotIn("elif ! keyguard_is_hidden", boundary)
         self.assertNotIn("adb root", boundary)
         self.assertIn("uid=2000(shell)", boundary)
+
+    def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        self.assertIn('if screen_is_asleep "$power_state"; then', boundary)
+        self.assertIn('if keyguard_is_showing "$keyguard_policy"; then', boundary)
+        self.assertIn("Synthetic PIN was configured, but Keyguard did not become visibly locked after sleep/wake", boundary)
+        self.assertIn("keyguard-state-after-instrumentation-unlock.txt", boundary)
+        self.assertLess(boundary.index("keyguard_showing=0"), boundary.index('if keyguard_is_showing "$keyguard_policy"'))
+        self.assertLess(boundary.index('if keyguard_is_showing "$keyguard_policy"'), boundary.index('shell input text "$TEST_PIN"'))
+        self.assertLess(boundary.index('shell input text "$TEST_PIN"'), boundary.index('if keyguard_is_hidden "$keyguard_policy"'))
 
     def test_instrumentation_uses_compile_only_platform_test_apis(self):
         gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text(encoding="utf-8")
