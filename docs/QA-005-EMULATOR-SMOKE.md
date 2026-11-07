@@ -202,3 +202,14 @@ The JUnit XML and per-test logcat in evidence artifact [13582811813](https://git
 AGENT-005B gives the explicit MainActivity test intent `Intent.ACTION_MAIN` and `Intent.CATEGORY_LAUNCHER`, matching the component's actual manifest launcher contract. It asserts both values at runtime and adds a Python source regression gate tying the explicit launch action to the blocking Settings monitor. This is an instrumentation-test correction only.
 
 No production Activity, application manifest, permission, AccessibilityService, MediaProjection service, trust store, CommandRouter, executor, physical device, signing, OTA or deployment behavior changes. The new exact-head Phase 1, CI-003 and QA-005 runs must determine acceptance; this correction alone does not establish emulator acceptance.
+
+
+
+## AGENT-005C — blocking ActivityMonitor scope correction (2026-11-07)
+
+At parent `c06404f6a25b9b4c2a55fae415efe5f6d702adcf`, QA-005 [42396557841](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42396557841) booted the API 35 disposable emulator, built the app and instrumentation APKs, and executed 30 tests: 29 passed, 1 failed. Evidence artifact [13584455104](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42396557841/artifacts/13584455104) and JUnit XML identify the failure as `testAccessibilitySettingsIntentIsIssuedOnlyAfterExplicitTap`, where the private disclosure Activity was not observed after the launcher button was invoked. Logcat shows MainActivity displayed with the corrected launcher action/category but no disclosure Activity launch. No ANR was reported; the disposable PIN cleanup succeeded.
+
+The blocking `IntentFilter(Settings.ACTION_ACCESSIBILITY_SETTINGS)` ActivityMonitor was still registered while MainActivity issued an actionless explicit Intent to the private disclosure Activity. AGENT-005C registers the blocking monitor only after the disclosure Activity has opened, immediately before the explicit Settings-button check, and removes it only when registered. A Python regression gate requires the order: disclosure open → monitor registration → explicit Settings tap.
+
+No production application code or manifest changed. This is a harness correction, not proof of a product crash or an emulator acceptance. Exact-head reruns remain mandatory.
+

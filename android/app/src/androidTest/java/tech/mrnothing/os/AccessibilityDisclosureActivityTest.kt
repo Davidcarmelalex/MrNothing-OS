@@ -138,19 +138,24 @@ class AccessibilityDisclosureActivityTest : InstrumentationTestCase() {
             Instrumentation.ActivityResult(Activity.RESULT_OK, null),
             true
         )
-        getInstrumentation().addMonitor(settingsMonitor)
+        var monitorRegistered = false
         var launcher: MainActivity? = null
         var activity: AccessibilityDisclosureActivity? = null
         try {
             launcher = launchMainActivity()
             activity = openDisclosureFromLauncher(launcher!!)
+            // Keep the blocking action-filtered monitor out of app-local launch traffic.
+            // Android ActivityMonitor can match actionless explicit intents, including the
+            // disclosure Activity launch. Observe Settings only after disclosure is already open.
+            getInstrumentation().addMonitor(settingsMonitor)
+            monitorRegistered = true
             assertEquals(0, settingsMonitor.hits)
             val button = findButton(activity!!.window.decorView, "Review Android Accessibility settings")
             assertNotNull(button)
             getInstrumentation().runOnMainSync { button!!.performClick() }
             assertTrue("explicit tap did not request Accessibility settings", settingsMonitor.hits > 0)
         } finally {
-            getInstrumentation().removeMonitor(settingsMonitor)
+            if (monitorRegistered) getInstrumentation().removeMonitor(settingsMonitor)
             finishActivities(activity, launcher)
         }
     }

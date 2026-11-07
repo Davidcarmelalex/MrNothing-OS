@@ -295,7 +295,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertEqual(1, boundary.count(":app:connectedDebugAndroidTest"))
 
 
-    def test_launcher_start_intent_cannot_be_consumed_by_accessibility_settings_monitor(self):
+    def test_action_filtered_settings_monitor_is_scoped_after_private_disclosure_launch(self):
         root = WORKFLOW.parents[2]
         source = (root /
             "android/app/src/androidTest/java/tech/mrnothing/os/AccessibilityDisclosureActivityTest.kt").read_text(encoding="utf-8")
@@ -306,11 +306,24 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("Intent.CATEGORY_LAUNCHER", launch)
         self.assertIn("intent.hasCategory(Intent.CATEGORY_LAUNCHER)", launch)
         monitor_start = source.index("val settingsMonitor")
-        monitor_end = source.index("getInstrumentation().addMonitor(settingsMonitor)", monitor_start)
+        monitor_end = source.index("        var monitorRegistered", monitor_start)
         settings_monitor = source[monitor_start:monitor_end]
         self.assertIn("IntentFilter(Settings.ACTION_ACCESSIBILITY_SETTINGS)", settings_monitor)
         self.assertIn("Instrumentation.ActivityResult(Activity.RESULT_OK, null)", settings_monitor)
         self.assertIn("true", settings_monitor)
+
+        test_start = source.index("fun testAccessibilitySettingsIntentIsIssuedOnlyAfterExplicitTap")
+        test_body = source[test_start:]
+        disclosure_open = test_body.index("activity = openDisclosureFromLauncher(launcher!!)")
+        monitor_add = test_body.index("getInstrumentation().addMonitor(settingsMonitor)")
+        explicit_tap = test_body.index("button!!.performClick()")
+        self.assertLess(disclosure_open, monitor_add)
+        self.assertLess(monitor_add, explicit_tap)
+        self.assertIn("monitorRegistered = true", test_body)
+        self.assertIn(
+            "if (monitorRegistered) getInstrumentation().removeMonitor(settingsMonitor)",
+            test_body
+        )
         self.assertNotIn("Intent(instrumentation.targetContext, MainActivity::class.java)", launch)
 
 if __name__ == "__main__":
