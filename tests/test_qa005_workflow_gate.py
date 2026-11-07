@@ -3,8 +3,6 @@
 These tests cannot prove that an emulator booted; runtime evidence is required.
 """
 from pathlib import Path
-import re
-import subprocess
 import unittest
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/qa005-emulator.yml"
@@ -121,7 +119,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "--capture",
             "keyguard-hierarchy.xml",
             "qa005_unlock_keyguard.py",
-            'swipe_start_y="$((display_height - 120))"',
+            'swipe_start_y="$((display_height - 180))"',
             'swipe_end_y="$((display_height / 2))"',
             '"$swipe_start_y"',
             '"$swipe_end_y"',
@@ -304,45 +302,25 @@ class Qa005WorkflowGateTests(unittest.TestCase):
 
 
 
-    def test_wake_age_parser_matches_android15_power_manager_output(self):
-        line = next(line for line in self.workflow.splitlines() if "wake_age_ms=" in line)
-        match = re.search(r"sed -nE '([^']+)'", line)
-        self.assertIsNotNone(match)
-        self.assertEqual(3, line.count("\\"))
-        fixture = "  mLastWakeTime=32654 (22892 ms ago)\n"
-        result = subprocess.run(
-            ["sed", "-nE", match.group(1)],
-            input=fixture,
-            text=True,
-            capture_output=True,
-            check=True,
+    def test_wake_gate_uses_the_unit_tested_fail_closed_parser(self):
+        self.assertIn(
+            'python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 --quiet 2>/dev/null <<< "$1"',
+            self.workflow,
         )
-        self.assertEqual("22892\n", result.stdout)
-        recent = subprocess.run(
-            ["sed", "-nE", match.group(1)],
-            input="  mLastWakeTime=32654 (1499 ms ago)\n",
-            text=True,
-            capture_output=True,
-            check=True,
+        self.assertIn(
+            'python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state_after_wake" || true',
+            self.workflow,
         )
-        self.assertEqual("1499\n", recent.stdout)
+        self.assertNotIn("sed -nE", self.workflow)
 
-    def test_wake_age_parser_fails_closed_for_missing_or_malformed_age(self):
-        line = next(line for line in self.workflow.splitlines() if "wake_age_ms=" in line)
-        match = re.search(r"sed -nE '([^']+)'", line)
-        self.assertIsNotNone(match)
-        for fixture in (
-            "  mWakefulness=Awake\n",
-            "  mLastWakeTime=32654 (unknown)\n",
-        ):
-            result = subprocess.run(
-                ["sed", "-nE", match.group(1)],
-                input=fixture,
-                text=True,
-                capture_output=True,
-                check=True,
-            )
-            self.assertEqual("", result.stdout)
+    def test_lock_screen_swipe_is_clear_of_the_bottom_gesture_edge(self):
+        self.assertIn('swipe_start_y="$((display_height - 180))"', self.workflow)
+        self.assertIn("settings get secure navigation_mode", self.workflow)
+        self.assertIn("navigation-mode.txt", self.workflow)
+        self.assertLess(
+            self.workflow.index("navigation-mode.txt"),
+            self.workflow.index("shell input swipe"),
+        )
 
     def test_wake_snapshot_writer_uses_a_real_newline(self):
         line = next(line for line in self.workflow.splitlines() if "power-state-after-wake.txt" in line and "printf" in line)

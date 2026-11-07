@@ -181,12 +181,7 @@ jobs:
           fi
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           screen_is_awake() {
-            local wake_age_ms
-            grep -Eq 'mWakefulness=Awake' <<< "$1" &&
-              grep -Eq 'mWakefulnessChanging=false' <<< "$1" &&
-              grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1" || return 1
-            wake_age_ms="$(sed -nE 's/.*mLastWakeTime=[^()]*\(([0-9]+) ms ago\).*/\1/p' <<< "$1")"
-            [[ "$wake_age_ms" =~ ^[0-9]+$ ]] && (( wake_age_ms >= 1500 ))
+            python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 --quiet 2>/dev/null <<< "$1"
           }
           awake=0
           power_state_after_wake=""
@@ -200,6 +195,7 @@ jobs:
             sleep 1
           done
           if [[ "$awake" != 1 ]]; then
+            python3 ../scripts/qa005_power_state.py --min-wake-age-ms 1500 <<< "$power_state_after_wake" || true
             echo "Disposable emulator display did not reach a fully interactive awake state after wake" >&2
             exit 1
           fi
@@ -242,7 +238,10 @@ jobs:
           fi
           display_width="${display_size%x*}"
           display_height="${display_size#*x}"
-          swipe_start_y="$((display_height - 120))"
+          # Record the configured navigation mode for post-failure gesture diagnosis.
+          timeout 10s adb -s "$ANDROID_SERIAL" shell settings get secure navigation_mode | tr -d '\r' > "$QA005_OUTPUT/navigation-mode.txt" || true
+          # Start farther above the bottom edge to avoid the gestural-navigation exclusion area.
+          swipe_start_y="$((display_height - 180))"
           swipe_end_y="$((display_height / 2))"
           timeout 10s adb -s "$ANDROID_SERIAL" shell input swipe "$((display_width / 2))" "$swipe_start_y" "$((display_width / 2))" "$swipe_end_y" 450
           # Let the lockscreen bouncer settle; capture a fresh hierarchy with bounded null-root retries.
