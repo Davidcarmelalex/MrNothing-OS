@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Pure envelope tests; these do not claim to exercise AndroidKeyStore or StrongBox. */
@@ -39,6 +40,23 @@ class OwnerConsentSignerTest {
             envelope
         )
         assertFalse(envelope!!.contains("="))
+    }
+
+    @Test
+    fun v2EnvelopeIncludesTheArgumentBoundCanonicalPayload() {
+        val arguments = OwnerActionArguments.Navigate("com.example.notes")
+        val digest = OwnerActionArgumentsCanonicalizer.sha256("navigate", arguments)
+        val v2 = fields.copy(
+            version = 2,
+            action = "navigate",
+            arguments = arguments,
+            argumentsSha256 = digest
+        )
+        val canonical = OwnerConsentCanonicalizer.canonicalPayload(v2)
+        assertNotNull(canonical)
+        assertTrue(canonical!!.contains("\"arguments_sha256\":\"$digest\""))
+        assertTrue(canonical.contains("\"action\":\"navigate\""))
+        assertTrue(OwnerConsentSigner.encodeEnvelope(v2, syntheticDerSignature)!!.contains(canonical))
     }
 
     @Test

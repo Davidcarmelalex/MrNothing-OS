@@ -22,6 +22,7 @@ from core.owner_consent_protocol import (
     SCREEN_ACTIONS,
     canonical_payload,
 )
+from core.owner_action_arguments import action_arguments_sha256
 
 MAX_EPOCH_MS = (1 << 63) - 1
 NONCE_BYTES = 16
@@ -114,6 +115,7 @@ def issue_owner_consent_challenge(
     registry: OwnerConsentRegistry,
     now_epoch_ms: int,
     nonce_factory: Callable[[int], str] = secrets.token_hex,
+    arguments: dict | None = None,
 ) -> ChallengeIssueResult:
     """Issue one 128-bit-nonce, at-most-30-second owner-consent challenge.
 
@@ -154,6 +156,15 @@ def issue_owner_consent_challenge(
         return ChallengeIssueResult(False, "SESSION_EXPIRED")
     if type(action) is not str or action not in SCREEN_ACTIONS:
         return ChallengeIssueResult(False, "INVALID_ACTION")
+    if arguments is None:
+        protocol_version = 1
+        arguments_digest = None
+    else:
+        try:
+            arguments_digest = action_arguments_sha256(action, arguments)
+        except (TypeError, ValueError, UnicodeError):
+            return ChallengeIssueResult(False, "INVALID_ARGUMENTS")
+        protocol_version = 2
 
     try:
         record = registry.lookup_active_device(session.device_id)
@@ -192,7 +203,8 @@ def issue_owner_consent_challenge(
             now_epoch_ms + MAX_CAPABILITY_TTL_MS,
             session.expires_at_epoch_ms,
         ),
-        version=1,
+        version=protocol_version,
+        arguments_sha256=arguments_digest,
     )
     try:
         canonical_payload(challenge)

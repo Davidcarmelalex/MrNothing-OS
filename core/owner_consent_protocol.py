@@ -32,7 +32,7 @@ _SIGNATURE_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 MAX_CREDENTIAL_GENERATION = (1 << 63) - 1
 
-_PAYLOAD_KEYS = frozenset({
+_BASE_PAYLOAD_KEYS = frozenset({
     "version",
     "device_id",
     "owner_id",
@@ -42,6 +42,8 @@ _PAYLOAD_KEYS = frozenset({
     "issued_at_epoch_ms",
     "expires_at_epoch_ms",
 })
+_PAYLOAD_KEYS_V2 = _BASE_PAYLOAD_KEYS | {"arguments_sha256"}
+_ARGUMENTS_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class ConsentChallenge:
     issued_at_epoch_ms: int
     expires_at_epoch_ms: int
     version: int = 1
+    arguments_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,7 +95,14 @@ def _identifier(value: object, *, minimum: int = 1) -> bool:
 def _valid_challenge(challenge: object) -> bool:
     if type(challenge) is not ConsentChallenge:
         return False
-    if type(challenge.version) is not int or challenge.version != 1:
+    if type(challenge.version) is not int or challenge.version not in {1, 2}:
+        return False
+    if challenge.version == 1 and challenge.arguments_sha256 is not None:
+        return False
+    if challenge.version == 2 and (
+        type(challenge.arguments_sha256) is not str
+        or _ARGUMENTS_SHA256_RE.fullmatch(challenge.arguments_sha256) is None
+    ):
         return False
     if not all(_identifier(value) for value in (
         challenge.device_id, challenge.owner_id, challenge.session_id,
@@ -124,6 +134,8 @@ def canonical_payload(challenge: ConsentChallenge) -> bytes:
         "issued_at_epoch_ms": challenge.issued_at_epoch_ms,
         "expires_at_epoch_ms": challenge.expires_at_epoch_ms,
     }
+    if challenge.version == 2:
+        payload["arguments_sha256"] = challenge.arguments_sha256
     return json.dumps(
         payload, sort_keys=True, separators=(",", ":"),
         ensure_ascii=True, allow_nan=False,
@@ -158,7 +170,15 @@ def _decode_envelope(envelope: bytes) -> tuple[dict[str, Any], str] | None:
         return None
     payload = decoded["payload"]
     signature = decoded["signature"]
-    if type(payload) is not dict or set(payload) != _PAYLOAD_KEYS:
+    if type(payload) is not dict:
+        return None
+    version = payload.get("version")
+    if type(version) is not int:
+        return None
+    expected_keys = _BASE_PAYLOAD_KEYS if version == 1 else (
+        _PAYLOAD_KEYS_V2 if version == 2 else None
+    )
+    if expected_keys is None or set(payload) != expected_keys:
         return None
     if type(signature) is not str or _SIGNATURE_RE.fullmatch(signature) is None:
         return None
@@ -176,6 +196,8 @@ def _payload_matches_challenge(payload: dict[str, Any], challenge: ConsentChalle
         "issued_at_epoch_ms": challenge.issued_at_epoch_ms,
         "expires_at_epoch_ms": challenge.expires_at_epoch_ms,
     }
+    if challenge.version == 2:
+        expected["arguments_sha256"] = challenge.arguments_sha256
     if set(payload) != set(expected):
         return False
     for key, expected_value in expected.items():

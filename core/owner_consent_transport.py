@@ -306,7 +306,8 @@ class OwnerConsentTlsAdapter:
         return (now_epoch_ms, now_monotonic_ns), None
 
     def issue_challenge(
-        self, peer: ssl.SSLSocket, *, action: str
+        self, peer: ssl.SSLSocket, *, action: str,
+        arguments: dict | None = None,
     ) -> ChallengeIssueResult:
         """Issue a challenge and retain it against this exact socket object.
 
@@ -386,6 +387,7 @@ class OwnerConsentTlsAdapter:
                 registry=self._consent_registry,
                 now_epoch_ms=now_epoch_ms,
                 nonce_factory=self._nonce_factory,
+                arguments=arguments,
             )
             if not result.issued:
                 return result
@@ -509,12 +511,16 @@ class OwnerConsentTlsAdapter:
         """
         if type(arguments) is not dict:
             return ActionCapabilityIssueResult(False, "INVALID_ARGUMENTS")
+        if type(challenge) is not ConsentChallenge:
+            return ActionCapabilityIssueResult(False, "INVALID_CHALLENGE")
+        if challenge.version == 2:
+            return ActionCapabilityIssueResult(
+                False, "V2_CAPABILITY_NOT_INTEGRATED"
+            )
         if arguments:
             return ActionCapabilityIssueResult(
                 False, "ARGUMENTS_NOT_SUPPORTED_BY_V1"
             )
-        if type(challenge) is not ConsentChallenge:
-            return ActionCapabilityIssueResult(False, "INVALID_CHALLENGE")
         arguments_digest = _empty_action_arguments_digest(challenge.action)
         if arguments_digest is None:
             return ActionCapabilityIssueResult(

@@ -14,10 +14,15 @@ from core.owner_consent_protocol import (
     ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload,
     _verify_and_consume_bound,
 )
+from core.owner_action_arguments import action_arguments_sha256
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "..", "android", "app", "src", "test",
     "resources", "owner-consent-v1.properties",
+)
+FIXTURE_V2 = os.path.join(
+    os.path.dirname(__file__), "..", "android", "app", "src", "test",
+    "resources", "owner-consent-v2.properties",
 )
 
 
@@ -99,14 +104,17 @@ class OwnerConsentProtocolTests(unittest.TestCase):
             "issued_at_epoch_ms": challenge.issued_at_epoch_ms,
             "expires_at_epoch_ms": challenge.expires_at_epoch_ms,
         }
+        if challenge.version == 2:
+            payload["arguments_sha256"] = challenge.arguments_sha256
         return json.dumps(
             {"payload": payload, "signature": encoded},
             separators=(",", ":"), ensure_ascii=True,
         ).encode("ascii")
 
     def verify(self, envelope=None, **changes):
+        challenge = changes.pop("challenge", self.challenge)
         args = {
-            "challenge": self.challenge,
+            "challenge": challenge,
             "trusted_public_key_spki_der": self.public_der,
             "enrollment_registry": self.registry,
             "transport_certificate_sha256": self.transport_fingerprint,
@@ -115,7 +123,8 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         }
         args.update(changes)
         return _verify_and_consume_bound(
-            self.envelope() if envelope is None else envelope, **args
+            self.envelope(challenge=challenge) if envelope is None else envelope,
+            **args
         )
 
     def test_shared_cross_platform_canonical_fixture(self):
@@ -134,6 +143,71 @@ class OwnerConsentProtocolTests(unittest.TestCase):
             expires_at_epoch_ms=int(values["expires_at_epoch_ms"]),
         )
         self.assertEqual(canonical_payload(challenge).decode("ascii"), values["canonical"])
+
+    def test_shared_v2_cross_platform_fixture_and_argument_digest(self):
+        fixture = configparser.ConfigParser()
+        with open(FIXTURE_V2, encoding="ascii") as source:
+            fixture.read_string("[fixture]\n" + source.read())
+        values = fixture["fixture"]
+        arguments = json.loads(values["arguments_json"])
+        challenge = ConsentChallenge(
+            version=int(values["version"]),
+            device_id=values["device_id"],
+            owner_id=values["owner_id"],
+            session_id=values["session_id"],
+            action=values["action"],
+            nonce=values["nonce"],
+            issued_at_epoch_ms=int(values["issued_at_epoch_ms"]),
+            expires_at_epoch_ms=int(values["expires_at_epoch_ms"]),
+            arguments_sha256=values["arguments_sha256"],
+        )
+        self.assertEqual(action_arguments_sha256(values["action"], arguments), values["arguments_sha256"])
+        self.assertEqual(canonical_payload(challenge).decode("ascii"), values["canonical"])
+
+    def test_v2_signature_binds_arguments_and_nonce_is_one_use(self):
+        args = {"target_package": "com.example.notes"}
+        challenge = replace(
+            self.challenge, version=2, action="navigate",
+            nonce="abcdef0123456789abcdef0123456789",
+            arguments_sha256=action_arguments_sha256("navigate", args),
+        )
+        envelope = self.envelope(challenge)
+        admitted = self.verify(envelope, challenge=challenge)
+        self.assertTrue(admitted.admitted, admitted.reason)
+        replay = self.verify(envelope, challenge=challenge)
+        self.assertEqual(replay.reason, "REPLAY_OR_CAPACITY")
+
+    def test_v2_argument_digest_tampering_is_rejected_without_consuming_nonce(self):
+        args = {"target_package": "com.example.notes"}
+        challenge = replace(
+            self.challenge, version=2, action="navigate",
+            nonce="fedcba9876543210fedcba9876543210",
+            arguments_sha256=action_arguments_sha256("navigate", args),
+        )
+        payload = json.loads(self.envelope(challenge))
+        payload["payload"]["arguments_sha256"] = "0" * 64
+        tampered = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+        self.assertEqual(self.verify(tampered, challenge=challenge).reason, "CHALLENGE_MISMATCH")
+        self.assertTrue(self.verify(challenge=challenge).admitted)
+
+    def test_v2_requires_a_valid_digest_and_strict_argument_schemas(self):
+        for invalid in (
+            replace(self.challenge, version=2, arguments_sha256=None),
+            replace(self.challenge, version=2, arguments_sha256="A" * 64),
+        ):
+            with self.assertRaises(ValueError):
+                canonical_payload(invalid)
+        for action, args in (
+            ("navigate", {"target_package": "com.example notes"}),
+            ("navigate", {"target_package": "com.example.app", "extra": "x"}),
+            ("scroll", {"direction": "sideways", "distance_dp": 20}),
+            ("scroll", {"direction": "down", "distance_dp": True}),
+            ("scroll", {"direction": "down", "distance_dp": 1001}),
+            ("read_screen", {"query": "private"}),
+            ("open_app", {}),
+        ):
+            with self.assertRaises(ValueError):
+                action_arguments_sha256(action, args)
 
     def test_valid_p256_capability_is_admitted_without_execution(self):
         result = self.verify()

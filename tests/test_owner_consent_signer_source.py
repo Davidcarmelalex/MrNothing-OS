@@ -26,6 +26,12 @@ class OwnerConsentSignerSourceTests(unittest.TestCase):
         self.assertIn("onAuthenticationSucceeded", source)
         self.assertIn("onAuthenticationError", source)
 
+    def test_v2_signer_displays_exact_canonical_arguments_in_system_prompt(self):
+        source = SIGNER.read_text(encoding="utf-8")
+        self.assertIn("OwnerActionArgumentsCanonicalizer.canonicalJson", source)
+        self.assertIn("Arguments: $argumentsPreview", source)
+        self.assertIn("INVALID_ACTION_ARGUMENTS", source)
+
     def test_signer_is_not_connected_to_command_execution(self):
         self.assertNotIn("OwnerConsentSigner", ROUTER.read_text(encoding="utf-8"))
         self.assertNotIn("OwnerConsentSigner", MAIN.read_text(encoding="utf-8"))

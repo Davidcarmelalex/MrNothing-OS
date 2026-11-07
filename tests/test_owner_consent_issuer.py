@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from core.owner_consent_protocol import canonical_payload
+from core.owner_action_arguments import action_arguments_sha256
 from core.owner_consent_issuer import (
     AuthenticatedOwnerSession,
     EnrolledOwnerDevice,
@@ -69,6 +70,32 @@ class OwnerConsentIssuerTests(unittest.TestCase):
             result.capability.trusted_public_key_spki_der, self.public_der
         )
         self.assertTrue(canonical_payload(challenge))
+
+    def test_v2_challenge_binds_strict_action_arguments(self):
+        arguments = {"target_package": "com.example.notes"}
+        result = issue_owner_consent_challenge(
+            self.session, action="navigate", registry=self.registry,
+            now_epoch_ms=NOW, nonce_factory=lambda n: NONCE, arguments=arguments,
+        )
+        self.assertTrue(result.issued, result.reason)
+        challenge = result.capability.challenge
+        self.assertEqual(challenge.version, 2)
+        self.assertEqual(challenge.arguments_sha256, action_arguments_sha256("navigate", arguments))
+        self.assertIn(b"arguments_sha256", canonical_payload(challenge))
+
+    def test_v2_issuer_rejects_unknown_or_malformed_arguments(self):
+        for action, arguments in (
+            ("navigate", {"target_package": "not a package"}),
+            ("scroll", {"direction": "left", "distance_dp": 10}),
+            ("scroll", {"direction": "down", "distance_dp": True}),
+            ("read_screen", {"query": "private"}),
+        ):
+            result = issue_owner_consent_challenge(
+                self.session, action=action, registry=self.registry,
+                now_epoch_ms=NOW, nonce_factory=lambda n: NONCE, arguments=arguments,
+            )
+            self.assertFalse(result.issued)
+            self.assertEqual(result.reason, "INVALID_ARGUMENTS")
 
     def test_challenge_never_outlives_authenticated_session(self):
         short_session = replace(

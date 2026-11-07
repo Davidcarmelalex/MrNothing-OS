@@ -56,6 +56,13 @@ internal object OwnerConsentSigner {
         }
         val canonical = OwnerConsentCanonicalizer.canonicalPayload(fields)
             ?: return refuse(callback, "INVALID_CHALLENGE_FIELDS")
+        val argumentsPreview = when (fields.version) {
+            1 -> "{}"
+            2 -> OwnerActionArgumentsCanonicalizer.canonicalJson(
+                fields.action, fields.arguments
+            ) ?: return refuse(callback, "INVALID_ACTION_ARGUMENTS")
+            else -> return refuse(callback, "UNSUPPORTED_PROTOCOL_VERSION")
+        }
         if (!signingInFlight.compareAndSet(false, true)) {
             return refuse(callback, "SIGNING_IN_PROGRESS")
         }
@@ -122,8 +129,8 @@ internal object OwnerConsentSigner {
                 .setTitle("Authorize Mr. Nothing action")
                 .setSubtitle("Action: ${fields.action} · Device: ${fields.deviceId}")
                 .setDescription(
-                    "Session: ${fields.sessionId}. One-use signature only; " +
-                        "no device action executes in this step."
+                    "Arguments: $argumentsPreview. Session: ${fields.sessionId}. " +
+                        "One-use signature only; no device action executes in this step."
                 )
                 .setAllowedAuthenticators(authenticators)
                 .setConfirmationRequired(true)

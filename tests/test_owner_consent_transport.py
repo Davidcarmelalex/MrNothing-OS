@@ -516,6 +516,28 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             server.close()
             client.close()
 
+    def test_v2_live_mtls_consent_binds_arguments_but_does_not_mint_capability(self):
+        server, client = self._pair()
+        try:
+            arguments = {"target_package": "com.example.notes"}
+            issued = self.adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            self.assertEqual(challenge.version, 2)
+            envelope = self._signed_envelope(challenge)
+            capability = self.adapter.verify_and_issue_capability(
+                server, envelope, challenge, arguments=arguments
+            )
+            self.assertFalse(capability.issued)
+            self.assertEqual(capability.reason, "V2_CAPABILITY_NOT_INTEGRATED")
+            admitted = self.adapter.verify_and_consume(server, envelope, challenge)
+            self.assertTrue(admitted.admitted, admitted.reason)
+            replay = self.adapter.verify_and_consume(server, envelope, challenge)
+            self.assertEqual(replay.reason, "REPLAY_OR_CAPACITY")
+        finally:
+            server.close()
+            client.close()
+
     def test_challenge_cannot_be_transferred_to_another_tls_socket(self):
         server1, client1 = self._pair()
         server2, client2 = self._pair()

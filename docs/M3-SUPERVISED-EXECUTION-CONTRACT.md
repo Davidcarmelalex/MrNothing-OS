@@ -17,7 +17,9 @@ The native Android app and the existing Termux/Python runtime are separate produ
 | `core/hermes_gateway.py` | Allowlist contains `get_battery` and `open_app`; validates bounded envelopes and a supplied authenticated flag | Returns admission readiness only; it does not execute a command |
 | `core/agent_sandbox.py` | Validates bounded plans, deadlines and cancellation; returns simulated outcomes | Explicitly offline; `device_actions_executed=false` |
 | `core/command_admission.py` | Verifies signed commands, freshness, policy and a durable single-host SQLite replay reservation | Caller-supplied `transport_authenticated` is a prototype input, not proof of identity; no executor |
-| `core/owner_consent_transport.py` | Binds consent to an exact live mTLS socket; can mint an opaque one-use capability for read_screen with empty arguments and revalidate transport/enrollment at consumption | No listener, Android permission check, non-empty-argument protocol, or device executor |
+| `core/owner_consent_transport.py` | Binds consent to an exact live mTLS socket; v1 can mint an opaque one-use capability for read_screen with empty arguments; v2 challenges are signature-verified but capability minting is explicitly disabled | No listener, Android permission check, production caller, or device executor |
+| `core/owner_action_arguments.py` | Defines strict v2 canonical JSON and domain-separated argument digests for read_screen, navigate and scroll | Pure protocol primitive; no action execution |
+| Android `OwnerConsentSigner.kt` | Signs v1/v2 canonical challenges using the existing owner-authenticated Keystore path; v2 system prompt includes the exact canonical argument JSON | No production caller or executor; StrongBox behavior remains hardware-unverified |
 | `core/owner_consent_verifier.py` | Verifies and consumes bounded one-use screen-action capabilities | In-memory prototype; not the Android Keystore authorization boundary |
 | Android `CommandRouter.kt` | Accepts only UntrustedCommandRequest and rejects every request with VERIFIED_TRANSPORT_SESSION_REQUIRED | No verifier-created Android session capability is integrated; all agent dispatch remains disabled |
 | Android owner-consent / trust UI | Local credential-confirmed preview and trust-store prototypes exist | Not connected to a live transport or device executor |
@@ -204,3 +206,10 @@ New adversarial tests cover a consent-key rotation immediately after nonce consu
 
 This closes the identified in-process admission gaps for the no-op harness only. It does not make registry lookup and a future real side effect atomic. Any real executor still requires a durable authorization/idempotency reservation transaction that binds the current enrollment generation at the final side-effect boundary.
 
+
+
+## Protocol v2 — exact action-argument binding
+
+AGENT-004G adds a version-2 signed arguments_sha256 field. Python host issuance and verification use strict, closed action schemas; Kotlin recomputes the same domain-separated digest from typed arguments; and the Android per-use signer places the exact canonical JSON in the owner-visible system authentication prompt. Shared v1/v2 fixtures preserve cross-platform byte equality.
+
+The live mTLS adapter can issue and verify v2 challenges, but it deliberately refuses to mint an action capability from v2 (V2_CAPABILITY_NOT_INTEGRATED). The existing v1 no-op capability remains limited to read_screen with empty arguments. This is admission-only: no device action, permission grant, screen capture, listener or production caller is connected. See AGENT-004G-ARGUMENT-BOUND-CONSENT-V2.md.
