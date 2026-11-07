@@ -99,11 +99,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             "input keyevent KEYCODE_SLEEP",
             "dumpsys power",
             "mWakefulness=Asleep",
+            "mHalInteractiveModeEnabled=false",
             "input keyevent KEYCODE_WAKEUP",
             "keyguard-state-after-wake.txt",
             "power-state-after-wake.txt",
             "mWakefulness=Awake",
-            "mInteractive=true",
+            "mHalInteractiveModeEnabled=true",
             "screen_is_awake",
             "Disposable emulator display did not reach a fully interactive awake state after wake",
             "KeyguardServiceDelegate",
@@ -143,13 +144,24 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
         boundary = self.workflow[start:end]
         self.assertIn("mWakefulness=Awake", boundary)
-        self.assertIn("mInteractive=true", boundary)
+        self.assertIn("mHalInteractiveModeEnabled=true", boundary)
         self.assertIn('if screen_is_awake "$power_state_after_wake"; then', boundary)
         self.assertIn('[[ "$service_state" == "true" && "$monitor_state" == "true" ]]', boundary)
         self.assertLess(boundary.index("KEYCODE_WAKEUP"), boundary.index("power-state-after-wake.txt"))
         self.assertLess(boundary.index("power-state-after-wake.txt"), boundary.index("input swipe"))
         self.assertLess(boundary.index("keyguard_is_showing"), boundary.index("input swipe"))
         self.assertLess(boundary.index("input swipe"), boundary.index("--capture"))
+
+    def test_android15_power_manager_dump_uses_hal_interactive_mode_field(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        self.assertIn("grep -Eq 'mWakefulness=Asleep'", boundary)
+        self.assertIn("grep -Eq 'mHalInteractiveModeEnabled=false'", boundary)
+        self.assertIn("grep -Eq 'mWakefulness=Awake'", boundary)
+        self.assertIn("grep -Eq 'mHalInteractiveModeEnabled=true'", boundary)
+        self.assertNotIn("mInteractive=false", boundary)
+        self.assertNotIn("mInteractive=true", boundary)
 
     def test_keyguard_transition_race_requires_observed_bouncer_before_pin_entry(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")

@@ -161,7 +161,8 @@ jobs:
             timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys power | tr -d '\r'
           }
           screen_is_asleep() {
-            grep -Eq 'mWakefulness=Asleep|mInteractive=false' <<< "$1"
+            grep -Eq 'mWakefulness=Asleep' <<< "$1" &&
+              grep -Eq 'mHalInteractiveModeEnabled=false' <<< "$1"
           }
           screen_asleep=0
           power_state=""
@@ -181,7 +182,7 @@ jobs:
           timeout 10s adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
           screen_is_awake() {
             grep -Eq 'mWakefulness=Awake' <<< "$1" &&
-              grep -Eq 'mInteractive=true' <<< "$1"
+              grep -Eq 'mHalInteractiveModeEnabled=true' <<< "$1"
           }
           awake=0
           power_state_after_wake=""
