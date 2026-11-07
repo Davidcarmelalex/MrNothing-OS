@@ -27,6 +27,11 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID
 
+from core.action_reservation import (
+    ActionReservationRequest,
+    DurableActionReservationLedger,
+    RESERVED,
+)
 from core.owner_action_arguments import action_arguments_sha256
 from core.owner_consent_issuer import (
     AuthenticatedOwnerSession,
@@ -84,6 +89,14 @@ class ActionCapabilityIssueResult:
 class ActionCapabilityAdmissionResult:
     admitted: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class ActionReservationAdmissionResult:
+    reserved: bool
+    reason: str
+    idempotency_key: str | None = None
+    state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -655,6 +668,190 @@ class OwnerConsentTlsAdapter:
                 True, "VERIFIED_ACTION_CAPABILITY_ISSUED", capability
             )
 
+    def _validated_action_capability_locked(
+        self,
+        peer: ssl.SSLSocket,
+        capability: VerifiedOwnerActionCapability,
+        *,
+        action: str,
+        arguments: dict,
+    ):
+        """Revalidate adapter-owned capability provenance; caller holds _lock."""
+        state = self._sessions.get(peer)
+        if state is None:
+            return None, "CAPABILITY_SESSION_NOT_FOUND"
+        capability_key = id(capability)
+        record = state.capabilities.get(capability_key)
+        if record is None or record.capability is not capability:
+            return None, "CAPABILITY_NOT_ACTIVE"
+
+        def discard() -> None:
+            state.capabilities.pop(capability_key, None)
+            state.challenges.pop(record.nonce, None)
+
+        if action != record.action:
+            return None, "ACTION_MISMATCH"
+        if record.protocol_version == 1:
+            if arguments:
+                return None, "ARGUMENTS_MISMATCH"
+            arguments_digest = _empty_action_arguments_digest(action)
+        elif record.protocol_version == 2:
+            try:
+                arguments_digest = action_arguments_sha256(action, arguments)
+            except (TypeError, ValueError, UnicodeError):
+                arguments_digest = None
+        else:
+            arguments_digest = None
+        if arguments_digest is None or arguments_digest != record.arguments_sha256:
+            return None, "ARGUMENTS_MISMATCH"
+
+        clocks, clock_error = self._read_clocks()
+        if clock_error is not None:
+            discard()
+            return None, clock_error
+        now_epoch_ms, now_monotonic_ns = clocks
+        if (
+            now_monotonic_ns >= record.expires_monotonic_ns
+            or now_monotonic_ns >= state.expires_monotonic_ns
+            or now_epoch_ms >= state.session.expires_at_epoch_ms
+        ):
+            discard()
+            return None, "CAPABILITY_EXPIRED"
+
+        binding, binding_error = self._current_peer_binding(peer, now_epoch_ms)
+        if binding_error is not None:
+            if binding_error != "TRANSPORT_REGISTRY_UNAVAILABLE":
+                discard()
+            return None, binding_error
+        enrolled, fingerprint, _certificate_expiry_ms = binding
+        if (
+            state.session.owner_id != record.owner_id
+            or state.session.device_id != record.device_id
+            or state.session.session_id != record.session_id
+            or state.certificate_sha256 != record.transport_certificate_sha256
+            or fingerprint != record.transport_certificate_sha256
+            or enrolled.owner_id != record.owner_id
+            or enrolled.device_id != record.device_id
+        ):
+            discard()
+            return None, "CAPABILITY_CONTEXT_MISMATCH"
+        if (
+            state.credential_generation != record.credential_generation
+            or enrolled.credential_generation != record.credential_generation
+        ):
+            discard()
+            return None, "TRANSPORT_CREDENTIAL_CHANGED"
+
+        issued = state.challenges.get(record.nonce)
+        if (
+            issued is None
+            or type(issued) is not _IssuedChallenge
+            or type(issued.challenge) is not ConsentChallenge
+            or issued.challenge.nonce != record.nonce
+            or issued.challenge.owner_id != record.owner_id
+            or issued.challenge.device_id != record.device_id
+            or issued.challenge.action != record.action
+            or issued.challenge.session_id != record.session_id
+            or issued.challenge.version != record.protocol_version
+            or (
+                record.protocol_version == 2
+                and issued.challenge.arguments_sha256 != record.arguments_sha256
+            )
+            or (
+                record.protocol_version == 1
+                and issued.challenge.arguments_sha256 is not None
+            )
+            or now_epoch_ms >= issued.challenge.expires_at_epoch_ms
+            or now_monotonic_ns >= issued.expires_monotonic_ns
+        ):
+            discard()
+            return None, "CHALLENGE_EXPIRED"
+
+        try:
+            owner_record = self._consent_registry.lookup_active_device(record.device_id)
+        except Exception:
+            return None, "ENROLLMENT_REGISTRY_UNAVAILABLE"
+        if type(owner_record) is not EnrolledOwnerDevice:
+            discard()
+            return None, "DEVICE_NOT_ENROLLED"
+        if type(owner_record.active) is not bool:
+            discard()
+            return None, "ENROLLMENT_REGISTRY_INVALID"
+        if owner_record.active is not True:
+            discard()
+            return None, "DEVICE_NOT_ACTIVE"
+        if (
+            owner_record.owner_id != record.owner_id
+            or owner_record.device_id != record.device_id
+        ):
+            discard()
+            return None, "OWNER_DEVICE_MISMATCH"
+        if (
+            owner_record.transport_certificate_sha256
+            != record.transport_certificate_sha256
+            or type(owner_record.credential_generation) is not int
+            or owner_record.credential_generation != record.credential_generation
+        ):
+            discard()
+            return None, "ENROLLMENT_CREDENTIAL_MISMATCH"
+        if (
+            type(owner_record.public_key_spki_der) is not bytes
+            or not 1 <= len(owner_record.public_key_spki_der) <= 512
+        ):
+            discard()
+            return None, "INVALID_TRUSTED_KEY"
+        if (
+            hashlib.sha256(owner_record.public_key_spki_der).hexdigest()
+            != record.consent_public_key_sha256
+        ):
+            discard()
+            return None, "ENROLLMENT_KEY_MISMATCH"
+
+        # Re-read the transport registry and exact socket after the owner
+        # registry check. A cached session snapshot is never sufficient.
+        fresh_clocks, fresh_clock_error = self._read_clocks()
+        if fresh_clock_error is not None:
+            discard()
+            return None, fresh_clock_error
+        fresh_epoch_ms, fresh_monotonic_ns = fresh_clocks
+        if (
+            fresh_epoch_ms >= issued.challenge.expires_at_epoch_ms
+            or fresh_monotonic_ns >= record.expires_monotonic_ns
+            or fresh_monotonic_ns >= state.expires_monotonic_ns
+        ):
+            discard()
+            return None, "CAPABILITY_EXPIRED"
+        fresh_binding, fresh_binding_error = self._current_peer_binding(
+            peer, fresh_epoch_ms
+        )
+        if fresh_binding_error is not None:
+            if fresh_binding_error != "TRANSPORT_REGISTRY_UNAVAILABLE":
+                discard()
+            return None, fresh_binding_error
+        fresh_enrolled, fresh_fingerprint, _fresh_certificate_expiry_ms = fresh_binding
+        if (
+            fresh_fingerprint != record.transport_certificate_sha256
+            or fresh_enrolled.owner_id != record.owner_id
+            or fresh_enrolled.device_id != record.device_id
+            or fresh_enrolled.credential_generation != record.credential_generation
+        ):
+            discard()
+            return None, "TRANSPORT_CREDENTIAL_CHANGED"
+
+        final_clocks, final_clock_error = self._read_clocks()
+        if final_clock_error is not None:
+            discard()
+            return None, final_clock_error
+        final_epoch_ms, final_monotonic_ns = final_clocks
+        if (
+            final_epoch_ms >= issued.challenge.expires_at_epoch_ms
+            or final_monotonic_ns >= record.expires_monotonic_ns
+            or final_monotonic_ns >= state.expires_monotonic_ns
+        ):
+            discard()
+            return None, "CAPABILITY_EXPIRED"
+        return (state, capability_key, record, issued), None
+
     def consume_action_capability(
         self,
         peer: ssl.SSLSocket,
@@ -665,8 +862,8 @@ class OwnerConsentTlsAdapter:
     ) -> ActionCapabilityAdmissionResult:
         """Consume once after revalidating the exact live peer and enrollment.
 
-        This is admission evidence only. It does not check Android runtime
-        permissions and does not execute or dispatch a device action.
+        This remains an admission/no-op boundary. It does not query Android
+        runtime permissions and does not execute or dispatch a device action.
         """
         if type(peer) is not ssl.SSLSocket:
             return ActionCapabilityAdmissionResult(False, "INVALID_TLS_SOCKET")
@@ -677,180 +874,100 @@ class OwnerConsentTlsAdapter:
         if type(arguments) is not dict:
             return ActionCapabilityAdmissionResult(False, "INVALID_ARGUMENTS")
         with self._lock:
-            state = self._sessions.get(peer)
-            if state is None:
-                return ActionCapabilityAdmissionResult(
-                    False, "CAPABILITY_SESSION_NOT_FOUND"
-                )
-            capability_key = id(capability)
-            record = state.capabilities.get(capability_key)
-            if record is None or record.capability is not capability:
-                return ActionCapabilityAdmissionResult(
-                    False, "CAPABILITY_NOT_ACTIVE"
-                )
-            if action != record.action:
-                return ActionCapabilityAdmissionResult(False, "ACTION_MISMATCH")
-            if record.protocol_version == 1:
-                if arguments:
-                    return ActionCapabilityAdmissionResult(
-                        False, "ARGUMENTS_MISMATCH"
-                    )
-                arguments_digest = _empty_action_arguments_digest(action)
-            elif record.protocol_version == 2:
-                try:
-                    arguments_digest = action_arguments_sha256(action, arguments)
-                except (TypeError, ValueError, UnicodeError):
-                    arguments_digest = None
-            else:
-                arguments_digest = None
-            if (
-                arguments_digest is None
-                or arguments_digest != record.arguments_sha256
-            ):
-                return ActionCapabilityAdmissionResult(
-                    False, "ARGUMENTS_MISMATCH"
-                )
-
-            def discard() -> None:
-                state.capabilities.pop(capability_key, None)
-                state.challenges.pop(record.nonce, None)
-
-            clocks, clock_error = self._read_clocks()
-            if clock_error is not None:
-                discard()
-                return ActionCapabilityAdmissionResult(False, clock_error)
-            now_epoch_ms, now_monotonic_ns = clocks
-            if (
-                now_monotonic_ns >= record.expires_monotonic_ns
-                or now_monotonic_ns >= state.expires_monotonic_ns
-                or now_epoch_ms >= state.session.expires_at_epoch_ms
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(False, "CAPABILITY_EXPIRED")
-
-            binding, binding_error = self._current_peer_binding(
-                peer, now_epoch_ms
+            context, error = self._validated_action_capability_locked(
+                peer, capability, action=action, arguments=arguments
             )
-            if binding_error is not None:
-                if binding_error != "TRANSPORT_REGISTRY_UNAVAILABLE":
-                    discard()
-                return ActionCapabilityAdmissionResult(False, binding_error)
-            enrolled, fingerprint, _certificate_expiry_ms = binding
-            if (
-                state.session.owner_id != record.owner_id
-                or state.session.device_id != record.device_id
-                or state.session.session_id != record.session_id
-                or state.certificate_sha256 != record.transport_certificate_sha256
-                or fingerprint != record.transport_certificate_sha256
-                or enrolled.owner_id != record.owner_id
-                or enrolled.device_id != record.device_id
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "CAPABILITY_CONTEXT_MISMATCH"
-                )
-            if (
-                state.credential_generation != record.credential_generation
-                or enrolled.credential_generation != record.credential_generation
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "TRANSPORT_CREDENTIAL_CHANGED"
-                )
-            issued = state.challenges.get(record.nonce)
-            if (
-                issued is None
-                or issued.challenge.owner_id != record.owner_id
-                or issued.challenge.device_id != record.device_id
-                or issued.challenge.action != record.action
-                or issued.challenge.session_id != record.session_id
-                or issued.challenge.version != record.protocol_version
-                or (
-                    record.protocol_version == 2
-                    and issued.challenge.arguments_sha256 != record.arguments_sha256
-                )
-                or (
-                    record.protocol_version == 1
-                    and issued.challenge.arguments_sha256 is not None
-                )
-                or now_epoch_ms >= issued.challenge.expires_at_epoch_ms
-                or now_monotonic_ns >= issued.expires_monotonic_ns
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(False, "CHALLENGE_EXPIRED")
-
-            try:
-                owner_record = self._consent_registry.lookup_active_device(
-                    record.device_id
-                )
-            except Exception:
-                return ActionCapabilityAdmissionResult(
-                    False, "ENROLLMENT_REGISTRY_UNAVAILABLE"
-                )
-            if type(owner_record) is not EnrolledOwnerDevice:
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "DEVICE_NOT_ENROLLED"
-                )
-            if type(owner_record.active) is not bool:
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "ENROLLMENT_REGISTRY_INVALID"
-                )
-            if owner_record.active is not True:
-                discard()
-                return ActionCapabilityAdmissionResult(False, "DEVICE_NOT_ACTIVE")
-            if (
-                owner_record.owner_id != record.owner_id
-                or owner_record.device_id != record.device_id
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "OWNER_DEVICE_MISMATCH"
-                )
-            if (
-                owner_record.transport_certificate_sha256
-                != record.transport_certificate_sha256
-                or type(owner_record.credential_generation) is not int
-                or owner_record.credential_generation != record.credential_generation
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "ENROLLMENT_CREDENTIAL_MISMATCH"
-                )
-            if (
-                type(owner_record.public_key_spki_der) is not bytes
-                or not 1 <= len(owner_record.public_key_spki_der) <= 512
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "INVALID_TRUSTED_KEY"
-                )
-            if (
-                hashlib.sha256(owner_record.public_key_spki_der).hexdigest()
-                != record.consent_public_key_sha256
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, "ENROLLMENT_KEY_MISMATCH"
-                )
-
-            fresh_clocks, fresh_clock_error = self._read_clocks()
-            if fresh_clock_error is not None:
-                discard()
-                return ActionCapabilityAdmissionResult(
-                    False, fresh_clock_error
-                )
-            _fresh_epoch_ms, fresh_monotonic_ns = fresh_clocks
-            if (
-                fresh_monotonic_ns >= record.expires_monotonic_ns
-                or fresh_monotonic_ns >= state.expires_monotonic_ns
-            ):
-                discard()
-                return ActionCapabilityAdmissionResult(False, "CAPABILITY_EXPIRED")
-
-            discard()
+            if error is not None:
+                return ActionCapabilityAdmissionResult(False, error)
+            state, capability_key, record, _issued = context
+            state.capabilities.pop(capability_key, None)
+            state.challenges.pop(record.nonce, None)
             return ActionCapabilityAdmissionResult(
                 True, "CAPABILITY_CONSUMED_NO_EXECUTION"
             )
 
+    def reserve_action_capability(
+        self,
+        peer: ssl.SSLSocket,
+        capability: VerifiedOwnerActionCapability,
+        *,
+        action: str,
+        arguments: dict,
+        ledger: DurableActionReservationLedger,
+    ) -> ActionReservationAdmissionResult:
+        """Persist a reservation from adapter-retained verifier evidence only.
+
+        This method never claims DISPATCH_STARTED, checks Android permissions,
+        starts a listener, or executes a device action. The caller cannot supply
+        an ActionReservationRequest or identity fields.
+        """
+        if type(peer) is not ssl.SSLSocket:
+            return ActionReservationAdmissionResult(False, "INVALID_TLS_SOCKET")
+        if type(capability) is not VerifiedOwnerActionCapability:
+            return ActionReservationAdmissionResult(False, "INVALID_CAPABILITY")
+        if type(action) is not str:
+            return ActionReservationAdmissionResult(False, "ACTION_MISMATCH")
+        if type(arguments) is not dict:
+            return ActionReservationAdmissionResult(False, "INVALID_ARGUMENTS")
+        if type(ledger) is not DurableActionReservationLedger:
+            return ActionReservationAdmissionResult(False, "INVALID_RESERVATION_LEDGER")
+
+        with self._lock:
+            context, error = self._validated_action_capability_locked(
+                peer, capability, action=action, arguments=arguments
+            )
+            if error is not None:
+                return ActionReservationAdmissionResult(False, error)
+            state, capability_key, record, issued = context
+            request = ActionReservationRequest(
+                owner_id=record.owner_id,
+                device_id=record.device_id,
+                session_id=record.session_id,
+                capability_nonce=record.nonce,
+                protocol_version=record.protocol_version,
+                action_id=record.action,
+                arguments_sha256=record.arguments_sha256,
+                issued_at_epoch_ms=issued.challenge.issued_at_epoch_ms,
+                expires_at_epoch_ms=issued.challenge.expires_at_epoch_ms,
+                transport_certificate_sha256=record.transport_certificate_sha256,
+                credential_generation=record.credential_generation,
+                consent_public_key_sha256=record.consent_public_key_sha256,
+            )
+            try:
+                decision = ledger.reserve(request)
+            except Exception:
+                # Storage uncertainty is fail-closed. Keep the short-lived
+                # in-memory capability only so the trusted host may retry.
+                return ActionReservationAdmissionResult(
+                    False, "RESERVATION_STORE_UNAVAILABLE"
+                )
+
+            # A definitive ledger decision consumes the in-memory capability,
+            # including duplicate/conflict/capacity results. No replay can
+            # obtain a second reservation through this adapter instance.
+            state.capabilities.pop(capability_key, None)
+            state.challenges.pop(record.nonce, None)
+            key = decision.idempotency_key or None
+            if (
+                decision.applied
+                and decision.created
+                and decision.state == RESERVED
+            ):
+                try:
+                    now_epoch_ms = self._read_clocks()[0][0]
+                except Exception:
+                    now_epoch_ms = issued.challenge.expires_at_epoch_ms
+                if now_epoch_ms >= issued.challenge.expires_at_epoch_ms:
+                    try:
+                        ledger.cancel_before_dispatch(decision.idempotency_key)
+                    except Exception:
+                        pass
+                    return ActionReservationAdmissionResult(
+                        False, "CAPABILITY_EXPIRED", key, "CANCELLED"
+                    )
+                return ActionReservationAdmissionResult(
+                    True, "RESERVATION_CREATED_NO_EXECUTION", key, RESERVED
+                )
+            return ActionReservationAdmissionResult(
+                False, decision.reason, key, decision.state
+            )
