@@ -627,3 +627,6 @@ AGENT-004S source-gate correction: the first pushed candidate exposed one test-o
 
 
 AGENT-004S follow-up: exact-head QA-005 on a8f4adf showed the lock-entry icon tap did not open the PIN bouncer. The screenshot/hierarchy remained on the lockscreen and the synthetic PIN cleanup succeeded. The final approach removes helper-side taps and uses a bounded bottom-edge swipe in the disposable-emulator workflow; the helper is read-only while waiting for the exact PIN hierarchy. Exact-head rerun is required.
+
+
+AGENT-004S source-gate follow-up: the read-only helper correction renamed the lockscreen parser from `collect_keyguard_entry_center` to `validate_keyguard_locked_surface`, but the static gate retained the old symbol and an obsolete `entry_tapped` assertion. Both push and PR Python-policy jobs ran 699 tests and failed with this single test-only ValueError. The gate now checks the read-only parser and asserts the capture helper contains no input tap. No runtime code changed in this correction; exact-head reruns are required.

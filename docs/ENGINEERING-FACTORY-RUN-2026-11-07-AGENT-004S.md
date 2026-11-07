@@ -73,3 +73,8 @@ The first pushed candidate `a8f4adf70e150bf7f1dc97f8be8aa158ed0c05fe` ran 699 Py
 ## Follow-up evidence — bottom-edge swipe correction
 
 The exact-head QA-005 run on `a8f4adf70e150bf7f1dc97f8be8aa158ed0c05fe` showed the initial bounds-derived tap on `device_entry_icon_view` did not open the PIN bouncer. Artifact [13574907764](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42374293034/artifacts/13574907764) showed the lockscreen still visible after the tap, with the synthetic PIN successfully cleared by the EXIT trap. The final correction removes the helper-side tap entirely and moves the workflow's one swipe to the bottom gesture region (display height minus 120 px to mid-screen, 450 ms). The helper now only validates the exact lockscreen state and waits for the PIN hierarchy; it performs no input events. Exact-head CI and full QA-005 remain pending.
+
+
+## Source-gate follow-up correction
+
+The first read-only helper candidate renamed the parser to `validate_keyguard_locked_surface` but left the static test looking for `collect_keyguard_entry_center` and `entry_tapped`. GitHub Actions ran 699 Python tests on both push and PR; 698 passed and one source-gate test errored with ValueError before assertions. The source gate now targets the renamed parser and verifies the capture helper performs no input tap. No runtime behavior changed in this correction. Post-correction exact-head tests and emulator evidence remain required.

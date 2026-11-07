@@ -1337,3 +1337,6 @@ AGENT-004S source-gate correction: the first pushed candidate exposed one test-o
 
 
 AGENT-004S follow-up evidence: QA-005 artifact 13574907764 showed the exact lock-entry icon tap did not reveal the PIN bouncer. The final harness removes helper-side taps and moves the single workflow swipe into the bottom gesture region. The helper remains read-only and fails closed if the exact PIN hierarchy does not appear. Exact-head CI and full QA-005 are required.
+
+
+AGENT-004S source-gate follow-up: the read-only helper correction renamed the lockscreen parser from `collect_keyguard_entry_center` to `validate_keyguard_locked_surface`, but the static gate retained the old symbol and an obsolete `entry_tapped` assertion. Both push and PR Python-policy jobs ran 699 tests and failed with this single test-only ValueError. The gate now checks the read-only parser and asserts the capture helper contains no input tap. No runtime code changed in this correction; exact-head reruns are required.

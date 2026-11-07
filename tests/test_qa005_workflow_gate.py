@@ -226,9 +226,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("ro.kernel.qemu", script)
 
 
-    def test_lock_entry_handoff_requires_exact_systemui_identity_and_bounded_retry(self):
+    def test_locked_surface_validation_and_capture_are_read_only(self):
         script = (WORKFLOW.parents[2] / "scripts/qa005_unlock_keyguard.py").read_text(encoding="utf-8")
-        start = script.index("def collect_keyguard_entry_center")
+        start = script.index("def validate_keyguard_locked_surface")
         end = script.index("\ndef _adb_result", start)
         parser = script[start:end]
         for required in (
@@ -243,9 +243,9 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         capture_start = script.index("def capture_fresh_systemui_keypad_hierarchy")
         capture_end = script.index("\ndef unlock_with_visible_systemui_pinpad", capture_start)
         capture = script[capture_start:capture_end]
-        self.assertIn("entry_tapped = False", capture)
         self.assertIn("validate_keyguard_locked_surface(hierarchy, width, height)", capture)
         self.assertNotIn('"input", "tap"', capture)
+        self.assertNotIn("entry_tapped", capture)
         self.assertIn("max_attempts: int = 5", capture)
         self.assertNotIn('shell", "input", "text"', script)
 
