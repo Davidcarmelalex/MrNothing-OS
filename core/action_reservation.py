@@ -372,7 +372,8 @@ class DurableActionReservationLedger:
         return ReservationDecision(True, "RESERVED", key, RESERVED, True)
 
     def claim_dispatch(
-        self, key: str, *, enrollment_registry
+        self, key: str, *, enrollment_registry,
+        final_admission_guard: Callable[[], bool] | None = None,
     ) -> ReservationDecision:
         """Claim only while the paired owner enrollment is write-locked.
 
@@ -380,10 +381,16 @@ class DurableActionReservationLedger:
         DISPATCH_STARTED commit is therefore ordered against every enrollment
         rotation/revocation that uses the same registry database. This is a
         single-host lock-coupling guarantee, not a distributed transaction.
+        When supplied, final_admission_guard is a trusted, side-effect-free
+        adapter revalidation invoked while both database writer locks are held.
+        A false, non-boolean or raising guard fails closed. A successful storage
+        claim is never, by itself, permission to execute an action.
         This method never executes an action.
         """
         if type(key) is not str or _SHA256.fullmatch(key) is None:
             return ReservationDecision(False, "INVALID_IDEMPOTENCY_KEY", "", None)
+        if final_admission_guard is not None and not callable(final_admission_guard):
+            return ReservationDecision(False, "INVALID_FINAL_ADMISSION_GUARD", key, None)
 
         # Import lazily: the registry also imports transport types that depend
         # on this module. Exact type checking prevents a caller-supplied duck
@@ -474,48 +481,59 @@ class DurableActionReservationLedger:
                                 False, reason, key, row["state"],
                             )
                         else:
-                            # Re-read time after both the enrollment writer
-                            # lock and ledger writer transaction are acquired.
-                            now = self._now()
-                            if now < row["issued_at_epoch_ms"]:
+                            guard_result = True
+                            if final_admission_guard is not None:
+                                try:
+                                    guard_result = final_admission_guard()
+                                except Exception:
+                                    guard_result = False
+                            if type(guard_result) is not bool or guard_result is not True:
                                 pending_decision = ReservationDecision(
-                                    False, "CAPABILITY_NOT_YET_VALID", key, RESERVED,
-                                )
-                            elif now >= row["expires_at_epoch_ms"]:
-                                changed = db.execute(
-                                    "UPDATE action_reservations SET state=?,outcome_code=?,"
-                                    "outcome_sha256=NULL,updated_at_epoch_ms=? "
-                                    "WHERE idempotency_key=? AND state=?",
-                                    (
-                                        FAILED_NO_EFFECT, "CAPABILITY_EXPIRED",
-                                        now, key, RESERVED,
-                                    ),
-                                ).rowcount
-                                pending_decision = (
-                                    ReservationDecision(
-                                        False, "CAPABILITY_EXPIRED", key,
-                                        FAILED_NO_EFFECT,
-                                    )
-                                    if changed == 1
-                                    else ReservationDecision(
-                                        False, "CLAIM_RACE", key, None,
-                                    )
+                                    False, "FINAL_ADMISSION_REJECTED", key, RESERVED,
                                 )
                             else:
-                                changed = db.execute(
-                                    "UPDATE action_reservations SET state=?,updated_at_epoch_ms=? "
-                                    "WHERE idempotency_key=? AND state=?",
-                                    (DISPATCH_STARTED, now, key, RESERVED),
-                                ).rowcount
-                                pending_decision = (
-                                    ReservationDecision(
-                                        True, "DISPATCH_CLAIMED", key, DISPATCH_STARTED,
+                                # Re-read time after both database writer locks and
+                                # the adapter-owned live capability guard are held.
+                                now = self._now()
+                                if now < row["issued_at_epoch_ms"]:
+                                    pending_decision = ReservationDecision(
+                                        False, "CAPABILITY_NOT_YET_VALID", key, RESERVED,
                                     )
-                                    if changed == 1
-                                    else ReservationDecision(
-                                        False, "CLAIM_RACE", key, None,
+                                elif now >= row["expires_at_epoch_ms"]:
+                                    changed = db.execute(
+                                        "UPDATE action_reservations SET state=?,outcome_code=?,"
+                                        "outcome_sha256=NULL,updated_at_epoch_ms=? "
+                                        "WHERE idempotency_key=? AND state=?",
+                                        (
+                                            FAILED_NO_EFFECT, "CAPABILITY_EXPIRED",
+                                            now, key, RESERVED,
+                                        ),
+                                    ).rowcount
+                                    pending_decision = (
+                                        ReservationDecision(
+                                            False, "CAPABILITY_EXPIRED", key,
+                                            FAILED_NO_EFFECT,
+                                        )
+                                        if changed == 1
+                                        else ReservationDecision(
+                                            False, "CLAIM_RACE", key, None,
+                                        )
                                     )
-                                )
+                                else:
+                                    changed = db.execute(
+                                        "UPDATE action_reservations SET state=?,updated_at_epoch_ms=? "
+                                        "WHERE idempotency_key=? AND state=?",
+                                        (DISPATCH_STARTED, now, key, RESERVED),
+                                    ).rowcount
+                                    pending_decision = (
+                                        ReservationDecision(
+                                            True, "DISPATCH_CLAIMED", key, DISPATCH_STARTED,
+                                        )
+                                        if changed == 1
+                                        else ReservationDecision(
+                                            False, "CLAIM_RACE", key, None,
+                                        )
+                                    )
                 # Assign only after the ledger COMMIT succeeded. If the
                 # enrollment context then fails to commit/release, dispatch
                 # remains denied and the caller must reconcile this row.

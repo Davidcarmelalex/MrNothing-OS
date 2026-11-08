@@ -16,12 +16,14 @@ from unittest.mock import patch
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from core.action_reservation import (
     ActionReservationRequest,
     DurableActionReservationLedger,
+    CANCELLED,
+    FAILED_NO_EFFECT,
     RESERVED,
 )
 from core.owner_consent_issuer import EnrolledOwnerDevice
@@ -33,6 +35,11 @@ from core.owner_consent_transport import (
     VerifiedOwnerActionCapability,
 )
 from core.noop_action_executor import NoOpActionExecutor
+from core.owner_enrollment_registry import (
+    SCHEMA_NAME,
+    SQLiteOwnerEnrollmentRegistry,
+    _canonical_payload,
+)
 
 
 class _TransportRegistry:
@@ -1358,6 +1365,236 @@ class OwnerConsentTlsAdapterTests(unittest.TestCase):
             server.close()
             client.close()
 
+
+
+    def _sqlite_enrollment_adapter(self):
+        authority = ed25519.Ed25519PrivateKey.generate()
+        authority_spki = authority.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        registry = SQLiteOwnerEnrollmentRegistry(
+            os.path.join(self.temp.name, "final-admission-enrollment.sqlite"),
+            authority_public_key_spki_der=authority_spki,
+            authority_key_id="test-authority",
+        )
+        registry.initialize(explicit_first_install=True)
+        payload = {
+            "schema": SCHEMA_NAME,
+            "version": 1,
+            "operation": "enroll",
+            "authority_key_id": "test-authority",
+            "enrollment_id": "final-admission-enrollment-1",
+            "owner_id": "owner-1",
+            "device_id": "pixel9pro-1",
+            "credential_generation": 1,
+            "issued_at_epoch_ms": self.now[0] - 1_000,
+            "expires_at_epoch_ms": self.now[0] + 60_000,
+            "transport_certificate_sha256": self.fingerprint,
+            "consent_public_key_spki_der": base64.urlsafe_b64encode(
+                self.consent_public_der
+            ).rstrip(b"=").decode("ascii"),
+            "consent_public_key_sha256": hashlib.sha256(
+                self.consent_public_der
+            ).hexdigest(),
+        }
+        envelope = json.dumps(
+            {
+                "payload": payload,
+                "signature": base64.urlsafe_b64encode(
+                    authority.sign(_canonical_payload(payload))
+                ).rstrip(b"=").decode("ascii"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        registry.apply_signed_enrollment(envelope, now_epoch_ms=self.now[0])
+        adapter = OwnerConsentTlsAdapter(
+            server_context=self.server_context,
+            transport_registry=registry,
+            consent_registry=registry,
+            clock_ms=lambda: self.now[0],
+            monotonic_ns=lambda: self.monotonic_now[0],
+            session_id_factory=lambda size: "c" * (size * 2),
+            nonce_factory=lambda size: "d" * (size * 2),
+        )
+        return authority, registry, adapter
+
+    def _signed_revoke_statement(self, authority):
+        payload = {
+            "schema": SCHEMA_NAME,
+            "version": 1,
+            "operation": "revoke",
+            "authority_key_id": "test-authority",
+            "enrollment_id": "final-admission-revoke-2",
+            "owner_id": "owner-1",
+            "device_id": "pixel9pro-1",
+            "credential_generation": 2,
+            "issued_at_epoch_ms": self.now[0] - 1_000,
+            "expires_at_epoch_ms": self.now[0] + 60_000,
+            "transport_certificate_sha256": self.fingerprint,
+            "consent_public_key_spki_der": None,
+            "consent_public_key_sha256": hashlib.sha256(
+                self.consent_public_der
+            ).hexdigest(),
+        }
+        return json.dumps(
+            {
+                "payload": payload,
+                "signature": base64.urlsafe_b64encode(
+                    authority.sign(_canonical_payload(payload))
+                ).rstrip(b"=").decode("ascii"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+
+    def test_final_dispatch_simulation_revalidates_live_capability_and_records_no_effect(self):
+        server, client = self._pair()
+        try:
+            _authority, registry, adapter = self._sqlite_enrollment_adapter()
+            arguments = {"target_package": "com.example.notes"}
+            issued = adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            minted = adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(minted.issued, minted.reason)
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "final-admission-actions.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            result = adapter.simulate_final_dispatch_admission(
+                server, minted.capability, action="navigate", arguments=arguments,
+                ledger=ledger, enrollment_registry=registry,
+            )
+            self.assertTrue(result.admitted, result.reason)
+            self.assertEqual(result.reason, "SIMULATED_NO_EXECUTION")
+            self.assertFalse(result.device_actions_executed)
+            self.assertEqual(result.state, FAILED_NO_EFFECT)
+            record = ledger.get(result.idempotency_key)
+            self.assertEqual(record.owner_id, "owner-1")
+            self.assertEqual(record.device_id, "pixel9pro-1")
+            self.assertEqual(record.session_id, challenge.session_id)
+            self.assertEqual(record.capability_nonce, challenge.nonce)
+            self.assertEqual(record.action_id, "navigate")
+            self.assertEqual(record.arguments_sha256, challenge.arguments_sha256)
+            self.assertEqual(record.state, FAILED_NO_EFFECT)
+            self.assertEqual(record.outcome_code, "NO_EXECUTOR_CONNECTED")
+            replay = adapter.simulate_final_dispatch_admission(
+                server, minted.capability, action="navigate", arguments=arguments,
+                ledger=ledger, enrollment_registry=registry,
+            )
+            self.assertFalse(replay.admitted)
+            self.assertEqual(replay.reason, "CAPABILITY_NOT_ACTIVE")
+        finally:
+            server.close()
+            client.close()
+
+    def test_revocation_after_reservation_before_final_claim_cancels_reservation(self):
+        server, client = self._pair()
+        try:
+            authority, registry, adapter = self._sqlite_enrollment_adapter()
+            arguments = {"target_package": "com.example.notes"}
+            issued = adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            minted = adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(minted.issued, minted.reason)
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "revocation-race-actions.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            original_reserve = ledger.reserve
+            revoke = self._signed_revoke_statement(authority)
+
+            def reserve_then_revoke(request):
+                result = original_reserve(request)
+                registry.apply_signed_enrollment(revoke, now_epoch_ms=self.now[0])
+                return result
+
+            with patch.object(ledger, "reserve", side_effect=reserve_then_revoke):
+                result = adapter.simulate_final_dispatch_admission(
+                    server, minted.capability, action="navigate", arguments=arguments,
+                    ledger=ledger, enrollment_registry=registry,
+                )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "DEVICE_NOT_ACTIVE")
+            self.assertEqual(result.state, CANCELLED)
+            self.assertEqual(ledger.get(result.idempotency_key).state, CANCELLED)
+        finally:
+            server.close()
+            client.close()
+
+    def test_capability_expiry_after_reservation_cancels_before_claim(self):
+        server, client = self._pair()
+        try:
+            _authority, registry, adapter = self._sqlite_enrollment_adapter()
+            arguments = {"target_package": "com.example.notes"}
+            issued = adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            minted = adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(minted.issued, minted.reason)
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "expiry-race-actions.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            original_reserve = ledger.reserve
+
+            def reserve_then_expire(request):
+                result = original_reserve(request)
+                self.monotonic_now[0] += 31_000_000_000
+                return result
+
+            with patch.object(ledger, "reserve", side_effect=reserve_then_expire):
+                result = adapter.simulate_final_dispatch_admission(
+                    server, minted.capability, action="navigate", arguments=arguments,
+                    ledger=ledger, enrollment_registry=registry,
+                )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "CAPABILITY_EXPIRED")
+            self.assertEqual(result.state, CANCELLED)
+            self.assertEqual(ledger.get(result.idempotency_key).state, CANCELLED)
+        finally:
+            server.close()
+            client.close()
+
+    def test_final_dispatch_simulation_rejects_argument_substitution_before_reservation(self):
+        server, client = self._pair()
+        try:
+            _authority, registry, adapter = self._sqlite_enrollment_adapter()
+            arguments = {"target_package": "com.example.notes"}
+            issued = adapter.issue_challenge(server, action="navigate", arguments=arguments)
+            self.assertTrue(issued.issued, issued.reason)
+            challenge = issued.capability.challenge
+            minted = adapter.verify_and_issue_capability(
+                server, self._signed_envelope(challenge), challenge,
+                arguments=arguments,
+            )
+            self.assertTrue(minted.issued, minted.reason)
+            ledger = DurableActionReservationLedger(
+                os.path.join(self.temp.name, "argument-race-actions.sqlite"),
+                clock_ms=lambda: self.now[0],
+            )
+            result = adapter.simulate_final_dispatch_admission(
+                server, minted.capability, action="navigate",
+                arguments={"target_package": "com.example.other"},
+                ledger=ledger, enrollment_registry=registry,
+            )
+            self.assertFalse(result.admitted)
+            self.assertEqual(result.reason, "ARGUMENTS_MISMATCH")
+        finally:
+            server.close()
+            client.close()
 
 if __name__ == "__main__":
     unittest.main()

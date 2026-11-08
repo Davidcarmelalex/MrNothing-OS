@@ -525,5 +525,32 @@ class DurableActionReservationTests(unittest.TestCase):
             DurableActionReservationLedger(corrupt)
 
 
+    def test_final_admission_guard_rejection_leaves_reservation_reserved(self):
+        reserved = self.reserve()
+        result = self.ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: False,
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "FINAL_ADMISSION_REJECTED")
+        self.assertEqual(result.state, RESERVED)
+        self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
+
+    def test_final_admission_guard_exception_fails_closed(self):
+        reserved = self.reserve()
+
+        def broken_guard():
+            raise RuntimeError("synthetic guard failure")
+
+        result = self.ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=broken_guard,
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "FINAL_ADMISSION_REJECTED")
+        self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
+
 if __name__ == "__main__":
     unittest.main()

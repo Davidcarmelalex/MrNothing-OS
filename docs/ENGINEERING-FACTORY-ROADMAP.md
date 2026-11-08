@@ -1589,3 +1589,10 @@ Implementation: SQLiteOwnerEnrollmentRegistry.hold_active_enrollment_for_dispatc
 Four integration tests cover revocation-before-claim, rotation-before-claim, a real two-thread claim-versus-revocation lock ordering, and enrollment-store outage. The claim remains storage-only. It does not validate the live TLS socket, monotonic adapter session or Android permission state, and it does not execute an action. This is not a distributed transaction or multi-host guarantee. Exact-head CI and independent review are pending at submission.
 
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Independent human security/accessibility review remains pending.
+
+
+## AGENT-005M — live-capability final-admission simulation (2026-11-08)
+
+The AGENT-005L lock-coupled enrollment/dispatch claim is now callable through a no-side-effect adapter simulation that revalidates the retained verifier-created capability under both database writer locks. The final guard checks the exact live TLS socket/session, monotonic session and capability deadlines, current paired enrollment, transport certificate fingerprint, credential generation, consent-key digest, action and canonical arguments digest. A revocation committed after reservation but before the final claim cancels the reservation; capability expiry after reservation also cancels before claim. The simulation immediately records `FAILED_NO_EFFECT/NO_EXECUTOR_CONNECTED` after a successful storage claim.
+
+This is not a production coordinator: the final guard is a trusted in-process callback; the prototype performs no Android permission probe and never executes an action. Direct storage-level `claim_dispatch` remains a storage primitive and must not be treated as authorization. The exact same SQLite registry object is required for transport and consent lookup, with a separate action ledger. Independent human security review remains required before any executor integration. Keep M3 PARTIAL and M6 IN PROGRESS; no milestone is complete.

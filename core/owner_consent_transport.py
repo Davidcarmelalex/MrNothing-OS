@@ -30,6 +30,9 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 from core.action_reservation import (
     ActionReservationRequest,
     DurableActionReservationLedger,
+    CANCELLED,
+    DISPATCH_STARTED,
+    FAILED_NO_EFFECT,
     RESERVED,
 )
 from core.owner_action_arguments import action_arguments_sha256
@@ -97,6 +100,16 @@ class ActionReservationAdmissionResult:
     reason: str
     idempotency_key: str | None = None
     state: str | None = None
+
+@dataclass(frozen=True)
+class ActionDispatchSimulationResult:
+    """No-side-effect final-admission prototype result."""
+
+    admitted: bool
+    reason: str
+    idempotency_key: str | None = None
+    state: str | None = None
+    device_actions_executed: bool = False
 
 
 @dataclass(frozen=True)
@@ -1015,3 +1028,180 @@ class OwnerConsentTlsAdapter:
             return ActionReservationAdmissionResult(
                 False, decision.reason, key, decision.state
             )
+
+    def simulate_final_dispatch_admission(
+        self,
+        peer: ssl.SSLSocket,
+        capability: VerifiedOwnerActionCapability,
+        *,
+        action: str,
+        arguments: dict,
+        ledger: DurableActionReservationLedger,
+        enrollment_registry,
+    ) -> ActionDispatchSimulationResult:
+        """Exercise final live-capability + lock-coupled admission without effects.
+
+        This is a testable M3 coordinator prototype, not an executor. It accepts
+        only this adapter's retained capability, the exact same durable registry
+        used for both TLS and consent lookups, and a distinct reservation ledger.
+        It reserves, revalidates the live socket/session/capability under both
+        database writer locks, claims once, and immediately records
+        FAILED_NO_EFFECT/NO_EXECUTOR_CONNECTED. It never calls Android, shell,
+        a listener, or any platform API.
+        """
+        if type(peer) is not ssl.SSLSocket:
+            return ActionDispatchSimulationResult(False, "INVALID_TLS_SOCKET")
+        if type(capability) is not VerifiedOwnerActionCapability:
+            return ActionDispatchSimulationResult(False, "INVALID_CAPABILITY")
+        if type(action) is not str:
+            return ActionDispatchSimulationResult(False, "ACTION_MISMATCH")
+        if type(arguments) is not dict:
+            return ActionDispatchSimulationResult(False, "INVALID_ARGUMENTS")
+        if type(ledger) is not DurableActionReservationLedger:
+            return ActionDispatchSimulationResult(False, "INVALID_RESERVATION_LEDGER")
+
+        from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
+        if (
+            type(enrollment_registry) is not SQLiteOwnerEnrollmentRegistry
+            or self._consent_registry is not enrollment_registry
+            or self._transport_registry is not enrollment_registry
+        ):
+            return ActionDispatchSimulationResult(
+                False, "TRUSTED_REGISTRY_MISMATCH"
+            )
+
+        with self._lock:
+            context, error = self._validated_action_capability_locked(
+                peer, capability, action=action, arguments=arguments
+            )
+            if error is not None:
+                return ActionDispatchSimulationResult(False, error)
+            state, capability_key, record, issued = context
+            request = ActionReservationRequest(
+                owner_id=record.owner_id,
+                device_id=record.device_id,
+                session_id=record.session_id,
+                capability_nonce=record.nonce,
+                protocol_version=record.protocol_version,
+                action_id=record.action,
+                arguments_sha256=record.arguments_sha256,
+                issued_at_epoch_ms=issued.challenge.issued_at_epoch_ms,
+                expires_at_epoch_ms=issued.challenge.expires_at_epoch_ms,
+                transport_certificate_sha256=record.transport_certificate_sha256,
+                credential_generation=record.credential_generation,
+                consent_public_key_sha256=record.consent_public_key_sha256,
+            )
+            try:
+                reservation = ledger.reserve(request)
+            except Exception:
+                return ActionDispatchSimulationResult(
+                    False, "RESERVATION_STORE_UNAVAILABLE"
+                )
+            key = reservation.idempotency_key or None
+            reservation_ready = (
+                reservation.applied
+                and reservation.created
+                and reservation.state == RESERVED
+            ) or (
+                reservation.reason == "IDEMPOTENT_REPLAY"
+                and reservation.state == RESERVED
+            )
+            if not reservation_ready:
+                if reservation.reason in {
+                    "CAPABILITY_NOT_YET_VALID",
+                    "RESERVATION_STORE_UNAVAILABLE",
+                }:
+                    return ActionDispatchSimulationResult(
+                        False, reservation.reason, key, reservation.state
+                    )
+                state.capabilities.pop(capability_key, None)
+                state.challenges.pop(record.nonce, None)
+                return ActionDispatchSimulationResult(
+                    False, reservation.reason, key, reservation.state
+                )
+
+            guard_failure: list[str | None] = [None]
+
+            def final_guard() -> bool:
+                fresh_context, fresh_error = self._validated_action_capability_locked(
+                    peer, capability, action=action, arguments=arguments
+                )
+                if fresh_error is not None:
+                    guard_failure[0] = fresh_error
+                    return False
+                if (
+                    fresh_context[0] is not state
+                    or fresh_context[1] != capability_key
+                    or fresh_context[2] is not record
+                ):
+                    guard_failure[0] = "CAPABILITY_CONTEXT_CHANGED"
+                    return False
+                return True
+
+            try:
+                claim = ledger.claim_dispatch(
+                    key,
+                    enrollment_registry=enrollment_registry,
+                    final_admission_guard=final_guard,
+                )
+            except Exception:
+                return ActionDispatchSimulationResult(
+                    False, "FINAL_ADMISSION_UNCERTAIN", key, RESERVED
+                )
+
+            if not claim.applied:
+                reason = guard_failure[0] or claim.reason
+                retryable = {
+                    "RESERVATION_STORE_UNAVAILABLE",
+                    "ENROLLMENT_REGISTRY_UNAVAILABLE",
+                    "TRANSPORT_REGISTRY_UNAVAILABLE",
+                    "INVALID_CLOCK",
+                    "CAPABILITY_NOT_YET_VALID",
+                }
+                if reason in retryable or claim.reason in retryable:
+                    return ActionDispatchSimulationResult(
+                        False, reason, key, claim.state or RESERVED
+                    )
+
+                state.capabilities.pop(capability_key, None)
+                state.challenges.pop(record.nonce, None)
+                if claim.state == FAILED_NO_EFFECT:
+                    return ActionDispatchSimulationResult(
+                        False, reason, key, FAILED_NO_EFFECT
+                    )
+                try:
+                    cancellation = ledger.cancel_before_dispatch(key)
+                except Exception:
+                    return ActionDispatchSimulationResult(
+                        False, "RESERVATION_RECONCILIATION_REQUIRED", key, None
+                    )
+                if cancellation.applied or cancellation.state == CANCELLED:
+                    return ActionDispatchSimulationResult(
+                        False, reason, key, CANCELLED
+                    )
+                return ActionDispatchSimulationResult(
+                    False, "RESERVATION_RECONCILIATION_REQUIRED",
+                    key, cancellation.state,
+                )
+
+            state.capabilities.pop(capability_key, None)
+            state.challenges.pop(record.nonce, None)
+            try:
+                outcome = ledger.record_outcome(
+                    key,
+                    state=FAILED_NO_EFFECT,
+                    outcome_code="NO_EXECUTOR_CONNECTED",
+                )
+            except Exception:
+                return ActionDispatchSimulationResult(
+                    False, "NO_EXECUTOR_OUTCOME_UNCERTAIN", key, DISPATCH_STARTED
+                )
+            if not outcome.applied and outcome.reason != "OUTCOME_ALREADY_RECORDED":
+                return ActionDispatchSimulationResult(
+                    False, "NO_EXECUTOR_OUTCOME_UNCERTAIN",
+                    key, outcome.state or DISPATCH_STARTED,
+                )
+            return ActionDispatchSimulationResult(
+                True, "SIMULATED_NO_EXECUTION", key, FAILED_NO_EFFECT, False
+            )
+
