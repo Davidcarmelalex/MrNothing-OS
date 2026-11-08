@@ -880,3 +880,8 @@ At the starting head, exact-head Phase 1 push/PR, CI-003 push/PR and QA-005 emul
 AGENT-005P makes the live final-admission callback mandatory for every durable dispatch claim. The guard is required as a keyword-only argument, must be callable and must return the exact Boolean True; omitted, None, false, non-Boolean or raising guards cannot transition RESERVED to DISPATCH_STARTED. It runs under both database writer locks immediately before the signed-time check and claim. Storage-only tests pass an explicit test-only guard. This does not authenticate arbitrary callbacks inside the same process; only trusted adapter code may call the API, and agent/request data must never provide the guard.
 
 No production Android code, permission, service, listener, dispatcher or executor was connected. CommandRouter remains fail-closed. No physical Pixel 9 Pro, StrongBox hardware, spoken TalkBack, signed production release, deployment or human security approval is claimed.
+
+
+## Verification correction — invalid-guard response assertion
+
+The first exact-head Phase 1 push run (42438951780) ran 761 tests and found one test-only assertion mismatch. The implementation correctly rejects an explicit non-callable guard before reading the reservation row, so the returned decision has state null; the durable row itself remains RESERVED. The test incorrectly expected the decision's state field to contain RESERVED. The assertion now checks a null decision state and separately reads the ledger to prove the row remains RESERVED. No implementation change was needed. The failed run is retained in Actions history; the corrected head must pass a fresh exact-head run.

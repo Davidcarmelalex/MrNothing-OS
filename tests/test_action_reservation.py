@@ -573,7 +573,7 @@ class DurableActionReservationTests(unittest.TestCase):
         )
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "INVALID_FINAL_ADMISSION_GUARD")
-        self.assertEqual(result.state, RESERVED)
+        self.assertIsNone(result.state)  # Rejected before loading the reservation row.
         self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
 
     def test_dispatch_claim_rejects_non_boolean_final_admission_result(self):

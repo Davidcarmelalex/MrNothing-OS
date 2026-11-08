@@ -51,3 +51,8 @@ Exact-head GitHub Actions must pass after the commit: Phase 1 push/PR (Python su
 Author-side diff review only; independent human security review remains PENDING. M1 foundation, M2 OS interface and M6 security/privacy remain IN PROGRESS; M3 remains PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED pending physical Pixel 9 Pro evidence; M8 BLOCKED. No milestone is complete.
 
 **Next task:** independent security review of the mandatory final-admission boundary and its callback trust assumptions, followed by a no-op Android admission integration only after approval. Keep the executor disconnected.
+
+
+## Verification correction — invalid-guard response assertion
+
+The first exact-head Phase 1 push run (42438951780) ran 761 tests and found one test-only assertion mismatch. The implementation correctly rejects an explicit non-callable guard before reading the reservation row, so the returned decision has state null; the durable row itself remains RESERVED. The test incorrectly expected the decision's state field to contain RESERVED. The assertion now checks a null decision state and separately reads the ledger to prove the row remains RESERVED. No implementation change was needed. The failed run is retained in Actions history; the corrected head must pass a fresh exact-head run.

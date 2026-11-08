@@ -1639,3 +1639,8 @@ The exact-head audit found that DurableActionReservationLedger.claim_dispatch ac
 **Change:** the keyword-only final_admission_guard is now required. Explicit non-callable/None values are rejected; only the exact Boolean True is accepted; exceptions and non-Boolean truthy values fail closed. The guard is invoked while both the enrollment and reservation database writer locks are held, before the final signed-time check and state transition. Storage-only tests now pass an explicit test guard and a regression test proves omission cannot claim.
 
 **Boundary:** a callback is still trusted in-process code, not a cryptographic capability or protection against hostile code already executing in the host process. Only the reviewed TLS adapter may provide the production guard; it must never come from an agent, LLM or request. No Android executor, listener, permission grant or device action is connected. Independent human security review remains pending.
+
+
+## Verification correction — invalid-guard response assertion
+
+The first exact-head Phase 1 push run (42438951780) ran 761 tests and found one test-only assertion mismatch. The implementation correctly rejects an explicit non-callable guard before reading the reservation row, so the returned decision has state null; the durable row itself remains RESERVED. The test incorrectly expected the decision's state field to contain RESERVED. The assertion now checks a null decision state and separately reads the ledger to prove the row remains RESERVED. No implementation change was needed. The failed run is retained in Actions history; the corrected head must pass a fresh exact-head run.
