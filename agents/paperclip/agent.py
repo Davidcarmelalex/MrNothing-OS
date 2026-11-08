@@ -202,7 +202,7 @@ def main():
     print(f"\n[PAPERCLIP v{VERSION}] Local AI Reasoning Agent")
     model = check_model()
     if model:
-        print(f"Model loaded: {model.name}")
+        print("Local GGUF model detected; filename hidden.")
     else:
         print(f"No model found. Place a GGUF model in: {MODELS_DIR}")
         print("Add only a model you have independently verified; PaperClip never downloads model files.")
