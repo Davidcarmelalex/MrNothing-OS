@@ -54,3 +54,17 @@ Acceptance assertions:
 
 This extends the existing thread/connection concurrency tests to separate OS processes on one host. It does **not** establish multi-host/distributed locking, power-loss durability, or external side-effect semantics. The final-admission callback in this storage-only test is a test guard, not a production authorization capability. No production source, Android permission, executor, shell bridge, or device behavior changes.
 
+
+
+## AGENT-005T — process death between the two store commits (2026-11-08)
+
+The new test_process_death_after_ledger_commit_before_enrollment_release_preserves_claim regression starts a separate Python interpreter and pauses it immediately after SQLite has successfully committed DISPATCH_STARTED, while the enrollment writer transaction is still open and before claim_dispatch can return. The parent observes the post-commit marker, terminates the child process, then reopens both stores.
+
+Acceptance assertions:
+
+- The reservation ledger recovers with DISPATCH_STARTED after the child is terminated.
+- The enrollment database is readable and still reports the matching owner/device generation as active; process death released its writer lock.
+- A duplicate claim is rejected as ALREADY_CLAIMED.
+- No executor, Android API, shell, network or external side effect is invoked.
+
+This tests one same-host process-death boundary between the two SQLite commits. It is not a power-cut, filesystem-corruption, distributed transaction or hardware durability test. The reservation remains non-replayable; no automatic retry is introduced.
