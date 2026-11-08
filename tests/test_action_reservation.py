@@ -33,6 +33,37 @@ HEX_B = "b" * 64
 NONCE = "1" * 32
 
 
+class _CommitAcknowledgementLostConnection:
+    """Test proxy: commit durably, then simulate losing the caller acknowledgement."""
+
+    def __init__(self, connection):
+        self._connection = connection
+        self._lost = False
+
+    @property
+    def in_transaction(self):
+        return self._connection.in_transaction
+
+    def execute(self, sql, *args):
+        if (
+            type(sql) is str
+            and sql.strip().upper() == "COMMIT"
+            and not self._lost
+        ):
+            self._lost = True
+            self._connection.execute(sql, *args)
+            raise sqlite3.OperationalError(
+                "injected loss of COMMIT acknowledgement after durable commit"
+            )
+        return self._connection.execute(sql, *args)
+
+    def close(self):
+        self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
 class DurableActionReservationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
