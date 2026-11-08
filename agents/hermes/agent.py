@@ -97,7 +97,7 @@ def _confirm_shell_command(command):
     return response == expected
 
 
-def execute_task(task, *, confirm_shell=None):
+def execute_task(task):
     if type(task) is not dict:
         log("Rejected invalid task record")
         return False
@@ -111,11 +111,8 @@ def execute_task(task, *, confirm_shell=None):
         if argv is None:
             log("Blocked invalid command or shell-interpreter invocation")
             return False
-        if not callable(confirm_shell):
-            log("Blocked shell task: interactive owner approval is required")
-            return False
         try:
-            approved = confirm_shell(command)
+            approved = _confirm_shell_command(command)
         except Exception:
             log("Blocked shell task: confirmation could not be obtained")
             return False
@@ -225,7 +222,7 @@ def interactive():
                 idx = int(cmd.split()[1])
                 tasks = load_tasks()
                 task = tasks["scheduled"][idx]
-                execute_task(task, confirm_shell=_confirm_shell_command)
+                execute_task(task)
             elif cmd == "clear":
                 tasks = load_tasks()
                 tasks["completed"] = []

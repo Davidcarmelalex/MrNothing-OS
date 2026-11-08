@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import inspect
 import unittest
 from unittest.mock import Mock, patch
 import subprocess
@@ -12,44 +13,32 @@ class StopScheduler(Exception):
 
 
 class LegacyHermesApprovalTests(unittest.TestCase):
-    def test_shell_task_is_blocked_without_interactive_approval(self):
-        with patch.object(agent, "log"), patch.object(agent.subprocess, "run") as run:
-            self.assertFalse(agent.execute_task({
-                "type": "shell", "command": "echo hello"
-            }))
+    def test_shell_task_is_blocked_when_interactive_input_is_unavailable(self):
+        with patch.object(agent, "log"), patch("builtins.input", side_effect=EOFError), patch.object(agent.subprocess, "run") as run:
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "echo hello"}))
         run.assert_not_called()
 
     def test_shell_task_is_blocked_when_owner_declines(self):
-        confirm = Mock(return_value=False)
-        with patch.object(agent, "log"), patch.object(agent.subprocess, "run") as run:
-            self.assertFalse(agent.execute_task(
-                {"type": "shell", "command": "echo hello"},
-                confirm_shell=confirm,
-            ))
+        with patch.object(agent, "log"), patch.object(agent, "_confirm_shell_command", return_value=False) as confirm, patch.object(agent.subprocess, "run") as run:
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "echo hello"}))
         confirm.assert_called_once_with("echo hello")
         run.assert_not_called()
 
-    def test_shell_task_requires_literal_true_from_confirmation(self):
-        confirm = Mock(return_value=1)
-        with patch.object(agent, "log"), patch.object(agent.subprocess, "run") as run:
-            self.assertFalse(agent.execute_task(
-                {"type": "shell", "command": "echo hello"},
-                confirm_shell=confirm,
-            ))
+    def test_shell_task_requires_literal_true_from_internal_confirmation(self):
+        with patch.object(agent, "log"), patch.object(agent, "_confirm_shell_command", return_value=1) as confirm, patch.object(agent.subprocess, "run") as run:
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "echo hello"}))
+        confirm.assert_called_once_with("echo hello")
         run.assert_not_called()
 
     def test_approved_command_uses_argv_without_shell_and_has_timeout(self):
         fake_result = Mock(returncode=0, stdout="ok", stderr="")
-        confirm = Mock(return_value=True)
         with (
             patch.object(agent, "log"),
+            patch.object(agent, "_confirm_shell_command", return_value=True) as confirm,
             patch.object(agent, "notify"),
             patch.object(agent.subprocess, "run", return_value=fake_result) as run,
         ):
-            self.assertTrue(agent.execute_task(
-                {"type": "shell", "command": "echo hello"},
-                confirm_shell=confirm,
-            ))
+            self.assertTrue(agent.execute_task({"type": "shell", "command": "echo hello"}))
         args, kwargs = run.call_args
         self.assertEqual(args[0], ["echo", "hello"])
         self.assertIs(kwargs["shell"], False)
@@ -57,12 +46,8 @@ class LegacyHermesApprovalTests(unittest.TestCase):
         confirm.assert_called_once_with("echo hello")
 
     def test_shell_interpreter_is_rejected_before_confirmation(self):
-        confirm = Mock(return_value=True)
-        with patch.object(agent, "log"), patch.object(agent.subprocess, "run") as run:
-            self.assertFalse(agent.execute_task(
-                {"type": "shell", "command": "/system/bin/sh -c id"},
-                confirm_shell=confirm,
-            ))
+        with patch.object(agent, "log"), patch.object(agent, "_confirm_shell_command") as confirm, patch.object(agent.subprocess, "run") as run:
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "/system/bin/sh -c id"}))
         confirm.assert_not_called()
         run.assert_not_called()
 
@@ -77,24 +62,19 @@ class LegacyHermesApprovalTests(unittest.TestCase):
         self.assertIsNone(agent._parse_shell_argv("echo 'unfinished"))
 
     def test_timeout_fails_closed(self):
-        confirm = Mock(return_value=True)
         with (
             patch.object(agent, "log"),
+            patch.object(agent, "_confirm_shell_command", return_value=True),
             patch.object(
                 agent.subprocess, "run",
                 side_effect=subprocess.TimeoutExpired(cmd=["echo"], timeout=30),
             ),
         ):
-            self.assertFalse(agent.execute_task(
-                {"type": "shell", "command": "echo hello"},
-                confirm_shell=confirm,
-            ))
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "echo hello"}))
 
     def test_notify_task_remains_available_without_shell_approval(self):
         with patch.object(agent, "log"), patch.object(agent, "notify") as notify:
-            self.assertTrue(agent.execute_task({
-                "type": "notify", "title": "Test", "body": "Ready"
-            }))
+            self.assertTrue(agent.execute_task({"type": "notify", "title": "Test", "body": "Ready"}))
         notify.assert_called_once_with("Test", "Ready")
 
     def test_confirmation_challenge_is_bound_to_exact_command(self):
@@ -104,6 +84,11 @@ class LegacyHermesApprovalTests(unittest.TestCase):
             self.assertTrue(agent._confirm_shell_command(command))
         with patch("builtins.input", return_value="RUN 0000000000"):
             self.assertFalse(agent._confirm_shell_command(command))
+
+    def test_confirmation_exception_fails_closed(self):
+        with patch.object(agent, "_confirm_shell_command", side_effect=RuntimeError("no prompt")), patch.object(agent, "log"), patch.object(agent.subprocess, "run") as run:
+            self.assertFalse(agent.execute_task({"type": "shell", "command": "echo hello"}))
+        run.assert_not_called()
 
     def test_scheduler_defers_due_shell_task_without_executing_it(self):
         tasks = {
@@ -162,6 +147,11 @@ class LegacyHermesApprovalTests(unittest.TestCase):
     def test_invalid_task_record_is_rejected(self):
         with patch.object(agent, "log"):
             self.assertFalse(agent.execute_task([]))
+
+    def test_execute_task_has_no_caller_supplied_confirmation_parameter(self):
+        self.assertEqual(list(inspect.signature(agent.execute_task).parameters), ["task"])
+        source = inspect.getsource(agent.execute_task)
+        self.assertNotIn("confirm_shell=", source)
 
 
 if __name__ == "__main__":
