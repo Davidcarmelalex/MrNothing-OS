@@ -742,6 +742,7 @@ class SQLiteOwnerEnrollmentRegistry:
         db = None
         try:
             db = self._connect()
+            db.execute("PRAGMA query_only=ON")
             db.execute("BEGIN")
             self._validate_schema(db)
             history = db.execute(

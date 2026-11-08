@@ -1097,6 +1097,69 @@ class RegistryTests(unittest.TestCase):
         )
         self.assertFalse(reconciliation.automatic_retry_permitted)
 
+    def test_reconciliation_enforces_sqlite_query_only_before_snapshot(self):
+        envelope = self.statement(enrollment_id="query-only-reconcile")
+        outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        raw_connection = reopened._connect()
+
+        class QueryOnlyProbe:
+            def __init__(self, connection):
+                self.connection = connection
+                self.events = []
+                self.write_was_blocked = False
+
+            @property
+            def in_transaction(self):
+                return self.connection.in_transaction
+
+            def execute(self, sql, parameters=()):
+                self.events.append(sql)
+                cursor = self.connection.execute(sql, parameters)
+                if sql == "PRAGMA query_only=ON":
+                    try:
+                        self.connection.execute(
+                            "UPDATE owner_device SET active=active WHERE device_id=?",
+                            ("pixel-1",),
+                        )
+                    except sqlite3.OperationalError as exc:
+                        if "readonly" not in str(exc).lower():
+                            raise
+                        self.write_was_blocked = True
+                    else:
+                        raise AssertionError("query_only did not block a write")
+                return cursor
+
+            def close(self):
+                self.connection.close()
+
+        probe = QueryOnlyProbe(raw_connection)
+        reopened._connect = lambda: probe
+        reconciliation = reopened.reconcile_outcome_unknown(outcome)
+
+        self.assertEqual(reconciliation.status, "APPLIED")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
+        self.assertTrue(probe.write_was_blocked)
+        self.assertEqual(probe.events[:2], ["PRAGMA query_only=ON", "BEGIN"])
+
+    def test_reconcile_unknown_outcome_rejects_current_row_history_mismatch(self):
+        envelope = self.statement(enrollment_id="current-row-mismatch")
+        outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
+        with sqlite3.connect(self.path) as db:
+            db.execute(
+                "UPDATE owner_device SET transport_certificate_sha256=? WHERE device_id=?",
+                ("0" * 64, "pixel-1"),
+            )
+
+        reconciliation = self.registry.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "UNRESOLVED")
+        self.assertEqual(reconciliation.reason, "CURRENT_STATE_MISMATCH")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
+
 
 if __name__ == "__main__":
     unittest.main()

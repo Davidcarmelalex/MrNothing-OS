@@ -32,11 +32,11 @@ If COMMIT raises while the transaction is still open and ROLLBACK succeeds, the 
    - `UNRESOLVED`: metadata, history/current state or database integrity does not reconcile. Remain fail-closed and require supervised recovery.
 5. Every result has `automatic_retry_permitted=false`. The API never returns permission to resubmit a signed statement.
 
-The API never infers success from an exception message, writes to the registry, retries, or executes an external side effect. It does not protect against a privileged attacker who can replace both the database and its filesystem state; production deployments still require an independently protected monotonic trust anchor and storage review.
+Before opening its read snapshot, reconciliation enables SQLite `PRAGMA query_only=ON`; the connection itself rejects data-changing SQL. A regression probe verifies that an attempted UPDATE is rejected before `BEGIN`. The API never infers success from an exception message, writes to the registry, retries, or executes an external side effect. It does not protect against a privileged attacker who can replace both the database and its filesystem state; production deployments still require an independently protected monotonic trust anchor and storage review.
 
 ## Regression evidence
 
-The test suite covers acknowledgement loss for initial enrollment, rotation and revocation after COMMIT; a pre-COMMIT failure followed by successful rollback; and a failed rollback. Reconciliation tests classify exact committed history as APPLIED, a coherent pre-commit state as NOT_OBSERVED, and mismatched/corrupt state as UNRESOLVED. Every result denies automatic retry. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases.
+The test suite covers acknowledgement loss for initial enrollment, rotation and revocation after COMMIT; a pre-COMMIT failure followed by successful rollback; and a failed rollback. Reconciliation tests classify exact committed history as APPLIED, a coherent pre-commit state as NOT_OBSERVED, and mismatched/corrupt state as UNRESOLVED. They also verify SQLite query-only enforcement and rejection of a current-row/history mismatch. Every result denies automatic retry. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases.
 
 ## Limits
 

@@ -1795,3 +1795,16 @@ AGENT-005ZE changes the CI-003 inventory argument to hash the actual verified ca
 Exact-head CI after this fix remains pending. No Android runtime or device-control source changed. No physical Pixel 9 Pro was tested. Independent human security review remains pending; no milestone is complete; the real executor remains disconnected.
 
 Next task: obtain independent security review of SEC-021A/B/C, SEC-022 and the final-admission callback boundary before any executor integration.
+
+
+## AGENT-005ZF — enforce SQLite query-only reconciliation (2026-11-08)
+
+Audit baseline: authorized branch `feat/phase1-agentic-phone` at `9bdcb841338dc78593c8cd8d2bf210d660c65c67`; recursive tree contained 377 entries and was not truncated; latest 20 branch commits inspected; `main...feat/phase1-agentic-phone` was 332 commits ahead and zero behind. Six open PRs (#1 and #3–#7) were audited. PR #1 remains open/draft against main and has no submitted reviews or inline review threads. `PROJECT-ADAPTER.md` and this roadmap exist; repository `SKILL.md` is absent; the upstream shared factory package remains unverified and is not claimed installed.
+
+The latest exact-head workflows at the audit baseline passed: Phase 1 push [42473218565](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42473218565) and PR [42473221997](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42473221997); CI-003 push [42473218568](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42473218568) and PR [42473221917](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42473221917); QA-005 PR [42473222104](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42473222104). The Phase 1 Python job reported 790 passing tests; Android unit/build, dependency-verification negative control, independent unsigned-build comparison and disposable-emulator workflow passed. QA-011/012 remain preflight/structural checks, not spoken TalkBack acceptance.
+
+Author-side adversarial review of AGENT-005Y found that `reconcile_outcome_unknown` issued only read statements but opened its SQLite connection in read-write mode. AGENT-005ZF now enables `PRAGMA query_only=ON` before starting the read snapshot. Two regressions prove (1) SQLite itself rejects a write attempt before `BEGIN`, while reconciliation still returns APPLIED, and (2) an exact history row paired with a divergent current device row returns UNRESOLVED. All outcomes continue to deny automatic retry.
+
+This is defense in depth for the local reconciliation API, not an independent security approval. The database-replacement threat assumption and SEC-021A/B/C trusted final-admission callback boundary still require independent review. The executor remains disconnected. No physical Pixel 9 Pro was tested. No milestone is complete.
+
+Next task: independent security review of SEC-021A/B/C and SEC-022/AGENT-005Y/005ZF, including transaction snapshot semantics, database replacement limits and final-admission callback provenance. Keep the real executor disconnected until approval.
