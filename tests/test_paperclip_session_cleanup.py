@@ -78,5 +78,23 @@ class PaperclipSessionCleanupTests(unittest.TestCase):
             AGENT.save_memory({"session_opt_in": True, "conversations": [], "facts": []})
 
 
+    def test_model_filename_is_hidden_in_startup_banner(self):
+        memory = AGENT.load_memory()
+        sensitive_name = "synthetic-private-owner-notes.gguf"
+        with tempfile.TemporaryDirectory() as temporary:
+            missing_legacy = Path(temporary) / "memory.json"
+            with (
+                patch.object(AGENT, "load_memory", return_value=memory),
+                patch.object(AGENT, "MEMORY_FILE", missing_legacy),
+                patch.object(AGENT, "check_model", return_value=Path(sensitive_name)),
+                patch.object(AGENT, "log"),
+                patch("builtins.input", return_value="exit"),
+                patch("builtins.print") as output,
+            ):
+                AGENT.main()
+        self.assertNotIn(sensitive_name, repr(output.call_args_list))
+        self.assertIs(memory["session_opt_in"], False)
+
+
 if __name__ == "__main__":
     unittest.main()
