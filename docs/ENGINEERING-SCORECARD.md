@@ -1,6 +1,27 @@
+## Latest repository verification — AGENT-006B (2026-11-08)
+
+**Repository head:** `415ac44dec4f68562a8b037ea0964e6f0f5ff89b` on `feat/phase1-agentic-phone`. The complete recursive tree contains **377 entries** and is not truncated. The branch is **337 commits ahead of main and zero behind**. The latest 20 commits were inspected; the commits after source/test baseline `3fd85d22` are documentation-only. Six PRs (#1 and #3–#7) are open. PR #1 remains draft against main (337 commits, 313 changed files); PRs #3–#7 are separate draft branches. PR #1 has **zero submitted reviews and zero inline review threads**. No other PR branch was modified.
+
+**Factory instructions:** `PROJECT-ADAPTER.md` exists. No repository `SKILL.md` exists in the audited tree. The upstream shared engineering-factory package remains unverified and is not claimed installed.
+
+**Current architecture reality:** experimental Kotlin Android HOME launcher, app catalog/diagnostics and owner-facing trust ceremony, alongside separate Python/Termux HERMES policy/orchestration prototypes. This is not a replacement Android OS image, custom kernel, verified Pixel firmware distribution or production autonomous executor. Android CommandRouter remains fail-closed; no production executor, listener, privileged action, signed OTA or device-control bridge is connected.
+
+### Exact-head CI at `415ac44d`
+
+- Phase 1 push [42481269680](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481269680) and PR [42481273565](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273565) completed successfully. Both Python policy jobs explicitly reported **792 tests passed**. Android Gradle `:app:testDebugUnitTest`, `:app:assembleDebug`, repeat debug-APK byte comparison, strict dependency verification and modified-dependency negative control passed; the Android jobs completed successfully.
+- CI-003 push [42481269679](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481269679) and PR [42481273563](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273563) completed successfully. Independent runners produced byte-identical unsigned release APKs: **7,867,868 bytes**, 21 ZIP entries, SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; normalized-entry SHA-256 `37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462`. The scoped build-environment inventory contains **1,260 components** and explicitly excludes full hosted-runner image coverage. Provenance reports `reproducible=true`, `release_ready=false`.
+- QA-005 exact-head PR run [42481273606](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273606) completed successfully on a disposable Android 15/API 35 x86_64 emulator. The job log reports the 15-test instrumentation suite and progress lines through 28/30 with zero failed/zero skipped; the fetched log does not contain a final 30/30 aggregate line, so this scorecard does **not** claim 30/30 instrumentation completion. QA-006 large-text, QA-007/008 HOME consent, QA-009 stock-launcher recovery, QA-010 keyboard focus, QA-013 insecure enrollment denial, QA-020B2 owner trust UI cancellation/no state change and QA-020B3 credential prompt checks passed. QA-011 reports `blocked_service_disabled`; QA-012 is structural semantics only. **Spoken TalkBack acceptance is not established.**
+- These CI runs do not establish physical Pixel 9 Pro compatibility, StrongBox hardware behavior, signed release/OTA, power-loss durability, independent security approval or production readiness.
+
+**Current security gate:** SEC-021A/B/C and SEC-022/AGENT-005Y/005ZF still require an independent reviewer to challenge lock ordering, final-admission callback provenance, transaction/reconciliation semantics, database replacement/rollback assumptions and fail-closed recovery. Author-side documentation or tests are not independent approval. Keep the real executor disconnected until the review record identifies reviewer, date, reviewed SHA, findings and disposition.
+
+**Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED on authorized physical Pixel 9 Pro validation; M8 BLOCKED. **No milestone is COMPLETE.** No percentage is inferred from CI.
+
+---
+
 # Engineering scorecard — evidence-based
 
-## Current verified snapshot — 2026-11-08
+## Previous source/test snapshot — 2026-11-08 (AGENT-006A baseline)
 
 **Source/test baseline:** `3fd85d229debc361ddece0e9cf2aeec567e104cd` on `feat/phase1-agentic-phone`. Current branch comparison: 333 commits ahead of `main`, zero behind. The full recursive tree has 377 entries. Six PRs (#1 and #3–#7) are open; PR #1 remains draft with no independent review submissions or inline review threads.
 
