@@ -53,7 +53,7 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
                 "  - uses: actions/setup-python@" + "3" * 40,
                 "  - uses: actions/upload-artifact@" + "4" * 40,
                 "  - uses: actions/download-artifact@" + "5" * 40,
-                f'    run: echo "{self.gradle_sha} $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum --check',
+                f'    run: ci003_artifacts.py provenance --gradle-sha256 "{self.gradle_sha}"',
                 '    run: sdkmanager "platforms;android-35" "build-tools;35.0.0"',
             ]) + "\n",
             encoding="utf-8",
@@ -208,6 +208,18 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         self.assertEqual(result["kotlin_version"], "2.0.21")
         self.assertEqual(result["compile_sdk"], "35")
         self.assertEqual(result["gradle_sha256_expected"], self.gradle_sha)
+
+    def test_gradle_inputs_reject_missing_provenance_checksum(self):
+        workflow = self.workflow.read_text(encoding="utf-8").replace(
+            f'--gradle-sha256 "{self.gradle_sha}"',
+            "",
+        )
+        with self.assertRaisesRegex(ValueError, "does not pin a Gradle distribution SHA-256"):
+            parse_gradle_inputs(
+                self.root_gradle.read_text(encoding="utf-8"),
+                self.app_gradle.read_text(encoding="utf-8"),
+                workflow,
+            )
 
     def test_full_inventory_and_spdx_are_deterministic(self):
         inventory = collect_inventory(self.args)

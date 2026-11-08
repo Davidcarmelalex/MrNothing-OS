@@ -13,7 +13,7 @@ The inventory includes:
 - Installed Debian/Ubuntu packages and versions from `dpkg-query`.
 - Installed Python packages and versions from `pip list --format=json`.
 - Installed Android SDK packages and revisions from `sdkmanager --list_installed`, with SHA-256 fingerprints of available package `source.properties` files.
-- The downloaded Gradle distribution version and SHA-256, checked against the workflow's pinned digest.
+- The downloaded Gradle distribution version and SHA-256, checked against the workflow's `--gradle-sha256` provenance pin. A static regression gate requires that value to match the shared downloader's allowlisted version/hash.
 - Actual JDK vendor/runtime properties and Python runtime version.
 - Android Gradle Plugin and Kotlin Gradle plugin versions read from the checked-in Gradle declarations.
 - Compile SDK and workflow-pinned Android platform/build-tools packages.
@@ -46,7 +46,7 @@ The release remains unsigned and `release_ready=false`. No signing key, producti
 
 - The Phase 1 Python-policy and Android jobs pass on push and PR.
 - Both CI-003 builders produce valid inventory and SPDX documents.
-- The Gradle distribution digest matches the checked-in workflow pin.
+- The Gradle distribution digest matches the checked-in provenance pin, and the static gate proves it matches the shared checksum-verifying downloader.
 - Required SDK packages and actual JDK/Python/Gradle/plugin versions are captured.
 - Every CI-003 GitHub Action is pinned to a full commit SHA.
 - The mutable-action negative control is rejected.
@@ -72,3 +72,10 @@ The first submitted CI-006A commit over-escaped the Python date-regex and JSON f
 ### CI-006A assertion correction
 
 The first exact-head CI-006A run executed 495 tests and exposed one stale assertion message in the existing tampered-inventory test. The canonical SPDX validator rejected the modified inventory before the old namespace/hash-specific assertion text, so the implementation failed closed but the test expected only the previous wording. The assertion now accepts the new canonical-document rejection message as well. No production code or policy was weakened.
+
+
+### CI-006B — shared Gradle downloader checksum binding
+
+CI-004 replaced the inline Gradle ZIP `curl`/checksum command with the shared `scripts/download_gradle_distribution.sh` helper. CI-006 now reads the Gradle digest from the CI-003 provenance argument `--gradle-sha256`, rather than requiring the removed inline `echo ... | sha256sum` command. The CI-003 static gate requires the provenance digest to equal the helper's hard-coded pinned digest. The build-environment inventory still independently hashes the downloaded ZIP and rejects any mismatch.
+
+This keeps the downloader as the acquisition/checksum enforcement path while preserving an explicit provenance value that binds the resulting SBOM to the same expected archive digest. No dependency verification metadata or checksum was weakened.

@@ -206,7 +206,7 @@ def parse_gradle_inputs(root_gradle: str, app_gradle: str, workflow: str) -> dic
     if not compile_match:
         raise ValueError("app Gradle file does not declare a numeric compileSdk")
     checksum_match = re.search(
-        r'echo\s+"([0-9a-f]{64})\s+\$RUNNER_TEMP/gradle-[^"]+-bin\.zip"\s*\|\s*sha256sum\s+--check',
+        r'--gradle-sha256\s+"([0-9a-f]{64})"',
         workflow,
     )
     if not checksum_match:

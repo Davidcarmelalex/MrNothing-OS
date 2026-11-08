@@ -88,6 +88,10 @@ class CI003WorkflowGateTests(unittest.TestCase):
         self.assertIn('for url in "${urls[@]}"', self.downloader)
         self.assertNotRegex(self.downloader, r"(?i)--insecure|--location-trusted")
 
+    def test_provenance_gradle_digest_matches_shared_downloader_pin(self):
+        self.assertIn(f'--gradle-sha256 "{EXPECTED_GRADLE_SHA256}"', self.workflow)
+        self.assertIn(EXPECTED_GRADLE_SHA256, self.downloader)
+
     def test_downloader_rejects_unpinned_versions_without_network(self):
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "gradle.zip"

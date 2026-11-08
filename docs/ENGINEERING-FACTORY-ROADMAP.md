@@ -1771,3 +1771,16 @@ Only CI workflow, CI static-test, CI documentation and roadmap files change. No 
 Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains PENDING. No physical Pixel 9 Pro was tested. The executor remains disconnected. No milestone is complete.
 
 Next priority: obtain independent security review of SEC-021A/B/C and SEC-022/AGENT-005Y, including the trusted final-admission callback boundary. Keep the real executor disconnected until that gate is approved.
+
+
+## AGENT-005ZD — CI-006 checksum binding to the shared Gradle downloader (2026-11-08)
+
+Audit baseline: authorized branch `feat/phase1-agentic-phone` at `4feef32563d5a9877350120cfeb4b8a50ad41ce1`; the complete recursive tree and recent branch history were rechecked; the branch remains 330 commits ahead of main and zero behind. Six open PRs (#1 and #3–#7) remain; PR #1 is open/draft against main. The project adapter and roadmap exist; repository `SKILL.md` is absent; the upstream shared package remains unverified.
+
+The AGENT-005ZC exact-head Phase 1 push passed with 787 Python tests and Android debug build/unit/repeat-build/dependency-negative-control gates. CI-003 builders then completed Gradle release build, merged/packaged manifest gates and dependency-verification negative control, but failed while generating the scoped build-environment SBOM: `build_environment_sbom.py` still searched for the old inline `echo SHA256 ... | sha256sum --check` workflow command that CI-004 had intentionally replaced with the shared verified downloader. This was a parser/contract drift, not an APK build or checksum failure. The CI-003 PR attempt showed the same parser failure on one builder and an upstream Gradle 504 on the other.
+
+AGENT-005ZD updates CI-006 to read the explicit `--gradle-sha256` provenance value, adds a static gate requiring it to match the shared downloader's pinned digest, and adds a regression test that rejects a missing provenance checksum. The inventory continues hashing the actual downloaded Gradle ZIP and comparing it with the expected digest before recording the component. No checksum was changed, no mirror was added and no integrity gate was bypassed.
+
+Exact-head Python/Android/CI-003/QA-005 reruns after this correction are pending. No Android app source, permission, consent, enrollment, executor, network listener, OTA or release-signing behavior changes. The real executor remains disconnected. No physical Pixel 9 Pro was tested. Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains pending. No milestone is complete.
+
+Next priority: independent security review of the enrollment and final-admission chain, including SEC-021A/B/C, SEC-022 and the trusted in-process callback boundary. Keep the real executor disconnected until approval.
