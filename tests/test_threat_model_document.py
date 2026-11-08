@@ -45,7 +45,7 @@ class ThreatModelDocumentTests(unittest.TestCase):
                 self.assertIn(category, self.text)
 
     def test_threat_register_has_unique_ids(self):
-        for threat_id in (f"TM-{i:02d}" for i in range(1, 17)):
+        for threat_id in (f"TM-{i:02d}" for i in range(1, 18)):
             with self.subTest(threat_id=threat_id):
                 self.assertEqual(self.text.count(threat_id), 1)
 
@@ -76,6 +76,11 @@ class ThreatModelDocumentTests(unittest.TestCase):
         self.assertIn("api.ipify.org", self.text)
         self.assertIn("provider-selected speed tests", self.text)
         self.assertIn("process-local", self.text)
+
+    def test_legacy_voice_boundary_is_documented(self):
+        self.assertIn("TM-17", self.text)
+        self.assertIn("duration-bound typed microphone confirmation", self.text)
+        self.assertIn("disables audio persistence", self.text)
 
     def test_independent_review_is_required(self):
         self.assertIn("The document author cannot self-approve.", self.text)

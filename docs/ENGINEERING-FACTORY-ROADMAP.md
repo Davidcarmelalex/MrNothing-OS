@@ -1998,3 +1998,8 @@ Milestones: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT A
 **Exact-head CI:** pending at commit creation; exact-head push/PR Phase 1, CI-003 and QA-005 results must be recorded in the PR verification comment after completion.
 
 **Milestones:** M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is COMPLETE.
+
+
+## AGENT-006K — legacy voice consent and transcript privacy (2026-11-09)
+
+Audited parent: `d07390768eae1747fe759726b7d524d50a291299`. The existing `PROJECT-ADAPTER.md` is retained; upstream `SKILL.md` remains unverified. This bounded change hardens the standalone Termux voice helper: fresh exact typed confirmation for each 1–15 second STT request, transcript/TTS log redaction, fixed argv/timeouts, bounded speech data, executable symlink rejection, and fail-closed audio-file persistence pending a reviewed retention policy. Added 12 offline mocked voice regression tests, TM-17 and a structural threat-model test. Local targeted tests passed 12/12; exact-head hosted CI must be checked separately. No microphone capture or Android device action was performed. Independent AGENT-006C security approval remains pending; native executor disconnected. Milestones M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone COMPLETE. Next: independently review authorization chain and voice-provider/cancellation assumptions; assess PaperClip plaintext conversation memory.
