@@ -4,7 +4,7 @@ PaperClip Agent — Local AI Reasoning Engine
 Uses only user-provided local GGUF models through a local llama.cpp executable.
 It never downloads model files or contacts a model hub.
 """
-import os, json, time, subprocess
+import os, time, subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -25,20 +25,41 @@ def log(msg):
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG, "a") as f: f.write(line + "\n")
 
+# Persistent plaintext conversation storage is intentionally disabled.
+# Existing memory.json files are never read, migrated, overwritten, or deleted.
+# A reviewed encrypted, owner-authenticated storage provider is required first.
+MAX_SESSION_MEMORY_ENTRIES = 100
+
 def load_memory():
-    if MEMORY_FILE.exists():
-        with open(MEMORY_FILE) as f: return json.load(f)
-    return {"conversations": [], "facts": []}
+    """Start a fresh opt-out session; never read legacy plaintext memory."""
+    return {"conversations": [], "facts": [], "session_opt_in": False}
 
 def save_memory(mem):
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(MEMORY_FILE, "w") as f: json.dump(mem, f, indent=2)
+    """Fail closed if a legacy caller attempts persistent plaintext storage."""
+    raise RuntimeError("Persistent PaperClip memory is disabled pending secure storage")
+
+def clear_memory(mem):
+    """Forget this process's session history and revoke memory opt-in."""
+    if type(mem) is not dict:
+        raise TypeError("Invalid memory session")
+    mem["conversations"] = []
+    mem["facts"] = []
+    mem["session_opt_in"] = False
 
 def remember(mem, role, content):
-    mem["conversations"].append({"role": role, "content": content, "ts": time.time()})
-    if len(mem["conversations"]) > 100:
-        mem["conversations"] = mem["conversations"][-100:]
-    save_memory(mem)
+    """Retain bounded text in RAM only after explicit per-session opt-in."""
+    if type(mem) is not dict or mem.get("session_opt_in") is not True:
+        return False
+    if role not in ("user", "assistant") or type(content) is not str:
+        return False
+    if not content or len(content) > MAX_PROMPT_CHARS or "\x00" in content:
+        return False
+    conversations = mem.get("conversations")
+    if type(conversations) is not list:
+        return False
+    conversations.append({"role": role, "content": content, "ts": time.time()})
+    del conversations[:-MAX_SESSION_MEMORY_ENTRIES]
+    return True
 
 def check_model():
     """Return a direct-child local GGUF model; reject symlinks and path escapes."""
@@ -165,7 +186,7 @@ def think(prompt, mem):
             if "hello" in p or "hi" in p:
                 response = "Hello. PaperClip online. How can I assist you?"
             elif "status" in p:
-                response = f"MrNothing OS running. Memory: {len(mem['conversations'])} exchanges stored."
+                response = f"MrNothing OS running. Session memory: {len(mem['conversations'])} exchanges stored."
             elif "help" in p:
                 response = "I can reason, remember, and assist with tasks. Ask me anything."
             else:
@@ -182,16 +203,32 @@ def main():
     else:
         print(f"No model found. Place a GGUF model in: {MODELS_DIR}")
         print("Add only a model you have independently verified; PaperClip never downloads model files.")
-    print("Type 'exit' to quit, 'memory' to see history.\n")
+    print("Session memory is OFF by default; nothing is saved to disk.")
+    print("Commands: 'memory on', 'memory off', 'memory', 'forget', 'exit'.\n")
 
     mem = load_memory()
+    if MEMORY_FILE.exists() or MEMORY_FILE.is_symlink():
+        print("WARNING: A legacy plaintext memory file exists. It was NOT read,")
+        print("migrated, changed, or deleted. Owner-controlled cleanup is required.")
 
     while True:
         try:
             user_input = input("you> ").strip()
             if not user_input: continue
-            if user_input.lower() == "exit": break
-            if user_input.lower() == "memory":
+            command = user_input.lower()
+            if command == "exit": break
+            if command == "memory on":
+                mem["session_opt_in"] = True
+                print("Session-only memory enabled. It will not be saved to disk.")
+                continue
+            if command in ("memory off", "forget"):
+                clear_memory(mem)
+                print("Session memory cleared and disabled.")
+                continue
+            if command == "memory":
+                if not mem["session_opt_in"]:
+                    print("Session memory is off. Type 'memory on' to opt in.")
+                    continue
                 convs = mem.get("conversations", [])[-5:]
                 for c in convs:
                     role = c["role"].upper()
