@@ -75,6 +75,28 @@ registry.apply_signed_enrollment(
 """
 
 
+class CommitAcknowledgementLossConnection:
+    """Test-only SQLite proxy that loses the acknowledgement around COMMIT."""
+
+    def __init__(self, connection, *, mode):
+        if mode not in {"before", "after"}:
+            raise ValueError("mode must be before or after")
+        self._connection = connection
+        self._mode = mode
+
+    def execute(self, statement, *parameters):
+        if statement.strip().upper() == "COMMIT":
+            if self._mode == "after":
+                self._connection.execute(statement, *parameters)
+            raise sqlite3.OperationalError(
+                "simulated lost SQLite COMMIT acknowledgement"
+            )
+        return self._connection.execute(statement, *parameters)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
 
 def b64u(raw):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
@@ -837,6 +859,103 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(denied.reason, "DEVICE_NOT_ACTIVE")
         self.assertEqual(denied.state, RESERVED)
         self.assertEqual(ledger.get(reserved.idempotency_key).state, RESERVED)
+
+
+    def _apply_with_lost_commit_acknowledgement(self, envelope, *, mode):
+        original_connect = self.registry._connect
+        self.registry._connect = lambda: CommitAcknowledgementLossConnection(
+            original_connect(), mode=mode
+        )
+        try:
+            with self.assertRaises(EnrollmentRegistryError):
+                self.registry.apply_signed_enrollment(
+                    envelope, now_epoch_ms=NOW
+                )
+        finally:
+            self.registry._connect = original_connect
+
+    def test_signed_rotation_commit_acknowledgement_loss_before_commit_rolls_back(self):
+        self.enroll()
+        rotate = self.statement(
+            operation="rotate",
+            generation=2,
+            enrollment_id="rotate-ack-loss-before",
+            cert=self.cert2,
+            key=self.consent2,
+        )
+
+        self._apply_with_lost_commit_acknowledgement(rotate, mode="before")
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        active = reopened.lookup_active_device("pixel-1")
+        history = reopened.history("pixel-1")
+        self.assertIsNotNone(active)
+        self.assertEqual(active.credential_generation, 1)
+        self.assertEqual(active.transport_certificate_sha256, self.cert1)
+        self.assertEqual(active.public_key_spki_der, spki(self.consent1))
+        self.assertIsNotNone(reopened.lookup_active_certificate(self.cert1))
+        self.assertIsNone(reopened.lookup_active_certificate(self.cert2))
+        self.assertEqual(
+            [(item.operation, item.credential_generation) for item in history],
+            [("enroll", 1)],
+        )
+
+        applied = reopened.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
+        self.assertEqual(applied.operation, "rotate")
+        self.assertEqual(applied.credential_generation, 2)
+        self.assertEqual(
+            reopened.lookup_active_device("pixel-1").transport_certificate_sha256,
+            self.cert2,
+        )
+        with self.assertRaises(EnrollmentConflict):
+            reopened.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
+        history_after_replay = reopened.history("pixel-1")
+        self.assertEqual(
+            [(item.operation, item.credential_generation) for item in history_after_replay],
+            [("enroll", 1), ("rotate", 2)],
+        )
+
+    def test_signed_rotation_commit_acknowledgement_loss_after_commit_preserves_once(self):
+        self.enroll()
+        rotate = self.statement(
+            operation="rotate",
+            generation=2,
+            enrollment_id="rotate-ack-loss-after",
+            cert=self.cert2,
+            key=self.consent2,
+        )
+
+        self._apply_with_lost_commit_acknowledgement(rotate, mode="after")
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        active = reopened.lookup_active_device("pixel-1")
+        history = reopened.history("pixel-1")
+        self.assertIsNotNone(active)
+        self.assertEqual(active.credential_generation, 2)
+        self.assertEqual(active.transport_certificate_sha256, self.cert2)
+        self.assertEqual(active.public_key_spki_der, spki(self.consent2))
+        self.assertIsNone(reopened.lookup_active_certificate(self.cert1))
+        self.assertIsNotNone(reopened.lookup_active_certificate(self.cert2))
+        self.assertEqual(
+            [(item.operation, item.credential_generation) for item in history],
+            [("enroll", 1), ("rotate", 2)],
+        )
+
+        with self.assertRaises(EnrollmentConflict):
+            reopened.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
+        history_after_replay = reopened.history("pixel-1")
+        self.assertEqual(
+            [(item.operation, item.credential_generation) for item in history_after_replay],
+            [("enroll", 1), ("rotate", 2)],
+        )
 
 
 if __name__ == "__main__":
