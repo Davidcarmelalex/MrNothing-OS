@@ -1944,7 +1944,7 @@ Scope: modules/whatsapp/whatsapp.py, tests/test_whatsapp_consent.py, docs/AGENT-
 
 - Direct Termux SMS now requires an internal one-time typed challenge derived from the normalized recipient and exact message. No caller-supplied confirmation callback is accepted.
 - Recipient syntax is bounded; message length is capped at 1,600 characters; empty/NUL-containing messages fail closed.
-- SMS is invoked only through a fixed argv list with shell=False, a 10-second timeout and check=True. Logs record command completion, not carrier delivery, and do not record message content.
+- SMS is invoked only through a fixed argv list with an explicit -- option terminator before the message, shell=False, a 10-second timeout and check=True. Logs record command completion, not carrier delivery, and do not record message content.
 - WhatsApp opens a URL-encoded compose screen only. The log and documentation explicitly state that the owner must review and tap Send; opening the compose screen is not represented as delivery.
 - Regression tests mock all subprocess/input boundaries. No real SMS, WhatsApp message, Termux installation, network request or device operation is performed.
 - This module remains a legacy Termux prototype, not an Android permission provider or native HERMES integration. The interactive challenge is not strong owner authentication; independent review remains required before any agent integration.

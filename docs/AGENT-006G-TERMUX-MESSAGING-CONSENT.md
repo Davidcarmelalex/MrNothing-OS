@@ -13,7 +13,7 @@ This change hardens the isolated legacy modules/whatsapp/whatsapp.py module. It 
 - Before invoking termux-sms-send, the module displays the exact recipient and message and requires a one-time SEND SMS <digest> response.
 - The digest is domain-separated and bound to both the normalized recipient and exact UTF-8 message. Any recipient or message change produces a different challenge.
 - Confirmation is implemented inside the module. No caller-supplied callback can simply return true. EOF, interruption, mismatch or unavailable Termux API causes no subprocess call.
-- The command uses a fixed executable, argv list, shell=False, check=True and a 10-second timeout.
+- The command uses a fixed executable, argv list with an explicit -- option terminator before the message, shell=False, check=True and a 10-second timeout.
 - A successful command exit means the Termux command completed; it is not proof of carrier delivery. Message content is not written to the log.
 
 ## WhatsApp compose behavior

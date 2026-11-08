@@ -125,7 +125,7 @@ def send_sms(phone: str, message: str) -> bool:
         return False
     try:
         subprocess.run(
-            ["termux-sms-send", "-n", normalized, message],
+            ["termux-sms-send", "-n", normalized, "--", message],
             timeout=10,
             check=True,
             shell=False,

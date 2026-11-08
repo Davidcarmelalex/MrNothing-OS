@@ -37,7 +37,7 @@ class WhatsAppConsentTests(unittest.TestCase):
         with patch.object(wa, "_has_termux", return_value=True), patch("builtins.input", return_value=challenge):
             self.assertTrue(wa.send_sms(phone, message))
         self.run.assert_called_once_with(
-            ["termux-sms-send", "-n", phone, message],
+            ["termux-sms-send", "-n", phone, "--", message],
             timeout=10,
             check=True,
             shell=False,
