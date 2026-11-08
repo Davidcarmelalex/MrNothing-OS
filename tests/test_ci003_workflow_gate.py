@@ -92,6 +92,16 @@ class CI003WorkflowGateTests(unittest.TestCase):
         self.assertIn(f'--gradle-sha256 "{EXPECTED_GRADLE_SHA256}"', self.workflow)
         self.assertIn(EXPECTED_GRADLE_SHA256, self.downloader)
 
+    def test_build_environment_inventory_hashes_the_verified_cached_archive(self):
+        self.assertIn(
+            '--gradle-zip "$HOME/.gradle/distributions/gradle-8.9-bin.zip"',
+            self.workflow,
+        )
+        self.assertNotIn(
+            '--gradle-zip "$RUNNER_TEMP/gradle-8.9-bin.zip"',
+            self.workflow,
+        )
+
     def test_downloader_rejects_unpinned_versions_without_network(self):
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "gradle.zip"

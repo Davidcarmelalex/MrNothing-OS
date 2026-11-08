@@ -128,7 +128,7 @@ jobs:
             --python-packages-file "$RUNNER_TEMP/ci003-python-packages.json" \
             --sdk-packages-file "$RUNNER_TEMP/ci003-sdk-packages.txt" \
             --sdk-root "$ANDROID_HOME" \
-            --gradle-zip "$RUNNER_TEMP/gradle-8.9-bin.zip" \
+            --gradle-zip "$HOME/.gradle/distributions/gradle-8.9-bin.zip" \
             --gradle-version-file "$RUNNER_TEMP/ci003-gradle-version.txt" \
             --java-properties-file "$RUNNER_TEMP/ci003-java-properties.txt" \
             --workflow-file ../.github/workflows/ci003-reproducibility.yml \

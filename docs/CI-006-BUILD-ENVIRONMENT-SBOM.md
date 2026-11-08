@@ -79,3 +79,10 @@ The first exact-head CI-006A run executed 495 tests and exposed one stale assert
 CI-004 replaced the inline Gradle ZIP `curl`/checksum command with the shared `scripts/download_gradle_distribution.sh` helper. CI-006 now reads the Gradle digest from the CI-003 provenance argument `--gradle-sha256`, rather than requiring the removed inline `echo ... | sha256sum` command. The CI-003 static gate requires the provenance digest to equal the helper's hard-coded pinned digest. The build-environment inventory still independently hashes the downloaded ZIP and rejects any mismatch.
 
 This keeps the downloader as the acquisition/checksum enforcement path while preserving an explicit provenance value that binds the resulting SBOM to the same expected archive digest. No dependency verification metadata or checksum was weakened.
+
+
+### CI-006C — inventory the verified cached Gradle archive
+
+The shared downloader writes the checksum-verified Gradle ZIP to `$HOME/.gradle/distributions/gradle-8.9-bin.zip` and extracts it into `$RUNNER_TEMP`. CI-003 now passes that same cached ZIP path to the build-environment inventory generator. The previous `$RUNNER_TEMP/gradle-8.9-bin.zip` inventory path did not exist because extraction does not copy the source archive. A static workflow gate now requires the inventory to hash the exact verified cache file and rejects the nonexistent temporary path.
+
+The inventory still computes the ZIP's SHA-256 and compares it with the workflow provenance pin before recording the Gradle component. This fixes artifact-path wiring only; it does not relax the digest check.

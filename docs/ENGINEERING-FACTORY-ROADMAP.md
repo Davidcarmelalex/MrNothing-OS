@@ -1784,3 +1784,14 @@ AGENT-005ZD updates CI-006 to read the explicit `--gradle-sha256` provenance val
 Exact-head Python/Android/CI-003/QA-005 reruns after this correction are pending. No Android app source, permission, consent, enrollment, executor, network listener, OTA or release-signing behavior changes. The real executor remains disconnected. No physical Pixel 9 Pro was tested. Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains pending. No milestone is complete.
 
 Next priority: independent security review of the enrollment and final-admission chain, including SEC-021A/B/C, SEC-022 and the trusted in-process callback boundary. Keep the real executor disconnected until approval.
+
+
+## AGENT-005ZE — CI-006 inventory uses the verified cached ZIP (2026-11-08)
+
+At head `71d2cdd59b528c60454df3aa7c8bb9a1d3e4fd2a`, Phase 1 push passed with 789 Python tests and Android debug build/unit/repeat-build/dependency-negative-control checks. CI-003 push and PR builders completed release Gradle builds, merged/packaged manifest security gates and dependency-verification negative controls, then failed in CI-006 inventory generation because `--gradle-zip` still referenced `$RUNNER_TEMP/gradle-8.9-bin.zip`. The shared downloader writes the verified archive to `$HOME/.gradle/distributions/gradle-8.9-bin.zip` and only extracts it to RUNNER_TEMP; it does not copy the ZIP there.
+
+AGENT-005ZE changes the CI-003 inventory argument to hash the actual verified cache file and adds a static gate that rejects the nonexistent temporary ZIP path. CI-006 documentation records the path contract. The actual archive SHA-256 remains independently checked against the workflow provenance pin. No dependency checksum, signature, mirror policy or security control was changed.
+
+Exact-head CI after this fix remains pending. No Android runtime or device-control source changed. No physical Pixel 9 Pro was tested. Independent human security review remains pending; no milestone is complete; the real executor remains disconnected.
+
+Next task: obtain independent security review of SEC-021A/B/C, SEC-022 and the final-admission callback boundary before any executor integration.
