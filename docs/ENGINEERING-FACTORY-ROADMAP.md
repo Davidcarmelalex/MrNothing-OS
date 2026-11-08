@@ -1736,3 +1736,12 @@ A post-push source inspection caught a quoting defect in the first downloader co
 ### AGENT-005Z static-gate correction (2026-11-08)
 
 The local fixture run caught a second test-only defect: the existing concurrency assertion had lost the `ci003-` group prefix when the test was expanded. The assertion is restored to the workflow's actual group string. The corrected eight-test harness must pass before exact-head CI acceptance; no result from the intermediate failing assertion is counted as a pass.
+
+
+## AGENT-005ZB — Maven Central fallback and verified Gradle cache (2026-11-08)
+
+At corrected head `735a572145e8d9df83cefb249d7555fb7a39170c`, both Python policy jobs passed with 782 tests. Phase 1 Android jobs reached Gradle but failed resolving `kotlin-compiler-embeddable:2.0.21` after the Maven Central request redirected to the JetBrains GitHub release and returned HTTP 504. CI-003 showed mixed outcomes: one builder reached the Kotlin compiler download and failed there; another received HTTP 504 from both Gradle distribution endpoints. The third configured Gradle endpoint did not resolve in the hosted runner DNS and was removed. Exact-head QA-005 was still in progress at audit close.
+
+AGENT-005ZB adds the canonical Sonatype Maven Central endpoint `repo1.maven.org` before `mavenCentral()` and moves the Gradle Plugin Portal ahead of Maven Central for plugin resolution. Strict dependency verification remains enabled. Both Android workflows now use `actions/setup-java` Gradle caching with a custom cache path containing `~/.gradle/caches` and `~/.gradle/distributions`; pull-request jobs are read-only cache consumers. The pinned Gradle 8.9 downloader verifies cached archives before reuse, rejects symlinks/non-regular files, fails closed on cache checksum mismatch, and downloads only from the two Gradle-operated HTTPS distribution endpoints. The third endpoint was removed because the hosted runner could not resolve its DNS name.
+
+The static gate now checks repository order, cache isolation, shared pinned JDK, checksum validation, cache-hit behavior, cache-tamper rejection and official-host failover. Local shell syntax and focused test results are recorded after execution; exact-head push/PR CI and QA-005 remain the acceptance gate. No Android application behavior or device-control code changed. Independent security approval and physical Pixel 9 Pro validation remain pending.

@@ -33,6 +33,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17.0.21+9'
+          cache: gradle
+          cache-path: |
+            ~/.gradle/caches
+            ~/.gradle/distributions
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
@@ -53,8 +58,8 @@ jobs:
       - name: Download and checksum-verify Gradle 8.9
         run: |
           set -euo pipefail
-          bash ../scripts/download_gradle_distribution.sh 8.9 "$RUNNER_TEMP/gradle-8.9-bin.zip"
-          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+          bash ../scripts/download_gradle_distribution.sh 8.9 "$HOME/.gradle/distributions/gradle-8.9-bin.zip"
+          unzip -q "$HOME/.gradle/distributions/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --version > "$RUNNER_TEMP/ci003-gradle-version.txt"
       - name: Run release unit tests and build unsigned release APK
         run: |

@@ -23,6 +23,23 @@ if [[ -z "$destination" || "$destination" == "/" ]]; then
   exit 64
 fi
 
+if [[ -L "$destination" ]]; then
+  printf 'refusing symlink at cached Gradle destination\n' >&2
+  exit 65
+fi
+if [[ -e "$destination" ]]; then
+  if [[ ! -f "$destination" ]]; then
+    printf 'refusing non-regular cached Gradle destination\n' >&2
+    exit 65
+  fi
+  if ! printf '%s  %s\n' "$expected_sha256" "$destination" | sha256sum --check --status; then
+    printf 'cached Gradle %s archive has a SHA-256 mismatch; refusing reuse or overwrite.\n' "$version" >&2
+    exit 65
+  fi
+  printf 'Cached Gradle %s distribution checksum verified.\n' "$version" >&2
+  exit 0
+fi
+
 destination_dir="$(dirname -- "$destination")"
 mkdir -p -- "$destination_dir"
 temporary_file="$(mktemp "$destination.part.XXXXXX")"
@@ -31,12 +48,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# All three hosts are Gradle-operated distribution endpoints. No community
-# mirror or caller-supplied URL is accepted. Redirects are HTTPS-only.
+# Gradle-operated distribution endpoints only; redirects remain HTTPS-only.
 urls=(
   "https://services.gradle.org/distributions/gradle-${version}-bin.zip"
   "https://downloads.gradle.org/distributions/gradle-${version}-bin.zip"
-  "https://downloads.gradle-dn.com/distributions/gradle-${version}-bin.zip"
 )
 
 for url in "${urls[@]}"; do

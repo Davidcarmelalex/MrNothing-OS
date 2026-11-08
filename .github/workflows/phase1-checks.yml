@@ -36,6 +36,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17.0.21+9'
+          cache: gradle
+          cache-path: |
+            ~/.gradle/caches
+            ~/.gradle/distributions
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Verify preinstalled Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
@@ -47,8 +52,8 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Download and checksum-verify Gradle 8.9
         run: |
-          bash ../scripts/download_gradle_distribution.sh 8.9 "$RUNNER_TEMP/gradle-8.9-bin.zip"
-          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
+          bash ../scripts/download_gradle_distribution.sh 8.9 "$HOME/.gradle/distributions/gradle-8.9-bin.zip"
+          unzip -q "$HOME/.gradle/distributions/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
       - name: Build, unit test and compare repeat debug APK
         run: |
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:testDebugUnitTest :app:assembleDebug

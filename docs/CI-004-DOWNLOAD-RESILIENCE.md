@@ -18,10 +18,12 @@ The failed steps were dependency/tool downloads, not test assertion failures. Re
 - Both Phase 1 and CI-003 now pin Eclipse Temurin **17.0.21+9**, the exact Temurin build already observed in the Phase 1 Ubuntu 24.04 hosted-runner toolcache.
 - Both workflows call one shared `scripts/download_gradle_distribution.sh` helper for Gradle **8.9**.
 - The helper accepts only the pinned version and hard-coded SHA-256 `d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab`.
-- It tries only Gradle-operated HTTPS distribution endpoints: `services.gradle.org`, `downloads.gradle.org`, and `downloads.gradle-dn.com`. Gradle documents these endpoints at [Decommissioning HTTP for Gradle Services](https://blog.gradle.org/decommissioning-http).
+- It tries only Gradle-operated HTTPS distribution endpoints: `services.gradle.org` and `downloads.gradle.org`. Gradle documents these endpoints at [Decommissioning HTTP for Gradle Services](https://blog.gradle.org/decommissioning-http).
 - Each endpoint uses bounded connect/transfer timeouts and retry handling for transient network errors.
 - Redirects are restricted to HTTPS and TLS 1.2 or later.
 - A checksum mismatch is a hard failure. The helper does not extract or publish an unverified archive and does not fall through after a checksum mismatch.
+- The verified archive is stored under `~/.gradle/distributions` and included in the Gradle cache. Existing cache entries are checksum-verified before reuse; symlinks, non-regular files and mismatched cached archives fail closed.
+- `actions/setup-java` caches Gradle dependency and distribution paths. Pull-request runs are read-only cache consumers; push runs may populate the cache.
 - The verified archive is moved atomically into the requested destination. Community mirrors, caller-supplied URLs, disabled TLS verification and dynamic Gradle versions are not accepted.
 
 ## Static regression gates
@@ -45,3 +47,10 @@ At the new exact head, require:
 ## Limits
 
 This change improves dependency acquisition reliability; it does not establish build success until the new exact-head workflows complete. It does not alter Android application code, permissions, enrollment, consent, device execution, OTA or release signing. CI-003 artifacts remain unsigned engineering artifacts with `release_ready=false`. Independent security review remains pending.
+
+
+## Kotlin plugin dependency fallback
+
+The exact-head build logs showed a second independent 504 boundary: `kotlin-compiler-embeddable:2.0.21` was requested from Maven Central and redirected to the JetBrains GitHub release asset, which returned HTTP 504. The Android settings now place the Gradle Plugin Portal before Maven Central for plugin resolution and add Sonatype's canonical Maven Central endpoint `https://repo1.maven.org/maven2/` before `mavenCentral()` in both plugin and application dependency resolution. Sonatype documents repo1 as a canonical HTTPS Central endpoint: [Consume Central](https://central.sonatype.org/consume/). Existing Gradle dependency verification remains enabled, so artifact checksums are still enforced.
+
+This is a repository-order fallback, not a guarantee that the upstream network will be available. Exact-head Gradle builds must prove it.
