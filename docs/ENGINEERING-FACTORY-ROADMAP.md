@@ -1915,3 +1915,6 @@ A review of the new API also removed the injectable confirmation callback: scan_
 
 
 A second exact-head Phase 1 push run for 9abd382 also failed: two confirmation tests exposed a stale callable(confirm) guard left in the source after the signature was changed. The guard has now been removed, and the static regression explicitly rejects reintroduction. The first and second failed runs are retained as evidence; only a new exact-head CI pass can supersede them.
+
+
+A third exact-head Phase 1 push run for 223ae25 exposed a stale function identifier: the callback-free scan path still called the removed name confirm(canonical), so three authorization tests failed closed. The call now targets the internal confirm_scan(canonical) prompt, and the static test asserts the correct internal function is used and the removed identifier is absent. The isolated 17-test suite and compileall passed after this correction. This is recorded as an implementation defect, not waived.

@@ -161,7 +161,7 @@ def scan_network(target):
     if canonical not in _load_allowed_targets():
         return _denied(canonical, "TARGET_NOT_ALLOWLISTED")
     try:
-        approved = confirm(canonical) is True
+        approved = confirm_scan(canonical) is True
     except Exception:
         approved = False
     if not approved:
