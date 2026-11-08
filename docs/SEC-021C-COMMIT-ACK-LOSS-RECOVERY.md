@@ -38,3 +38,19 @@ The guarantee remains local to the two SQLite stores and a single host/process a
 - `test_outcome_commit_ack_loss_preserves_terminal_unknown_state`
 
 All must pass in the exact-head Phase 1 Python policy workflow. Android emulator reruns are not required for this Python-only change; the most recent exact-head emulator baseline remains separately identified in the engineering run record.
+
+## AGENT-005S — cross-process claim serialization (2026-11-08)
+
+The new \`test_cross_process_dispatch_claim_has_one_winner_and_survives_restart\` regression starts two independent CPython interpreters. Each constructs its own \`SQLiteOwnerEnrollmentRegistry\` and \`DurableActionReservationLedger\` against the same two owner-only SQLite files. Per-process ready files and a shared release gate make both claim attempts concurrent rather than merely sequential.
+
+Acceptance assertions:
+
+- Exactly one process receives \`DISPATCH_CLAIMED\`.
+- The other receives \`ALREADY_CLAIMED\`.
+- Both observe the same durable \`DISPATCH_STARTED\` state.
+- Both child interpreters terminate abruptly after reporting their result.
+- The parent reopens the ledger after both processes exit and confirms the claim remains \`DISPATCH_STARTED\`.
+- A further claim is rejected as \`ALREADY_CLAIMED\`; no retry or device action occurs.
+
+This extends the existing thread/connection concurrency tests to separate OS processes on one host. It does **not** establish multi-host/distributed locking, power-loss durability, or external side-effect semantics. The final-admission callback in this storage-only test is a test guard, not a production authorization capability. No production source, Android permission, executor, shell bridge, or device behavior changes.
+

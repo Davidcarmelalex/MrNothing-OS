@@ -3,7 +3,10 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
@@ -63,6 +66,51 @@ class _CommitAcknowledgementLostConnection:
     def __getattr__(self, name):
         return getattr(self._connection, name)
 
+
+_CLAIM_DISPATCH_SUBPROCESS = r"""
+import base64
+import json
+import os
+import sys
+import time
+
+from core.action_reservation import DurableActionReservationLedger
+from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
+
+ledger_path, registry_path, authority_b64, key, now_text, gate_path = sys.argv[1:]
+registry = SQLiteOwnerEnrollmentRegistry(
+    registry_path,
+    authority_public_key_spki_der=base64.urlsafe_b64decode(authority_b64),
+    authority_key_id="test-authority",
+    timeout_seconds=10.0,
+)
+ledger = DurableActionReservationLedger(
+    ledger_path,
+    clock_ms=lambda: int(now_text),
+    busy_timeout_ms=10_000,
+)
+ready_path = f"{gate_path}.{os.getpid()}.ready"
+with open(ready_path, "x", encoding="ascii") as ready:
+    ready.write("ready\\n")
+deadline = time.monotonic() + 15.0
+while not os.path.exists(gate_path):
+    if time.monotonic() >= deadline:
+        raise SystemExit("claim start gate timed out")
+    time.sleep(0.01)
+decision = ledger.claim_dispatch(
+    key,
+    enrollment_registry=registry,
+    final_admission_guard=lambda: True,
+)
+print(json.dumps({
+    "applied": decision.applied,
+    "reason": decision.reason,
+    "state": decision.state,
+}), flush=True)
+# Abrupt process exit after the durable claim result: no interpreter cleanup
+# is allowed to turn process shutdown into a hidden recovery/retry path.
+os._exit(0)
+"""
 
 class DurableActionReservationTests(unittest.TestCase):
     def setUp(self):
@@ -271,6 +319,88 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(
             sum(result.reason == "ALREADY_CLAIMED" for result in results), 11
         )
+
+    def test_cross_process_dispatch_claim_has_one_winner_and_survives_restart(self):
+        reserved = self.reserve()
+        authority_spki = self.authority.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        authority_b64 = base64.urlsafe_b64encode(authority_spki).decode("ascii")
+        gate_path = os.path.join(self.temp.name, "release-claims")
+        command = [
+            sys.executable,
+            "-c",
+            _CLAIM_DISPATCH_SUBPROCESS,
+            self.path,
+            str(self.registry.path),
+            authority_b64,
+            reserved.idempotency_key,
+            str(self.now),
+            gate_path,
+        ]
+        processes = []
+        results = []
+        try:
+            for _ in range(2):
+                processes.append(subprocess.Popen(
+                    command,
+                    cwd=os.getcwd(),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                ))
+            ready_paths = [
+                f"{gate_path}.{process.pid}.ready" for process in processes
+            ]
+            deadline = time.monotonic() + 15.0
+            while not all(os.path.isfile(path) for path in ready_paths):
+                if any(process.poll() is not None for process in processes):
+                    details = [
+                        process.communicate(timeout=5) for process in processes
+                    ]
+                    self.fail(f"claim subprocess exited before ready: {details!r}")
+                if time.monotonic() >= deadline:
+                    self.fail("claim subprocesses did not reach the start gate")
+                time.sleep(0.01)
+
+            with open(gate_path, "x", encoding="ascii") as gate:
+                gate.write("go\n")
+
+            for process in processes:
+                stdout, stderr = process.communicate(timeout=20)
+                self.assertEqual(process.returncode, 0, msg=stderr)
+                results.append(json.loads(stdout))
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=5)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(
+            sum(result["applied"] is True for result in results), 1
+        )
+        self.assertEqual(
+            sum(result["reason"] == "ALREADY_CLAIMED" for result in results), 1
+        )
+        self.assertTrue(all(
+            result["state"] == DISPATCH_STARTED for result in results
+        ))
+
+        # Reopen from the parent after both child interpreters have exited.
+        reopened = DurableActionReservationLedger(
+            self.path, clock_ms=lambda: self.now
+        )
+        self.assertEqual(
+            reopened.get(reserved.idempotency_key).state, DISPATCH_STARTED
+        )
+        retry = self.claim_dispatch(
+            reserved.idempotency_key, ledger=reopened
+        )
+        self.assertFalse(retry.applied)
+        self.assertEqual(retry.reason, "ALREADY_CLAIMED")
 
     def test_concurrent_duplicate_reservations_have_exactly_one_creator(self):
         ledgers = [
