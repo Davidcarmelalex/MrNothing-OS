@@ -114,12 +114,12 @@ class PaperclipOfflineInferenceTests(unittest.TestCase):
             model.write_bytes(b"synthetic model")
             binary = bin_dir / "llama-cli"
             binary.write_text(
-                "#!/usr/bin/env python3\\n"
-                "import sys\\n"
-                "assert sys.argv[sys.argv.index('-f') + 1] == '/dev/stdin'\\n"
-                "assert 'private test prompt' not in sys.argv\\n"
-                "assert sys.stdin.read() == 'private test prompt'\\n"
-                "print('pipe accepted')\\n",
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "assert sys.argv[sys.argv.index('-f') + 1] == '/dev/stdin'\n"
+                "assert 'private test prompt' not in sys.argv\n"
+                "assert sys.stdin.read() == 'private test prompt'\n"
+                "print('pipe accepted')\n",
                 encoding="utf-8",
             )
             binary.chmod(0o700)
