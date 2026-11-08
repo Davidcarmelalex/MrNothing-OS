@@ -1912,3 +1912,6 @@ Added tests/test_openclaw_agent.py with 17 tests for target parsing, malformed/p
 The first Phase 1 push run for commit e9c5c19 ran 823 Python tests and failed one existing threat-model wording invariant requiring the exact phrase "subprocess shell execution". TM-08 now retains that phrase while distinguishing the OpenClaw mitigation from other legacy prototypes.
 
 A review of the new API also removed the injectable confirmation callback: scan_network now invokes the module's own exact-target typed prompt. Tests patch that prompt at the unit boundary; production callers cannot supply a callback that simply returns True. The isolated 17-test suite and compileall were rerun after this correction. The failed first run remains in Actions history and is superseded only by fresh exact-head CI.
+
+
+A second exact-head Phase 1 push run for 9abd382 also failed: two confirmation tests exposed a stale callable(confirm) guard left in the source after the signature was changed. The guard has now been removed, and the static regression explicitly rejects reintroduction. The first and second failed runs are retained as evidence; only a new exact-head CI pass can supersede them.

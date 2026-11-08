@@ -177,6 +177,7 @@ class OpenClawSafetyTests(unittest.TestCase):
         self.assertIn("shell=False", source)
         self.assertNotIn("dig +short", source)
         self.assertNotIn("confirm=None", source)
+        self.assertNotIn("callable(confirm)", source)
         self.assertEqual(agent.scan_network.__code__.co_argcount, 1)
 
     def test_wifi_info_uses_fixed_local_argv(self):

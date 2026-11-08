@@ -160,8 +160,6 @@ def scan_network(target):
         return _denied(target, "INVALID_OR_NON_PRIVATE_IPV4")
     if canonical not in _load_allowed_targets():
         return _denied(canonical, "TARGET_NOT_ALLOWLISTED")
-    if not callable(confirm):
-        return _denied(canonical, "INTERACTIVE_CONFIRMATION_REQUIRED")
     try:
         approved = confirm(canonical) is True
     except Exception:
