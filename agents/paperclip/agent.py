@@ -4,7 +4,7 @@ PaperClip Agent — Local AI Reasoning Engine
 Uses only user-provided local GGUF models through a local llama.cpp executable.
 It never downloads model files or contacts a model hub.
 """
-import os, time, subprocess
+import os, time, subprocess, stat
 from pathlib import Path
 from datetime import datetime
 
@@ -12,18 +12,68 @@ VERSION = "1.0.0"
 AGENT_NAME = "paperclip"
 HOME = Path.home() / "mrnothing"
 MODELS_DIR = HOME / "models"
-LOG = HOME / "logs" / "paperclip.log"
 MEMORY_FILE = HOME / "agents" / AGENT_NAME / "memory.json"
 MAX_PROMPT_CHARS = 8192
 MAX_GENERATION_TOKENS = 256
 INFERENCE_TIMEOUT_SECONDS = 120
 
+# Only these content-free events may reach the terminal or the local log.
+# In particular, never accept caller-supplied prompts, model paths or exceptions.
+SAFE_LOG_EVENTS = frozenset({
+    "Local inference failed: subprocess error",
+    "Local inference failed: llama.cpp returned a non-zero status",
+    "Using a local GGUF model; filename redacted",
+    "Processing prompt locally; content redacted",
+})
+
+
 def log(msg):
+    """Best-effort, owner-only local event logging; never follow log symlinks."""
+    if type(msg) is not str or msg not in SAFE_LOG_EVENTS:
+        return False
     ts = datetime.now().strftime("%H:%M:%S")
     line = f"[{ts}] [PAPERCLIP] {msg}"
     print(line)
-    LOG.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG, "a") as f: f.write(line + "\n")
+    # Resolve each untrusted child relative to an opened directory descriptor.
+    # No path-based open is used for the logs directory or the log file.
+    parent_fd = home_fd = logs_fd = file_fd = None
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(HOME.parent, flags)
+        try:
+            os.mkdir(HOME.name, mode=0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+        home_fd = os.open(HOME.name, flags, dir_fd=parent_fd)
+        try:
+            os.mkdir("logs", mode=0o700, dir_fd=home_fd)
+        except FileExistsError:
+            pass
+        logs_fd = os.open("logs", flags, dir_fd=home_fd)
+        # O_NONBLOCK avoids a hang on a pre-existing FIFO.
+        file_fd = os.open(
+            "paperclip.log",
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o600,
+            dir_fd=logs_fd,
+        )
+        info = os.fstat(file_fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+            return False
+        os.fchmod(file_fd, 0o600)
+        data = (line + "\n").encode("utf-8")
+        while data:
+            written = os.write(file_fd, data)
+            if written <= 0:
+                return False
+            data = data[written:]
+        return True
+    except OSError:
+        return False
+    finally:
+        for fd in (file_fd, logs_fd, home_fd, parent_fd):
+            if fd is not None:
+                os.close(fd)
 
 # Persistent plaintext conversation storage is intentionally disabled.
 # Existing memory.json files are never read, migrated, overwritten, or deleted.
@@ -176,8 +226,8 @@ def infer_llama_cpp(prompt, model_path):
             timeout=INFERENCE_TIMEOUT_SECONDS,
             check=False,
         )
-    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
-        log(f"Local inference failed: {type(error).__name__}")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        log("Local inference failed: subprocess error")
         return None
 
     if result.returncode != 0:
