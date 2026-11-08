@@ -1,6 +1,6 @@
 # CI-003 — independent-runner unsigned Android reproducibility
 
-**Status:** CI-003 exact-head acceptance passed on 2026-11-05.
+**Status:** Historical exact-head acceptance passed on 2026-11-05. CI-004 updates the pinned JDK and distribution acquisition path; the updated toolchain requires exact-head re-acceptance.
 
 ## Purpose
 
@@ -9,7 +9,7 @@ The SEC-019B debug APK hashes differed between independent GitHub runners. The p
 ## Build contract
 
 - Runner image label: ubuntu-24.04.
-- JDK: Eclipse Temurin 17.0.13+11.
+- JDK: Eclipse Temurin 17.0.21+9 (aligned with the Phase 1 Android job and pinned exactly).
 - Gradle: 8.9 binary distribution, SHA-256 d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab.
 - Android Gradle Plugin: 8.7.3.
 - Kotlin Gradle plugin: 2.0.21.

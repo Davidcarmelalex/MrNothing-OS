@@ -1709,3 +1709,20 @@ This API is an observation aid, not an authorization or retry mechanism. It does
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION BLOCKED; M8 PRODUCTION READINESS BLOCKED. No milestone is complete.
 
 Next task: independent security review of SEC-021A/B/C and SEC-022/AGENT-005Y, including database replacement threat assumptions and the trusted in-process final-admission callback boundary. Keep the real executor disconnected.
+
+
+## AGENT-005Z — pinned build-tool download resilience (2026-11-08)
+
+Audit baseline: authorized branch `feat/phase1-agentic-phone` at `1de4c02404ca3adce9052afbb5d282d6cfa9edb8`; recursive Git tree 372 entries, not truncated; compare against `main` reports 324 commits ahead and zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 targets `main`, remains open/draft, and has no submitted reviews or inline review threads. The branch is unprotected and required status-check enforcement is off. `PROJECT-ADAPTER.md` and this roadmap exist; repository `SKILL.md` is absent; the upstream shared package remains unverified and is not claimed installed.
+
+The current-head audit found that Python policy passed (777 tests) and QA-005 passed on the disposable Android 15/API 35 x86_64 emulator (30/30 instrumentation tests, zero skipped/failed). Android build and CI-003 did not complete: the exact-head runs repeatedly received HTTP 504 while downloading Gradle 8.9, Temurin 17.0.13+11, or the Kotlin compiler artifact. Failed-job reruns on push and PR also failed at dependency acquisition. No Android build assertion failure or current-head reproducibility result is claimed.
+
+AGENT-005Z adds a shared pinned Gradle downloader and aligns the Android workflows to exact Eclipse Temurin 17.0.21+9, matching the Temurin build observed in the Phase 1 Ubuntu 24.04 runner toolcache. The downloader permits only Gradle-operated HTTPS distribution endpoints, retries transient transport failures, enforces TLS 1.2+, verifies the pinned Gradle 8.9 SHA-256 before atomic placement, rejects unsupported versions, and fails closed on checksum mismatch. No community mirror or caller-supplied URL is accepted. Both workflows use the same helper.
+
+The CI-003 static workflow gate now checks exact JDK alignment, shared downloader usage, official-host allowlisting, checksum-before-placement ordering, unsupported-version rejection and transport-failure fallback. A local shell syntax check and eight focused static/fault-injection tests passed in a temporary harness; exact repository CI remains the acceptance gate.
+
+The JDK pin change is a deliberate toolchain baseline update from Temurin 17.0.13+11 to 17.0.21+9. Historical CI-003 evidence for 17.0.13+11 remains historical and does not satisfy new-head acceptance. The new exact-head Phase 1, CI-003 and QA-005 workflows must pass before this change is accepted.
+
+No Android app source, permission, consent, enrollment, executor, shell bridge, network listener, OTA or release-signing path changed. Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains pending. The real device executor remains disconnected. No physical Pixel 9 Pro was tested. No milestone is complete: M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED.
+
+Next priority: independently review SEC-021A/B/C and SEC-022/AGENT-005Y, then accept the new exact-head CI results. Do not connect the real executor before independent security approval.
