@@ -17,24 +17,26 @@ The registry previously wrapped both cases as the same `EnrollmentRegistryError`
 - the COMMIT call raises and SQLite reports that the connection is no longer in a transaction; or
 - COMMIT raises while a transaction remains open, but an explicit ROLLBACK also fails.
 
-The exception exposes only bounded reconciliation metadata: `operation`, `device_id`, `enrollment_id`, `credential_generation` and `envelope_sha256`. It does not expose the signed envelope, private key material or credential bytes. `reconciliation_required` is true.
+The exception exposes only bounded reconciliation metadata: `operation`, `owner_id`, `device_id`, `enrollment_id`, `credential_generation` and `envelope_sha256`. It does not expose the signed envelope, private key material or credential bytes. `reconciliation_required` is true.
 
 If COMMIT raises while the transaction is still open and ROLLBACK succeeds, the registry reports a definite `EnrollmentRegistryError` (or `EnrollmentConflict` for an integrity constraint). That is a confirmed rollback path, not an unknown outcome.
 
 ## Caller recovery contract
 
 1. Stop automatic retries when `EnrollmentOutcomeUnknown` is raised.
-2. Reopen the enrollment registry and validate its durable state.
-3. Inspect `history(device_id)` for the exact `envelope_sha256`, enrollment ID, operation and generation.
-4. Compare the active device row and generation with the matching history entry.
-5. If the exact history entry is present once, treat the signed statement as applied; do not replay it.
-6. If the durable state cannot be reconciled unambiguously, remain fail-closed and require supervised recovery. Absence of an acknowledgement is never permission to retry.
+2. Reopen the registry through a fresh `SQLiteOwnerEnrollmentRegistry` instance.
+3. Call `reconcile_outcome_unknown(outcome)`. This is a read-only snapshot check that validates schema/integrity, exact history metadata and the current row against the latest history entry.
+4. Interpret the result conservatively:
+   - `APPLIED`: the exact enrollment ID, owner/device, operation, generation and envelope hash are in durable history, and the current owner/device row agrees with the latest history entry. Do not replay.
+   - `NOT_OBSERVED`: the exact history entry is absent and the prior state is coherent. This is an observation, **not** a retry authorization; any further action requires supervised review.
+   - `UNRESOLVED`: metadata, history/current state or database integrity does not reconcile. Remain fail-closed and require supervised recovery.
+5. Every result has `automatic_retry_permitted=false`. The API never returns permission to resubmit a signed statement.
 
-The registry does not automatically retry, infer success from an exception message, or execute an external side effect.
+The API never infers success from an exception message, writes to the registry, retries, or executes an external side effect. It does not protect against a privileged attacker who can replace both the database and its filesystem state; production deployments still require an independently protected monotonic trust anchor and storage review.
 
 ## Regression evidence
 
-The test suite covers acknowledgement loss for initial enrollment, rotation and revocation after COMMIT; a pre-COMMIT failure followed by successful rollback; and a failed rollback. It checks the typed outcome metadata, durable row/history state and replay rejection. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases.
+The test suite covers acknowledgement loss for initial enrollment, rotation and revocation after COMMIT; a pre-COMMIT failure followed by successful rollback; and a failed rollback. Reconciliation tests classify exact committed history as APPLIED, a coherent pre-commit state as NOT_OBSERVED, and mismatched/corrupt state as UNRESOLVED. Every result denies automatic retry. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases. Tests use synthetic Ed25519 authority and P-256 consent keys with temporary local SQLite databases.
 
 ## Limits
 

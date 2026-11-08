@@ -939,6 +939,7 @@ class RegistryTests(unittest.TestCase):
         self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
         self.assertTrue(outcome.reconciliation_required)
         self.assertEqual(outcome.operation, "rotate")
+        self.assertEqual(outcome.owner_id, "owner-1")
         self.assertEqual(outcome.device_id, "pixel-1")
         self.assertEqual(outcome.enrollment_id, "rotate-ack-loss-after")
         self.assertEqual(outcome.credential_generation, 2)
@@ -961,6 +962,9 @@ class RegistryTests(unittest.TestCase):
             [(item.operation, item.credential_generation) for item in history],
             [("enroll", 1), ("rotate", 2)],
         )
+        reconciliation = reopened.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "APPLIED")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
 
         with self.assertRaises(EnrollmentConflict):
             reopened.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
@@ -977,6 +981,7 @@ class RegistryTests(unittest.TestCase):
 
         self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
         self.assertEqual(outcome.operation, "enroll")
+        self.assertEqual(outcome.owner_id, "owner-1")
         self.assertEqual(outcome.device_id, "pixel-1")
         self.assertEqual(outcome.enrollment_id, "enroll-ack-loss-after")
         self.assertEqual(outcome.credential_generation, 1)
@@ -991,6 +996,10 @@ class RegistryTests(unittest.TestCase):
         history = reopened.history("pixel-1")
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0].envelope_sha256, hashlib.sha256(envelope).hexdigest())
+        reconciliation = reopened.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "APPLIED")
+        self.assertEqual(reconciliation.reason, "MATCHING_HISTORY_AND_CURRENT_STATE")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
         with self.assertRaises(EnrollmentConflict):
             reopened.apply_signed_enrollment(envelope, now_epoch_ms=NOW)
 
@@ -1007,6 +1016,7 @@ class RegistryTests(unittest.TestCase):
 
         self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
         self.assertEqual(outcome.operation, "revoke")
+        self.assertEqual(outcome.owner_id, "owner-1")
         self.assertEqual(outcome.device_id, "pixel-1")
         self.assertEqual(outcome.enrollment_id, "revoke-ack-loss-after")
         self.assertEqual(outcome.credential_generation, 2)
@@ -1022,6 +1032,9 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(len(history), 2)
         self.assertEqual(history[1].operation, "revoke")
         self.assertEqual(history[1].envelope_sha256, hashlib.sha256(envelope).hexdigest())
+        reconciliation = reopened.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "APPLIED")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
         with self.assertRaises(EnrollmentConflict):
             reopened.apply_signed_enrollment(envelope, now_epoch_ms=NOW)
 
@@ -1049,6 +1062,40 @@ class RegistryTests(unittest.TestCase):
         )
         self.assertEqual(reopened.lookup_active_device("pixel-1").credential_generation, 1)
         self.assertEqual(len(reopened.history("pixel-1")), 1)
+        reconciliation = reopened.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "NOT_OBSERVED")
+        self.assertEqual(reconciliation.reason, "NO_HISTORY_AND_PRIOR_STATE_MATCH")
+        self.assertFalse(reconciliation.automatic_retry_permitted)
+
+    def test_reconcile_unknown_outcome_with_mismatched_history_is_unresolved(self):
+        self.enroll()
+        outcome = EnrollmentOutcomeUnknown(
+            operation="enroll",
+            owner_id="owner-1",
+            device_id="pixel-1",
+            enrollment_id="missing-enrollment",
+            credential_generation=1,
+            envelope_sha256="0" * 64,
+        )
+        reconciliation = self.registry.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "UNRESOLVED")
+        self.assertEqual(
+            reconciliation.reason,
+            "NO_MATCHING_HISTORY_OR_COHERENT_PRIOR_STATE",
+        )
+        self.assertFalse(reconciliation.automatic_retry_permitted)
+
+    def test_reconcile_unknown_outcome_fails_closed_on_corrupt_database(self):
+        envelope = self.statement(enrollment_id="corrupt-reconcile-db")
+        outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
+        self.path.write_bytes(b"corrupt database")
+        reconciliation = self.registry.reconcile_outcome_unknown(outcome)
+        self.assertEqual(reconciliation.status, "UNRESOLVED")
+        self.assertEqual(
+            reconciliation.reason,
+            "DATABASE_UNAVAILABLE_OR_INVALID",
+        )
+        self.assertFalse(reconciliation.automatic_retry_permitted)
 
 
 if __name__ == "__main__":

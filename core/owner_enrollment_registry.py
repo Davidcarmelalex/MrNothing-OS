@@ -66,6 +66,7 @@ class EnrollmentOutcomeUnknown(EnrollmentRegistryError):
         self,
         *,
         operation: str,
+        owner_id: str,
         device_id: str,
         enrollment_id: str,
         credential_generation: int,
@@ -75,10 +76,31 @@ class EnrollmentOutcomeUnknown(EnrollmentRegistryError):
             "enrollment COMMIT outcome is unknown; reconcile durable history before retrying"
         )
         self.operation = operation
+        self.owner_id = owner_id
         self.device_id = device_id
         self.enrollment_id = enrollment_id
         self.credential_generation = credential_generation
         self.envelope_sha256 = envelope_sha256
+
+
+ENROLLMENT_OUTCOME_APPLIED = "APPLIED"
+ENROLLMENT_OUTCOME_NOT_OBSERVED = "NOT_OBSERVED"
+ENROLLMENT_OUTCOME_UNRESOLVED = "UNRESOLVED"
+
+
+@dataclass(frozen=True)
+class EnrollmentReconciliation:
+    """Read-only durable-state observation; it never authorizes automatic retry."""
+
+    status: str
+    reason: str
+    operation: str
+    owner_id: str
+    device_id: str
+    enrollment_id: str
+    credential_generation: int
+    envelope_sha256: str
+    automatic_retry_permitted: bool = False
 
 
 class EnrollmentStatementError(ValueError):
@@ -632,6 +654,7 @@ class SQLiteOwnerEnrollmentRegistry:
             except Exception as exc:
                 unknown = EnrollmentOutcomeUnknown(
                     operation=operation,
+                    owner_id=owner_id,
                     device_id=device_id,
                     enrollment_id=payload["enrollment_id"],
                     credential_generation=generation,
@@ -670,6 +693,163 @@ class SQLiteOwnerEnrollmentRegistry:
             raise EnrollmentRegistryError("enrollment transaction failed") from exc
         finally:
             db.close()
+
+    def reconcile_outcome_unknown(
+        self, outcome: EnrollmentOutcomeUnknown
+    ) -> EnrollmentReconciliation:
+        """Reconcile one ambiguous commit from a validated read-only DB snapshot.
+
+        APPLIED means the exact signed statement is present in durable history
+        and the current owner/device row agrees with the latest history entry.
+        NOT_OBSERVED means the exact history row is absent and the prior state
+        is still coherent. Neither result authorizes an automatic retry.
+        Any mismatch or storage/integrity failure is UNRESOLVED.
+        """
+        if not isinstance(outcome, EnrollmentOutcomeUnknown):
+            raise TypeError("EnrollmentOutcomeUnknown is required")
+
+        operation = outcome.operation
+        owner_id = outcome.owner_id
+        device_id = outcome.device_id
+        enrollment_id = outcome.enrollment_id
+        generation = outcome.credential_generation
+        envelope_sha256 = outcome.envelope_sha256
+        if (
+            type(operation) is not str or operation not in {"enroll", "rotate", "revoke"}
+            or type(owner_id) is not str or _IDENTIFIER_RE.fullmatch(owner_id) is None
+            or type(device_id) is not str or _IDENTIFIER_RE.fullmatch(device_id) is None
+            or type(enrollment_id) is not str
+            or _IDENTIFIER_RE.fullmatch(enrollment_id) is None
+            or type(generation) is not int or not 1 <= generation <= MAX_EPOCH_MS
+            or type(envelope_sha256) is not str
+            or _SHA256_RE.fullmatch(envelope_sha256) is None
+        ):
+            raise ValueError("invalid enrollment outcome metadata")
+
+        def result(status: str, reason: str) -> EnrollmentReconciliation:
+            return EnrollmentReconciliation(
+                status=status,
+                reason=reason,
+                operation=operation,
+                owner_id=owner_id,
+                device_id=device_id,
+                enrollment_id=enrollment_id,
+                credential_generation=generation,
+                envelope_sha256=envelope_sha256,
+                automatic_retry_permitted=False,
+            )
+
+        db = None
+        try:
+            db = self._connect()
+            db.execute("BEGIN")
+            self._validate_schema(db)
+            history = db.execute(
+                "SELECT owner_id, device_id, operation, credential_generation, "
+                "envelope_sha256 FROM owner_device_history WHERE enrollment_id=?",
+                (enrollment_id,),
+            ).fetchone()
+            current = db.execute(
+                "SELECT owner_id, device_id, transport_certificate_sha256, "
+                "consent_public_key_sha256, credential_generation, active, enrollment_id "
+                "FROM owner_device WHERE device_id=?",
+                (device_id,),
+            ).fetchone()
+            latest = db.execute(
+                "SELECT enrollment_id, owner_id, device_id, operation, "
+                "credential_generation, transport_certificate_sha256, "
+                "consent_public_key_sha256 FROM owner_device_history "
+                "WHERE device_id=? ORDER BY credential_generation DESC LIMIT 1",
+                (device_id,),
+            ).fetchone()
+            latest_count = db.execute(
+                "SELECT COUNT(*) FROM owner_device_history "
+                "WHERE device_id=? AND credential_generation=("
+                "SELECT MAX(credential_generation) FROM owner_device_history WHERE device_id=?"
+                ")",
+                (device_id, device_id),
+            ).fetchone()[0]
+
+            latest_matches_current = (
+                current is not None
+                and latest is not None
+                and latest_count == 1
+                and current[0] == latest[1]
+                and current[1] == latest[2]
+                and current[2] == latest[5]
+                and current[3] == latest[6]
+                and current[4] == latest[4]
+                and current[5] == (0 if latest[3] == "revoke" else 1)
+                and current[6] == latest[0]
+            )
+
+            if history is not None:
+                exact_history = (
+                    history[0] == owner_id
+                    and history[1] == device_id
+                    and history[2] == operation
+                    and history[3] == generation
+                    and history[4] == envelope_sha256
+                )
+                if not exact_history:
+                    status, reason = (
+                        ENROLLMENT_OUTCOME_UNRESOLVED,
+                        "HISTORY_METADATA_MISMATCH",
+                    )
+                elif (
+                    not latest_matches_current
+                    or current[0] != owner_id
+                    or current[4] < generation
+                ):
+                    status, reason = (
+                        ENROLLMENT_OUTCOME_UNRESOLVED,
+                        "CURRENT_STATE_MISMATCH",
+                    )
+                else:
+                    status, reason = (
+                        ENROLLMENT_OUTCOME_APPLIED,
+                        "MATCHING_HISTORY_AND_CURRENT_STATE",
+                    )
+            elif operation == "enroll" and current is None and latest is None:
+                status, reason = (
+                    ENROLLMENT_OUTCOME_NOT_OBSERVED,
+                    "NO_HISTORY_AND_NO_DEVICE_ROW",
+                )
+            elif (
+                operation in {"rotate", "revoke"}
+                and latest_matches_current
+                and current[0] == owner_id
+                and current[4] == generation - 1
+                and current[5] == 1
+            ):
+                status, reason = (
+                    ENROLLMENT_OUTCOME_NOT_OBSERVED,
+                    "NO_HISTORY_AND_PRIOR_STATE_MATCH",
+                )
+            else:
+                status, reason = (
+                    ENROLLMENT_OUTCOME_UNRESOLVED,
+                    "NO_MATCHING_HISTORY_OR_COHERENT_PRIOR_STATE",
+                )
+
+            db.execute("COMMIT")
+            return result(status, reason)
+        except (EnrollmentRegistryError, sqlite3.Error, OSError):
+            if db is not None and db.in_transaction:
+                try:
+                    db.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+            return result(
+                ENROLLMENT_OUTCOME_UNRESOLVED,
+                "DATABASE_UNAVAILABLE_OR_INVALID",
+            )
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except sqlite3.Error:
+                    pass
 
     def lookup_active_device(self, device_id: str) -> EnrolledOwnerDevice | None:
         if type(device_id) is not str or _IDENTIFIER_RE.fullmatch(device_id) is None:
