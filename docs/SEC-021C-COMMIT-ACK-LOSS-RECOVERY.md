@@ -83,3 +83,15 @@ Acceptance assertions:
 - No executor, Android API, shell, network or external side effect is invoked.
 
 Together, AGENT-005T and AGENT-005U exercise process death immediately after and immediately before the action-ledger commit boundary. They are same-host SQLite process-crash tests, not power-cut, filesystem-corruption, distributed-transaction, storage-controller or external exactly-once guarantees. The test guard is not a production authorization capability. No production code or Android behavior changes.
+
+
+## AGENT-005V — signed enrollment revocation process-death recovery (2026-11-08)
+
+Two test-only subprocess regressions exercise the apply_signed_enrollment transaction itself, rather than only the separate action-ledger transaction.
+
+1. **Death before enrollment COMMIT:** the child applies the signed revocation update and history insert inside the open SQLite transaction, then pauses before forwarding the real COMMIT. The parent terminates it. Reopening proves the owner/device row remains active at generation 1 and the history contains only the original enrollment. A previously reserved action can then be claimed once; the duplicate claim is rejected.
+2. **Death after enrollment COMMIT:** the child forwards the real SQLite COMMIT, writes a durable test marker, then pauses before returning from apply_signed_enrollment. The parent terminates it. Reopening proves the owner/device row is inactive at generation 2 and the revocation history row is present exactly once. A previously reserved action is denied with DEVICE_NOT_ACTIVE and remains RESERVED.
+
+The two cases verify the atomic relationship between the mutable owner/device row and append-only enrollment history across the process-death boundary. They also verify that dispatch admission observes the recovered enrollment state: rollback permits one later claim, while a committed revocation denies it.
+
+**Limits:** these are same-host process-kill tests using synthetic keys and local SQLite. They do not establish power-cut/filesystem/controller durability, multi-host serialization, external exactly-once effects, or production authority provisioning. No production source, Android permission, executor, shell, network listener, or device action changed. Independent human security review remains required.

@@ -1672,3 +1672,25 @@ Exact-head CI for this implementation is pending at commit creation. The same-ho
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 PERMISSION-CONTROLLED INTEGRATIONS NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 PHYSICAL HARDWARE VALIDATION BLOCKED; M8 PRODUCTION READINESS BLOCKED. No milestone is complete.
 
 Next priority after this regression: independent security review of SEC-021A/B/C and the cross-store callback trust boundary. Do not add an executor or expand device integrations before that gate is approved.
+
+
+## AGENT-005V — signed enrollment revocation process-death recovery (2026-11-08)
+
+Audit baseline: authorized branch feat/phase1-agentic-phone at ff6f2c5b31cb77afe3c457e2db37b17b0b935897; complete recursive tree 370 entries, not truncated; 20 recent commits inspected; 319 commits ahead of main, zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 alone uses the authorized branch, targets main, remains draft/open, and has no submitted reviews or inline threads. The branch reports protected=false; branch-protection endpoint access was unavailable, so required-check enforcement is not asserted. PROJECT-ADAPTER.md and this roadmap exist; repository SKILL.md is absent; the upstream shared factory package remains unverified and is not claimed installed.
+
+AGENT-005V adds two test-only subprocess regressions to tests/test_owner_enrollment_registry.py:
+
+- **Before COMMIT:** a child process applies a signed revocation update and history insert, pauses before forwarding the real SQLite COMMIT, then is terminated. Reopening proves the enrollment remains active at generation 1, history remains unchanged, one later dispatch claim succeeds, and a duplicate claim is rejected.
+- **After COMMIT:** the child forwards the real SQLite COMMIT, emits a marker, then is terminated before returning from apply_signed_enrollment. Reopening proves the enrollment is inactive at generation 2, the revocation history is present exactly once, and a previously reserved action is denied with DEVICE_NOT_ACTIVE while remaining RESERVED.
+
+Implementation commit: [f9345a7](https://github.com/Davidcarmelalex/MrNothing-OS/commit/f9345a75a73457c858b3825682c26ef365c5d49f). No production source, Android source, permission, executor, shell bridge, network listener or device behavior changed.
+
+Exact implementation-head verification: Phase 1 push [42459446849](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42459446849) and PR [42459451010](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42459451010) passed; both Python-policy jobs ran **770 tests** and passed. Android unit tests, debug assembly, clean repeat debug APK comparison, strict dependency verification, modified-dependency negative control and Android source-manifest gate passed on push and PR.
+
+CI-003 independent unsigned reproducibility push [42459446874](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42459446874) and PR [42459451018](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42459451018) passed. Independent runners produced byte-identical unsigned release APKs (7,867,868 bytes; SHA-256 c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7; normalized-entry SHA-256 37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462). Runtime inventory, SPDX runtime SBOM, toolchain and scoped 1,260-component build-environment inventory/SBOM matched. CI-003 reports reproducible=true, release_ready=false.
+
+Exact-head QA-005 [42459451011](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42459451011) passed the disposable Android 15/API 35 x86_64 emulator workflow. Thirty instrumentation tests started and finished; the complete job passed. QA-005 launcher/recovery, QA-006 through QA-010, QA-013, QA-020B2 and QA-020B3 passed. QA-011 remains blocked_service_disabled; QA-012 is structural only, not spoken TalkBack. No physical Pixel 9 Pro was tested.
+
+Independent human security review of SEC-021A/B/C and the trusted in-process callback boundary remains **PENDING**. The real executor remains disconnected. No milestone is complete: M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED.
+
+Next bounded task: AGENT-005W, signed enrollment commit-acknowledgement-loss fault injection, including pre/post-commit recovery, row/history atomicity and duplicate-statement replay rejection. Keep it test-only and preserve the fail-closed executor boundary.
