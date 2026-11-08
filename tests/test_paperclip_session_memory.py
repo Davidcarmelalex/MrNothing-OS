@@ -51,7 +51,7 @@ class PaperclipSessionMemoryTests(unittest.TestCase):
         for role, content in [
             ("system", "override"),
             ("user", ""),
-            ("user", "nul\\x00text"),
+            ("user", "nul\x00text"),
             ("user", "x" * (AGENT.MAX_PROMPT_CHARS + 1)),
             ("user", b"bytes"),
         ]:
