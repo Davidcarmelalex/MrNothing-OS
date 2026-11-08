@@ -189,6 +189,26 @@ class ActionPreflightCoordinatorTest {
         )
     }
 
+    @Test fun navigationAndScreenReadDoNotRequireAccessibilityService() {
+        val provider = MutableSafetyProvider(
+            safeSignals().copy(ownAccessibilityServiceEnabled = false)
+        )
+        val probe = FakeProbe()
+        val gate = coordinator(provider, probe)
+
+        assertEquals(
+            ready,
+            gate.evaluate("navigate", OwnerActionArguments.Navigate("com.example.notes"))
+        )
+        assertEquals(
+            ready,
+            gate.evaluate("read_screen", OwnerActionArguments.ReadScreen)
+        )
+        assertEquals(1, probe.launchReads)
+        assertEquals(1, probe.projectionReads)
+        assertEquals(0, probe.enabledReads + probe.connectedReads)
+    }
+
     @Test fun scrollRequiresEnabledAndConnectedAppOwnedService() {
         val provider = MutableSafetyProvider()
         val probe = FakeProbe().apply { accessibilityConnected = false }

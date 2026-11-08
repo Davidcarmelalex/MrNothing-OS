@@ -1607,3 +1607,26 @@ Starting-head Phase 1 push/PR, CI-003 push/PR and QA-005 emulator PR all passed.
 AGENT-005N adds a non-integrated `ActionPreflightCoordinator` that composes the existing coarse safety policy and action-specific Android permission gate. It validates typed arguments before state reads, uses an app-owned safety-signal provider with deny-all default, fails closed on missing/throwing state, short-circuits platform reads after safety denial, and freshly evaluates action-specific OS prerequisites. Its positive result is explicitly only `ReadyForIndependentAuthorization`; it is not a capability or dispatch permission. Eleven JVM tests and seven Python source-boundary tests were added. CommandRouter remains fail-closed; no provider, service, permission, listener or executor is connected.
 
 M3 remains PARTIAL. M1/M2/M6 remain IN PROGRESS; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is complete. Next: independent security review of the full authorization chain and preflight composition. Any later no-op Android admission integration must remain isolated from real device APIs until reviewed.
+
+
+
+## AGENT-005O — least-privilege action preflight (2026-11-08)
+
+Audit baseline: authorized branch `feat/phase1-agentic-phone` at `75f6f2384181b8a7107850bf5f40cf890db8527a`; complete recursive tree 360 entries, not truncated. The latest 10 commits and all six open PRs (#1 and #3–#7) were inspected. PR #1 is the only open PR using this branch, targets `main`, remains draft and has no submitted reviews or inline threads. The project adapter and roadmap exist; repository `SKILL.md` is absent. The upstream shared Universal Autonomous Engineering Factory package remains unverified and is not claimed installed.
+
+Exact-head Phase 1 push/PR and CI-003 independent-runner push/PR passed. Both Phase 1 Python policy jobs ran 758 tests and passed. Android unit tests, debug assembly, repeat debug APK comparison, strict dependency verification, modified-dependency negative control and source-manifest gate passed. CI-003 produced byte-identical unsigned release APKs on two independent runners (7,867,852 bytes; SHA-256 `07618b5eaf5d36995c5a7fae286c0a41aee1407c89f6437d2c326b4324d4336a`; normalized-entry SHA-256 `50ea1d354ec93d34c1b8d4973c9a2f956c9fd12754795eb439cd0a9214a70c83`). Runtime inventory and SPDX SBOM matched. Provenance reports `release_ready=false`.
+
+QA-005 exact-head emulator run [42436280956](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42436280956) completed successfully. The API 35 disposable x86_64 emulator passed the SEC-020B4D lifecycle step and QA-005 through QA-010, QA-013, QA-020B2 and QA-020B3. QA-011 remains `blocked_service_disabled`; QA-012 checks structural semantics only and is not spoken TalkBack acceptance. The emulator artifact is [13598959293](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42436280956/artifacts/13598959293). No physical Pixel 9 Pro was tested.
+
+**Finding:** the composed AGENT-005N policy required `ownAccessibilityServiceEnabled` as a common prerequisite for every action. That conflicts with AGENT-004J's action-specific contract: `navigate` only launches a verified exact package/Activity, and `read_screen` uses a user-approved MediaProjection session. Neither requires an AccessibilityService. Requiring it would create unnecessary pressure to enable a highly privileged service for unrelated operations, violating least privilege and the documented action-specific gate.
+
+**Change:** `ScreenActionPreflight` now applies common owner/device/consent/restricted-surface/emergency-stop/revocation checks to every action, then enforces:
+- `navigate`: no AccessibilityService or MediaProjection requirement; exact package launchability remains in `ActionPermissionGate`.
+- `read_screen`: active user-approved MediaProjection required; no AccessibilityService requirement.
+- `scroll`: app-owned AccessibilityService enabled; the action-specific gate separately requires it connected.
+
+Added pure-JVM tests for the two non-accessibility actions and a Python source-boundary regression test. The Android service remains undeclared; no prompt, grant, listener, executor, dispatcher, shell bridge or device action was added. CommandRouter remains fail-closed.
+
+**Independent review status:** source/diff and test assertions were re-read against AGENT-004J and SEC-014F. This is an author-side review, not independent human security approval. The supervisor gate remains PENDING. Exact-head CI and QA must pass after this commit.
+
+Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete.

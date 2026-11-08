@@ -20,6 +20,13 @@ class ScreenPreflightSourceTests(unittest.TestCase):
         ):
             self.assertIn(token, code)
 
+    def test_accessibility_is_required_only_for_scroll(self):
+        code = (SRC / "ScreenActionPreflight.kt").read_text()
+        self.assertIn('"read_screen" -> if (signals.activeProjectionSession)', code)
+        self.assertIn('"navigate" -> ScreenPreflightResult.PRECONDITIONS_PRESENT', code)
+        self.assertIn('"scroll" -> if (signals.ownAccessibilityServiceEnabled)', code)
+        self.assertNotIn('||\n            !signals.ownAccessibilityServiceEnabled', code)
+
     def test_no_accessibility_service_or_projection_grant_declared(self):
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text()
         self.assertNotIn("android.accessibilityservice.AccessibilityService", manifest)

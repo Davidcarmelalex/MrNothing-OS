@@ -1,32 +1,50 @@
-# SEC-014F — fail-closed screen integration prerequisite preflight
+# SEC-014F — fail-closed, least-privilege screen/action preflight
 
-**Scope:** feat/phase1-agentic-phone; no live screen executor, consent issuer,
+**Scope:** `feat/phase1-agentic-phone`; no live screen executor, consent issuer,
 permission request, AccessibilityService, MediaProjection session or manifest
-permission added.
+permission is added by this policy.
 
-The new Kotlin ScreenActionPreflight is a **non-integrated readiness policy**,
-not a consent grant. It rejects missing trusted owner session, unsafe device
-state, absent visible indicator, restricted surfaces, emergency stop, revoked
-sessions and absent app-owned AccessibilityService. For read_screen it
-additionally requires a separately authorized active projection session.
-Unknown actions fail closed. A read-only Android platform probe inspects the
-enabled accessibility services and requires an exact match to the app's
-future service class and package. That service is intentionally **not
-declared**: current runtime readiness is therefore false.
+`ScreenActionPreflight` is a **non-integrated readiness policy**, not a
+consent grant or authorization decision. Every supported action requires a
+trusted owner session, safe/unlocked device, visible consent indicator, no
+restricted surface, no emergency stop and no revoked session. Missing or
+unsafe common state blocks every action.
 
-PRECONDITIONS_PRESENT is **not** permission to execute. Any future executor
-must independently verify Android runtime grants, trusted user intent, an
-owner/device/session-bound one-use signed capability, scope, expiry, replay,
-revocation and restricted-screen rules at execution time. Never source policy
-signals from an LLM or remote request. No banking/biometric/CAPTCHA bypass.
+Sensitive Android prerequisites are action-specific:
 
-Verification: 10 pure Kotlin JUnit cases, four Python source-boundary cases
-and the existing full preflight. Kotlin compilation and Android emulator
-behavior require separate CI evidence. No TalkBack speech, actual screen
-capture, real Pixel or production security claim is made.
+| Action | Required preflight | Not required |
+| --- | --- | --- |
+| `navigate` | Exact target package and exported/enabled launch activity, checked by `ActionPermissionGate` | AccessibilityService and MediaProjection |
+| `read_screen` | Active, user-approved app-owned MediaProjection session | AccessibilityService |
+| `scroll` | Exact app-owned AccessibilityService enabled and connected | MediaProjection |
 
-**Still blocked:** Keystore-backed owner enrollment and key lifecycle;
-trusted owner intent and consent issuance; Android permission grant flow;
-MediaProjection foreground service and user-visible stop indicator;
-restricted-screen detection; immediate revocation; integration tests;
-independent security review. SEC-014 remains open.
+This is a least-privilege correction: app launch must not pressure the owner
+to enable a highly privileged AccessibilityService, and MediaProjection-based
+screen capture must not depend on an unrelated accessibility grant. Scroll
+remains blocked unless the app-owned AccessibilityService is both enabled and
+connected. The current repository intentionally declares no such service and
+the Android session probes default to deny.
+
+The read-only Android probe checks the exact future service class and package.
+It never enables a service, requests a permission, starts an Activity, captures
+screen content or performs a gesture.
+
+**Security boundary:** a positive preflight result is not owner consent, a
+signed capability, verified transport, durable dispatch admission or permission
+to execute. A future executor must independently revalidate owner/device/session
+binding, action and canonical arguments, one-use capability, expiry, replay,
+revocation, Android runtime state and restricted-screen rules at the actual
+side-effect boundary. Never source safety signals from an LLM or remote request.
+No banking/biometric/CAPTCHA bypass is allowed.
+
+**Verification:** pure Kotlin/JVM policy tests and Python source-boundary tests
+cover action-specific requirements, common safety denials and the no-executor
+boundary. Android framework compilation and disposable-emulator behavior are
+separate CI gates. No spoken TalkBack, real screen capture, physical Pixel or
+production security claim is made.
+
+**Still blocked:** production owner/session provider; trusted owner intent and
+consent issuance; Android permission-grant UX; MediaProjection foreground
+service and visible stop indicator; AccessibilityService implementation and
+disclosure; restricted-surface detection; immediate revocation at the eventual
+executor boundary; independent security review.
