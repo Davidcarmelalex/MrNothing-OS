@@ -1975,3 +1975,26 @@ Milestones: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT A
 **Milestones:** M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is COMPLETE.
 
 **Next:** AGENT-006I should block legacy wallet use with real funds until plaintext private-key persistence and the invalid fallback are removed; then harden network and voice modules with explicit target/capture consent. Keep all legacy modules disconnected from the native Android router.
+
+
+## AGENT-006J — consent-gated legacy network diagnostics (2026-11-09)
+
+**Audit baseline:** branch feat/phase1-agentic-phone at 3554fefab1a1745bfc485b8becdef3562a7c40c1; complete recursive tree 389 entries, not truncated. The latest 20 branch commits were inspected. The branch is 353 commits ahead of main and zero behind. Six open PRs (#1 and #3–#7) were inspected; PR #1 remains the draft umbrella PR against main, with no submitted review or inline review threads. PROJECT-ADAPTER.md exists; repository SKILL.md is absent; the upstream shared package remains unverified and is not claimed installed.
+
+**Architecture/instruction audit:** Kotlin launcher and Android tests remain separate from the Python/Termux legacy modules. CommandRouter remains fail-closed; no production Android executor, network listener, AccessibilityService or MediaProjection provider is connected. The project adapter assigns Android, AI/agents, security, UX/accessibility, CI/QA, hardware/release and independent supervisor responsibilities; those are ownership roles, not a claim that separate reviewers were launched.
+
+**Baseline exact-head evidence:** Phase 1 push [42507369582](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42507369582) and PR [42507373834](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42507373834) passed; the Python policy and Android jobs passed. CI-003 push [42507369711](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42507369711) and PR [42507373804](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42507373804) passed, including two independent unsigned builders and the cross-runner verifier. QA-005 PR [42507373815](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42507373815) passed on a disposable Android 15/API 35 x86_64 emulator. The workflow reports structural/availability accessibility checks; QA-011 is not spoken TalkBack acceptance and QA-012 is not spoken-navigation acceptance. No physical Pixel 9 Pro was tested. The exact-head Python suite reported 872 tests passed on both push and PR.
+
+**Finding:** the standalone network module previously called curl for public-IP lookup, accepted arbitrary ping targets/counts, ran speedtest-cli with provider-selected servers, monitored a fixed public target without per-probe consent, and used a UDP route-selection connect to a fixed public address for local-IP discovery.
+
+**Implementation:** AGENT-006J replaces those paths with exact private-IPv4 allowlisting (MRNOTHING_NETWORK_ALLOWED_TARGETS), internal target/count-bound typed confirmation, 1–3 packet bounds, fixed argv/shell=False, a 10-second ping timeout, thread-safe process-local per-target/global rate limits, and a 1–300 second monitor with 30–60 second interval and no more than 10 probes. Each monitor probe requires fresh confirmation. Public-IP lookup is restricted to a fixed HTTPS api.ipify.org request after exact consent, with TLS verification, no ambient proxy, no redirect, 6-second timeout and a 46-byte read bound. Provider-selected speed tests are disabled. Local IP discovery uses local interface ioctl and sends no packet.
+
+**Regression coverage:** new offline tests cover private IPv4 parsing and allowlist failure, exact confirmation and noninteractive denial, bounded counts, fixed argv and timeout, rate limits, fixed-host HTTPS/no-proxy/no-redirect behavior, response bounds, disabled speed tests, per-probe consent and local ioctl without network send. Tests mock input, subprocess, HTTP and ioctl boundaries. No network traffic is performed by tests.
+
+**Threat model:** TM-16 records outbound traffic disclosure and probe-abuse risks, mitigations and residual limitations. The network row in AGENT-006H's inventory is superseded by the dedicated AGENT-006J record; voice capture/transcript retention and PaperClip plaintext memory remain open.
+
+**Independent review:** pending. The author cannot self-approve; review must challenge allowlist tampering, process-local rate-limit resets, fixed provider disclosure, proxy/redirect behavior and same-user Termux trust. The Android executor remains disconnected.
+
+**Exact-head CI:** pending at commit creation; exact-head push/PR Phase 1, CI-003 and QA-005 results must be recorded in the PR verification comment after completion.
+
+**Milestones:** M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is COMPLETE.

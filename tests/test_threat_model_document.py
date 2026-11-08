@@ -45,7 +45,7 @@ class ThreatModelDocumentTests(unittest.TestCase):
                 self.assertIn(category, self.text)
 
     def test_threat_register_has_unique_ids(self):
-        for threat_id in (f"TM-{i:02d}" for i in range(1, 16)):
+        for threat_id in (f"TM-{i:02d}" for i in range(1, 17)):
             with self.subTest(threat_id=threat_id):
                 self.assertEqual(self.text.count(threat_id), 1)
 
@@ -70,6 +70,12 @@ class ThreatModelDocumentTests(unittest.TestCase):
         self.assertIn("TM-15", self.text)
         self.assertIn("model-hub fallback", self.text)
         self.assertIn("local GGUF", self.text)
+
+    def test_network_diagnostics_boundary_is_documented(self):
+        self.assertIn("MRNOTHING_NETWORK_ALLOWED_TARGETS", self.text)
+        self.assertIn("api.ipify.org", self.text)
+        self.assertIn("speed-test auto-selection is disabled", self.text)
+        self.assertIn("process-local", self.text)
 
     def test_independent_review_is_required(self):
         self.assertIn("The document author cannot self-approve.", self.text)

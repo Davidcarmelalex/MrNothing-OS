@@ -136,3 +136,13 @@ See [SEC-014H](SEC-014H-LOCAL-OWNER-KEY-ENROLLMENT.md).
 Android runtime and physical Pixel tests, remote attestation, identity
 binding and independent review remain OPEN. M1–M8 remain incomplete.
 Upstream shared SKILL.md is unverified.
+
+
+## Current engineering snapshot — 2026-11-09, AGENT-006J
+
+- Audited source head: 3554fefab1a1745bfc485b8becdef3562a7c40c1; recursive tree 389 entries, no truncation; 353 commits ahead of main, zero behind; six open PRs (#1 and #3–#7).
+- PROJECT-ADAPTER.md is present. Repository SKILL.md is absent; upstream shared factory package remains unverified and is not claimed installed.
+- Exact-head baseline before AGENT-006J: Phase 1 push/PR, CI-003 push/PR and QA-005 PR all passed. Python policy reported 872 tests on push and PR; Android Gradle unit/build, repeat debug build, dependency verification/negative control, CI-003 independent unsigned build comparison and QA-005 disposable API 35 x86_64 emulator workflow passed.
+- AGENT-006J hardens the standalone legacy network module: exact private-IPv4 allowlist, target/count-bound interactive consent, bounded probes/timeouts, process-local rate limits, fixed-host public-IP lookup with proxy/redirect disabled, per-probe monitoring consent and disabled provider-selected speed tests. New tests mock every external boundary.
+- Exact-head AGENT-006J CI is pending at commit creation. No network traffic, physical Pixel 9 Pro, spoken TalkBack, signed production release, OTA or production executor is claimed.
+- Milestones remain M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED. No milestone is COMPLETE. Independent security review remains pending.
