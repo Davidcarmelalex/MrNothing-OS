@@ -21,7 +21,7 @@ CONFIG_FILE = HOME / "config.json"
 MAX_AGENT_STARTS = 8
 MAX_AGENT_ARGUMENT_CHARS = 2048
 MAX_AGENT_ARGUMENT_COUNT = 32
-_AGENT_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\\Z")
+_AGENT_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 
 BANNER = f"""
 ╔══════════════════════════════════════╗
@@ -107,7 +107,7 @@ def _parse_agent_arguments(args):
         return None
     if len(argv) > MAX_AGENT_ARGUMENT_COUNT:
         return None
-    if any(not arg or "\\x00" in arg for arg in argv):
+    if any(not arg or "\x00" in arg for arg in argv):
         return None
     if sum(len(arg) for arg in argv) > MAX_AGENT_ARGUMENT_CHARS:
         return None
@@ -153,10 +153,10 @@ def _confirm_agent_start(names):
         return False
     if any(_resolve_agent_path(name) is None for name in names):
         return False
-    material = "\\x00".join(("mrnothing-agent-start-v1", *names))
+    material = "\x00".join(("mrnothing-agent-start-v1", *names))
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:16].upper()
     challenge = f"START AGENTS {digest}"
-    print("\\n[MrNothing] Configured agents will start with this Termux user's privileges.")
+    print("\n[MrNothing] Configured agents will start with this Termux user's privileges.")
     print("Review the exact agent list:")
     for name in names:
         print(f"  - {name}")
