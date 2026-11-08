@@ -57,6 +57,30 @@ class EnrollmentRegistryError(RuntimeError):
     """Persistent enrollment state is unavailable, invalid or rejected."""
 
 
+class EnrollmentOutcomeUnknown(EnrollmentRegistryError):
+    """A COMMIT acknowledgement was lost; reconcile durable state before retrying."""
+
+    reconciliation_required = True
+
+    def __init__(
+        self,
+        *,
+        operation: str,
+        device_id: str,
+        enrollment_id: str,
+        credential_generation: int,
+        envelope_sha256: str,
+    ) -> None:
+        super().__init__(
+            "enrollment COMMIT outcome is unknown; reconcile durable history before retrying"
+        )
+        self.operation = operation
+        self.device_id = device_id
+        self.enrollment_id = enrollment_id
+        self.credential_generation = credential_generation
+        self.envelope_sha256 = envelope_sha256
+
+
 class EnrollmentStatementError(ValueError):
     """An enrollment statement failed strict parsing or signature validation."""
 
@@ -603,11 +627,35 @@ class SQLiteOwnerEnrollmentRegistry:
                 generation, fingerprint, key_digest, parsed["envelope_sha256"],
                 now_epoch_ms,
             ))
-            db.execute("COMMIT")
+            try:
+                db.execute("COMMIT")
+            except Exception as exc:
+                unknown = EnrollmentOutcomeUnknown(
+                    operation=operation,
+                    device_id=device_id,
+                    enrollment_id=payload["enrollment_id"],
+                    credential_generation=generation,
+                    envelope_sha256=parsed["envelope_sha256"],
+                )
+                if db.in_transaction:
+                    try:
+                        db.execute("ROLLBACK")
+                    except Exception as rollback_exc:
+                        raise unknown from rollback_exc
+                    if isinstance(exc, sqlite3.IntegrityError):
+                        raise EnrollmentConflict(
+                            "enrollment uniqueness or generation constraint failed"
+                        ) from exc
+                    raise EnrollmentRegistryError(
+                        "enrollment COMMIT failed and the transaction was rolled back"
+                    ) from exc
+                raise unknown from exc
             return EnrollmentResult(
                 operation, owner_id, device_id, generation,
                 operation != "revoke", parsed["envelope_sha256"],
             )
+        except EnrollmentOutcomeUnknown:
+            raise
         except EnrollmentRegistryError:
             if db.in_transaction:
                 db.execute("ROLLBACK")

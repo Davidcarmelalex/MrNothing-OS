@@ -16,8 +16,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 
 from core.owner_enrollment_registry import (
-    EnrollmentConflict, EnrollmentRegistryError, EnrollmentStatementError,
-    SQLiteOwnerEnrollmentRegistry, _canonical_payload, SCHEMA_NAME,
+    EnrollmentConflict, EnrollmentOutcomeUnknown, EnrollmentRegistryError,
+    EnrollmentStatementError, SQLiteOwnerEnrollmentRegistry, _canonical_payload,
+    SCHEMA_NAME,
 )
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_transport import EnrolledTransportCertificate
@@ -79,18 +80,21 @@ class CommitAcknowledgementLossConnection:
     """Test-only SQLite proxy that loses the acknowledgement around COMMIT."""
 
     def __init__(self, connection, *, mode):
-        if mode not in {"before", "after"}:
-            raise ValueError("mode must be before or after")
+        if mode not in {"before", "after", "rollback-fails"}:
+            raise ValueError("unsupported commit acknowledgement mode")
         self._connection = connection
         self._mode = mode
 
     def execute(self, statement, *parameters):
-        if statement.strip().upper() == "COMMIT":
+        normalized = statement.strip().upper()
+        if normalized == "COMMIT":
             if self._mode == "after":
                 self._connection.execute(statement, *parameters)
             raise sqlite3.OperationalError(
                 "simulated lost SQLite COMMIT acknowledgement"
             )
+        if normalized == "ROLLBACK" and self._mode == "rollback-fails":
+            raise sqlite3.OperationalError("simulated SQLite ROLLBACK failure")
         return self._connection.execute(statement, *parameters)
 
     def __getattr__(self, name):
@@ -867,10 +871,11 @@ class RegistryTests(unittest.TestCase):
             original_connect(), mode=mode
         )
         try:
-            with self.assertRaises(EnrollmentRegistryError):
+            with self.assertRaises(EnrollmentRegistryError) as raised:
                 self.registry.apply_signed_enrollment(
                     envelope, now_epoch_ms=NOW
                 )
+            return raised.exception
         finally:
             self.registry._connect = original_connect
 
@@ -884,7 +889,8 @@ class RegistryTests(unittest.TestCase):
             key=self.consent2,
         )
 
-        self._apply_with_lost_commit_acknowledgement(rotate, mode="before")
+        outcome = self._apply_with_lost_commit_acknowledgement(rotate, mode="before")
+        self.assertIs(type(outcome), EnrollmentRegistryError)
 
         reopened = SQLiteOwnerEnrollmentRegistry(
             self.path,
@@ -929,7 +935,14 @@ class RegistryTests(unittest.TestCase):
             key=self.consent2,
         )
 
-        self._apply_with_lost_commit_acknowledgement(rotate, mode="after")
+        outcome = self._apply_with_lost_commit_acknowledgement(rotate, mode="after")
+        self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
+        self.assertTrue(outcome.reconciliation_required)
+        self.assertEqual(outcome.operation, "rotate")
+        self.assertEqual(outcome.device_id, "pixel-1")
+        self.assertEqual(outcome.enrollment_id, "rotate-ack-loss-after")
+        self.assertEqual(outcome.credential_generation, 2)
+        self.assertEqual(outcome.envelope_sha256, hashlib.sha256(rotate).hexdigest())
 
         reopened = SQLiteOwnerEnrollmentRegistry(
             self.path,
@@ -956,6 +969,86 @@ class RegistryTests(unittest.TestCase):
             [(item.operation, item.credential_generation) for item in history_after_replay],
             [("enroll", 1), ("rotate", 2)],
         )
+
+
+    def test_signed_initial_enrollment_commit_acknowledgement_loss_reports_unknown(self):
+        envelope = self.statement(enrollment_id="enroll-ack-loss-after")
+        outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
+
+        self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
+        self.assertEqual(outcome.operation, "enroll")
+        self.assertEqual(outcome.device_id, "pixel-1")
+        self.assertEqual(outcome.enrollment_id, "enroll-ack-loss-after")
+        self.assertEqual(outcome.credential_generation, 1)
+        self.assertEqual(outcome.envelope_sha256, hashlib.sha256(envelope).hexdigest())
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        self.assertEqual(reopened.lookup_active_device("pixel-1").credential_generation, 1)
+        history = reopened.history("pixel-1")
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0].envelope_sha256, hashlib.sha256(envelope).hexdigest())
+        with self.assertRaises(EnrollmentConflict):
+            reopened.apply_signed_enrollment(envelope, now_epoch_ms=NOW)
+
+    def test_signed_revocation_commit_acknowledgement_loss_reports_unknown(self):
+        self.enroll()
+        envelope = self.statement(
+            operation="revoke",
+            generation=2,
+            enrollment_id="revoke-ack-loss-after",
+            cert=self.cert1,
+            key=self.consent1,
+        )
+        outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
+
+        self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
+        self.assertEqual(outcome.operation, "revoke")
+        self.assertEqual(outcome.device_id, "pixel-1")
+        self.assertEqual(outcome.enrollment_id, "revoke-ack-loss-after")
+        self.assertEqual(outcome.credential_generation, 2)
+        self.assertEqual(outcome.envelope_sha256, hashlib.sha256(envelope).hexdigest())
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        self.assertIsNone(reopened.lookup_active_device("pixel-1"))
+        history = reopened.history("pixel-1")
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[1].operation, "revoke")
+        self.assertEqual(history[1].envelope_sha256, hashlib.sha256(envelope).hexdigest())
+        with self.assertRaises(EnrollmentConflict):
+            reopened.apply_signed_enrollment(envelope, now_epoch_ms=NOW)
+
+    def test_signed_rotation_commit_and_rollback_failure_reports_unknown(self):
+        self.enroll()
+        envelope = self.statement(
+            operation="rotate",
+            generation=2,
+            enrollment_id="rotate-rollback-failure",
+            cert=self.cert2,
+            key=self.consent2,
+        )
+        outcome = self._apply_with_lost_commit_acknowledgement(
+            envelope, mode="rollback-fails"
+        )
+
+        self.assertIsInstance(outcome, EnrollmentOutcomeUnknown)
+        self.assertEqual(outcome.operation, "rotate")
+        self.assertEqual(outcome.envelope_sha256, hashlib.sha256(envelope).hexdigest())
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        self.assertEqual(reopened.lookup_active_device("pixel-1").credential_generation, 1)
+        self.assertEqual(len(reopened.history("pixel-1")), 1)
 
 
 if __name__ == "__main__":
