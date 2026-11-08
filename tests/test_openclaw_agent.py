@@ -37,10 +37,10 @@ class OpenClawSafetyTests(unittest.TestCase):
         self._allow("192.168.56.10, 10.0.0.7")
         self.assertEqual(agent._load_allowed_targets(), frozenset())
 
+
     def test_missing_allowlist_denies_before_confirmation_or_network(self):
-        confirm = Mock(return_value=True)
-        with patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
-            result = agent.scan_network("192.168.56.10", confirm=confirm)
+        with patch.object(agent, "confirm_scan") as confirm, patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
+            result = agent.scan_network("192.168.56.10")
         self.assertEqual(result["reason"], "TARGET_NOT_ALLOWLISTED")
         confirm.assert_not_called()
         run.assert_not_called()
@@ -48,20 +48,20 @@ class OpenClawSafetyTests(unittest.TestCase):
 
     def test_invalid_or_public_target_is_denied_even_with_confirmation(self):
         self._allow("192.168.56.10")
-        confirm = Mock(return_value=True)
-        with patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
+        with patch.object(agent, "confirm_scan") as confirm, patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
             for target in ("192.168.56.10;id", "https://192.168.56.10", "8.8.8.8", "example.com"):
-                result = agent.scan_network(target, confirm=confirm)
+                result = agent.scan_network(target)
                 self.assertEqual(result["reason"], "INVALID_OR_NON_PRIVATE_IPV4")
         confirm.assert_not_called()
         run.assert_not_called()
         sock.assert_not_called()
 
-    def test_allowlisted_target_still_requires_confirmation_callback(self):
+    def test_allowlisted_target_requires_internal_interactive_confirmation(self):
         self._allow()
-        with patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
+        with patch.object(agent, "confirm_scan", return_value=False) as confirm, patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
             result = agent.scan_network("192.168.56.10")
-        self.assertEqual(result["reason"], "INTERACTIVE_CONFIRMATION_REQUIRED")
+        self.assertEqual(result["reason"], "CONFIRMATION_DENIED")
+        confirm.assert_called_once_with("192.168.56.10")
         run.assert_not_called()
         sock.assert_not_called()
 
@@ -71,10 +71,11 @@ class OpenClawSafetyTests(unittest.TestCase):
             with (
                 patch.object(agent, "REPORTS_DIR", Path(temp_dir) / "reports"),
                 patch.object(agent, "log") as log,
+                patch.object(agent, "confirm_scan", return_value=False),
                 patch.object(agent, "run") as run,
                 patch.object(agent.socket, "socket") as sock,
             ):
-                result = agent.scan_network("192.168.56.10", confirm=lambda _: False)
+                result = agent.scan_network("192.168.56.10")
             self.assertEqual(result["reason"], "CONFIRMATION_DENIED")
             self.assertFalse((Path(temp_dir) / "reports").exists())
         log.assert_not_called()
@@ -84,8 +85,8 @@ class OpenClawSafetyTests(unittest.TestCase):
     def test_confirmation_requires_exact_boolean_true(self):
         self._allow()
         for value in (1, "yes", None, False):
-            with patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
-                result = agent.scan_network("192.168.56.10", confirm=lambda _, v=value: v)
+            with patch.object(agent, "confirm_scan", return_value=value), patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
+                result = agent.scan_network("192.168.56.10")
             self.assertEqual(result["reason"], "CONFIRMATION_DENIED")
             run.assert_not_called()
             sock.assert_not_called()
@@ -94,8 +95,8 @@ class OpenClawSafetyTests(unittest.TestCase):
         self._allow()
         def broken(_target):
             raise RuntimeError("confirmation unavailable")
-        with patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
-            result = agent.scan_network("192.168.56.10", confirm=broken)
+        with patch.object(agent, "confirm_scan", side_effect=broken), patch.object(agent, "run") as run, patch.object(agent.socket, "socket") as sock:
+            result = agent.scan_network("192.168.56.10")
         self.assertEqual(result["reason"], "CONFIRMATION_DENIED")
         run.assert_not_called()
         sock.assert_not_called()
@@ -106,11 +107,12 @@ class OpenClawSafetyTests(unittest.TestCase):
             with (
                 patch.object(agent, "REPORTS_DIR", Path(temp_dir)),
                 patch.object(agent, "log"),
+                patch.object(agent, "confirm_scan", return_value=True),
                 patch.object(agent.shutil, "which", side_effect=lambda name: f"/usr/bin/{name}"),
                 patch.object(agent, "run", return_value="ok") as run,
                 patch.object(agent.socket, "socket") as sock,
             ):
-                result = agent.scan_network("192.168.56.10", confirm=lambda target: target == "192.168.56.10")
+                result = agent.scan_network("192.168.56.10")
         self.assertEqual(result["status"], "COMPLETED")
         self.assertEqual(result["authorization"]["allowlist"], "exact-private-ipv4")
         self.assertEqual([entry.args[0][0] for entry in run.call_args_list], ["ping", "nmap", "curl"])
@@ -128,17 +130,17 @@ class OpenClawSafetyTests(unittest.TestCase):
             with (
                 patch.object(agent, "REPORTS_DIR", Path(temp_dir)),
                 patch.object(agent, "log"),
+                patch.object(agent, "confirm_scan", return_value=True),
                 patch.object(agent.shutil, "which", side_effect=lambda name: None if name == "nmap" else f"/usr/bin/{name}"),
                 patch.object(agent, "run", return_value="ok") as run,
                 patch.object(agent.socket, "socket", return_value=fake_socket) as sock,
             ):
-                result = agent.scan_network("192.168.56.10", confirm=lambda _: True)
+                result = agent.scan_network("192.168.56.10")
         self.assertEqual(result["status"], "COMPLETED")
         self.assertEqual(sock.call_count, len(agent._COMMON_PORTS))
         self.assertTrue(all(call_args.args == (agent.socket.AF_INET, agent.socket.SOCK_STREAM) for call_args in sock.call_args_list))
         self.assertTrue(all(call_args.args[0] == ["ping", "-c", "3", "-W", "2", "192.168.56.10"] or call_args.args[0][0] == "curl" for call_args in run.call_args_list))
         self.assertEqual(fake_socket.close.call_count, len(agent._COMMON_PORTS))
-
     def test_run_rejects_strings_shells_and_unapproved_executables(self):
         with patch.object(agent.subprocess, "run") as run:
             self.assertTrue(agent.run("ping -c 1 127.0.0.1").startswith("[ERROR]"))
@@ -174,6 +176,8 @@ class OpenClawSafetyTests(unittest.TestCase):
         self.assertNotRegex(source, re.compile(r"shell\s*=\s*True"))
         self.assertIn("shell=False", source)
         self.assertNotIn("dig +short", source)
+        self.assertNotIn("confirm=None", source)
+        self.assertEqual(agent.scan_network.__code__.co_argcount, 1)
 
     def test_wifi_info_uses_fixed_local_argv(self):
         with patch.object(agent, "run", return_value="{}") as run:

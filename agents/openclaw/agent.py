@@ -153,11 +153,8 @@ def _manual_port_check(target):
     return f"Open ports: {open_ports}"
 
 
-def scan_network(target, confirm=None):
-    """Scan one explicitly allowlisted private IPv4 target after confirmation.
-
-    Direct callers must supply a confirmation callback returning exact Boolean True.
-    """
+def scan_network(target):
+    """Scan one explicitly allowlisted private IPv4 target after CLI confirmation."""
     canonical = _canonical_private_ipv4(target)
     if canonical is None:
         return _denied(target, "INVALID_OR_NON_PRIVATE_IPV4")
@@ -240,7 +237,7 @@ def main():
                     status = "✓" if ok else "✗"
                     print(f"  {status} {tool}")
             elif parts[0] == "scan" and len(parts) == 2:
-                result = scan_network(parts[1], confirm=confirm_scan)
+                result = scan_network(parts[1])
                 if result["status"] == "DENIED":
                     print(f"Scan refused: {result['reason']}")
                     continue

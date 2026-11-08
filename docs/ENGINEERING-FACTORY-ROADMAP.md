@@ -1905,3 +1905,10 @@ Added tests/test_openclaw_agent.py with 17 tests for target parsing, malformed/p
 **Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE.
 
 **Next:** obtain a separate reviewer for the exact-head AGENT-006C security packet. Then inventory any remaining legacy shell helpers (AGENT-006F) without executing them. Do not connect an executor as a substitute for either gate.
+
+
+### AGENT-006E verification correction
+
+The first Phase 1 push run for commit e9c5c19 ran 823 Python tests and failed one existing threat-model wording invariant requiring the exact phrase "subprocess shell execution". TM-08 now retains that phrase while distinguishing the OpenClaw mitigation from other legacy prototypes.
+
+A review of the new API also removed the injectable confirmation callback: scan_network now invokes the module's own exact-target typed prompt. Tests patch that prompt at the unit boundary; production callers cannot supply a callback that simply returns True. The isolated 17-test suite and compileall were rerun after this correction. The failed first run remains in Actions history and is superseded only by fresh exact-head CI.
