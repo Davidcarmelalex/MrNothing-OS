@@ -5,6 +5,9 @@ import os
 import sqlite3
 import tempfile
 import threading
+import subprocess
+import sys
+import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,6 +30,50 @@ from core.action_reservation import (
 NOW = 1_800_000_000_000
 KEY_ID = "offline-enrollment-v1"
 MAX_TTL = 300_000
+
+
+_ENROLLMENT_COMMIT_CRASH_SUBPROCESS = r"""
+import base64
+import sys
+import time
+from pathlib import Path
+
+from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
+
+def decode(value):
+    return base64.urlsafe_b64decode(value + ("=" * ((4 - len(value) % 4) % 4)))
+
+database_path, authority_b64, authority_key_id, envelope_b64, now_text, marker_path, mode = sys.argv[1:]
+registry = SQLiteOwnerEnrollmentRegistry(
+    database_path,
+    authority_public_key_spki_der=decode(authority_b64),
+    authority_key_id=authority_key_id,
+)
+original_connect = registry._connect
+
+class CommitBoundaryConnection:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def execute(self, statement, *parameters):
+        if statement.strip().upper() == "COMMIT":
+            if mode == "after":
+                self._connection.execute(statement, *parameters)
+            Path(marker_path).write_text("ready", encoding="ascii")
+            while True:
+                time.sleep(1)
+        return self._connection.execute(statement, *parameters)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+registry._connect = lambda: CommitBoundaryConnection(original_connect())
+registry.apply_signed_enrollment(
+    decode(envelope_b64),
+    now_epoch_ms=int(now_text),
+)
+"""
+
 
 
 def b64u(raw):
@@ -662,6 +709,135 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(ledger.get(reserved.idempotency_key).state, DISPATCH_STARTED)
         self.assertEqual(len(revoke_results), 1)
         self.assertFalse(revoke_results[0].active)
+
+
+    def _kill_enrollment_process_at_commit(self, envelope, *, mode):
+        marker = Path(self.temp.name) / f"enrollment-{mode}-commit.marker"
+        command = [
+            sys.executable,
+            "-c",
+            _ENROLLMENT_COMMIT_CRASH_SUBPROCESS,
+            str(self.path),
+            b64u(spki(self.authority)),
+            KEY_ID,
+            b64u(envelope),
+            str(NOW),
+            str(marker),
+            mode,
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            deadline = time.monotonic() + 15.0
+            while not marker.is_file():
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate(timeout=5)
+                    self.fail(
+                        "enrollment subprocess exited before commit marker: "
+                        f"returncode={process.returncode}, stdout={stdout!r}, "
+                        f"stderr={stderr!r}"
+                    )
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    stdout, stderr = process.communicate(timeout=5)
+                    self.fail(
+                        "enrollment subprocess did not reach commit boundary: "
+                        f"stdout={stdout!r}, stderr={stderr!r}"
+                    )
+                time.sleep(0.01)
+
+            self.assertEqual(marker.read_text(encoding="ascii"), "ready")
+            process.kill()
+            process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode, 0)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+
+    def test_process_death_before_signed_revocation_commit_rolls_back_atomically(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        revoke = self.statement(
+            operation="revoke",
+            generation=2,
+            enrollment_id="revoke-crash-before-commit",
+            cert=self.cert1,
+            key=self.consent1,
+        )
+
+        self._kill_enrollment_process_at_commit(revoke, mode="before")
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        active = reopened.lookup_active_device("pixel-1")
+        history = reopened.history("pixel-1")
+        self.assertIsNotNone(active)
+        self.assertEqual(active.credential_generation, 1)
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0].operation, "enroll")
+        self.assertEqual(history[0].credential_generation, 1)
+
+        claim = ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=reopened,
+            final_admission_guard=lambda: True,
+        )
+        self.assertTrue(claim.applied, claim.reason)
+        self.assertEqual(claim.state, DISPATCH_STARTED)
+        duplicate = ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=reopened,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(duplicate.applied)
+        self.assertEqual(duplicate.reason, "ALREADY_CLAIMED")
+
+    def test_process_death_after_signed_revocation_commit_preserves_revocation_atomically(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        revoke = self.statement(
+            operation="revoke",
+            generation=2,
+            enrollment_id="revoke-crash-after-commit",
+            cert=self.cert1,
+            key=self.consent1,
+        )
+
+        self._kill_enrollment_process_at_commit(revoke, mode="after")
+
+        reopened = SQLiteOwnerEnrollmentRegistry(
+            self.path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        self.assertIsNone(reopened.lookup_active_device("pixel-1"))
+        history = reopened.history("pixel-1")
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0].operation, "enroll")
+        self.assertEqual(history[0].credential_generation, 1)
+        self.assertEqual(history[1].operation, "revoke")
+        self.assertEqual(history[1].credential_generation, 2)
+
+        denied = ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=reopened,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(denied.applied)
+        self.assertEqual(denied.reason, "DEVICE_NOT_ACTIVE")
+        self.assertEqual(denied.state, RESERVED)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, RESERVED)
+
 
 if __name__ == "__main__":
     unittest.main()
