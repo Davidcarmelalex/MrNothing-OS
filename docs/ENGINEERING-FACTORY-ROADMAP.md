@@ -1867,3 +1867,18 @@ No runtime source, Android permission, trust record, listener, executor, device 
 **Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE.
 
 **Next task:** a separate reviewer must complete the packet against the exact current head, record identity/date/SHA/findings/disposition, and submit a GitHub review on PR #1. Do not implement executor integration as a substitute for this gate.
+
+
+## AGENT-006D — quarantine unattended legacy HERMES shell tasks (2026-11-08)
+
+**Audit baseline:** \`92680812645c3d8f549e049bb7d75b80ed702ec6\`; 378-entry recursive tree, not truncated; branch 341 ahead / 0 behind \`main\`; PR #1 open/draft with 341 commits and 314 changed files. The source baseline for the independent SEC-021/SEC-022 review remains \`e49a9e33\`; the two commits between it and \`92680812\` were documentation-only.
+
+**Finding:** the legacy \`agents/hermes/agent.py\` used \`subprocess.run(..., shell=True)\` for free-form task strings, and the due-task scheduler could execute shell tasks without a fresh interactive approval.
+
+**Bounded change:** shell tasks now require an explicit interactive confirmation bound to the exact command text; parsing uses \`shlex\`, execution uses \`shell=False\` with a 30-second timeout, and shell-interpreter invocations are rejected. The background scheduler does not execute shell tasks; it marks them approval-required and notifies once. Typed notification tasks remain schedulable. Added regression coverage and updated the HERMES README and TM-08 threat entry.
+
+**Limitations:** this is not a sandbox, strong owner authentication, OS permission boundary or production executor. A manually approved executable still runs with the local Termux process's privileges. The legacy helper remains disconnected from the native Android command router. Independent security review of SEC-021A/B/C and SEC-022 remains pending.
+
+**Exact-head CI:** pending at commit creation. Record the actual GitHub Actions outcomes before treating this task as accepted.
+
+**Next:** independent reviewer completes the AGENT-006C packet on the exact current head. Do not connect any executor as a substitute.
