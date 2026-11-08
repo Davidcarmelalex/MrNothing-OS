@@ -1829,3 +1829,22 @@ The prior threat model cited source baseline `680d5cbd`, which predated SEC-021A
 This task changes documentation only; it does not alter Python/Android runtime code, permissions, trust records, listener, executor, device state, signing or OTA. The documentation update is not an independent security review and does not approve the callback boundary. The real executor remains disconnected; no physical Pixel 9 Pro was tested; no milestone is complete.
 
 **Next task:** obtain an independent security review of SEC-021A/B/C and SEC-022/AGENT-005Y/005ZF. The reviewer must inspect lock ordering, exact callback provenance and side-effect-free behavior, database replacement/rollback assumptions, commit-ack-loss handling and the no-executor boundary. Do not connect an executor until the reviewer records identity, date, reviewed SHA, findings and disposition.
+
+
+## AGENT-006B — exact-head evidence reconciliation and scorecard refresh (2026-11-08)
+
+**Audit head:** `415ac44dec4f68562a8b037ea0964e6f0f5ff89b`; complete recursive tree 377 entries, not truncated; 20 recent commits inspected; branch 337 ahead/0 behind main. Six open PRs (#1 and #3–#7); PR #1 remains draft against main with 337 commits and 313 changed files, zero review submissions and zero inline review threads. PRs #3–#7 are separate draft branches and were not modified. `PROJECT-ADAPTER.md` exists; repository `SKILL.md` is absent; upstream shared package remains unverified.
+
+This bounded task reconciles the current repository/CI state into `docs/ENGINEERING-SCORECARD.md`. Source/test baseline remains `3fd85d22`; subsequent commits through `415ac44d` are documentation-only. No Android/Python runtime source, manifest permission, trust store, listener, executor, device state, signing or OTA behavior changed.
+
+**Exact-head evidence at `415ac44d`:**
+- Phase 1 push [42481269680](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481269680) and PR [42481273565](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273565) passed. Both Python policy jobs explicitly reported 792 tests passed. Android Gradle unit tests, debug assembly, repeat debug-APK byte comparison, strict dependency verification and modified-dependency negative control passed.
+- CI-003 push [42481269679](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481269679) and PR [42481273563](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273563) passed. Independent runners produced byte-identical unsigned APKs (7,867,868 bytes; 21 ZIP entries; SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; normalized-entry SHA-256 `37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462`). The scoped build-environment inventory contains 1,260 components and explicitly does not cover the complete hosted-runner image. Provenance reports `reproducible=true`, `release_ready=false`.
+- QA-005 PR [42481273606](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42481273606) passed on a disposable Android 15/API 35 x86_64 emulator. The job log reports the 15-test instrumentation suite and progress through 28/30 with zero failures/zero skips; no final 30/30 aggregate line was present in the fetched log, so do not claim 30/30 completion. QA-006 through QA-010, QA-013, QA-020B2 and QA-020B3 passed. QA-011 reports `blocked_service_disabled`; QA-012 is structural only, not spoken TalkBack acceptance.
+- The latest exact-head evidence does not establish physical Pixel 9 Pro/StrongBox behavior, signed release/OTA, power-loss durability, independent security approval or production readiness.
+
+**Independent security gate remains pending.** A reviewer separate from the implementation author must challenge SEC-021A/B/C and SEC-022/AGENT-005Y/005ZF, including lock ordering, final-admission callback provenance, cross-store transaction/reconciliation semantics, database replacement/rollback assumptions and fail-closed recovery. Record reviewer identity, date, reviewed SHA, findings and disposition. Keep the real executor disconnected until that review is accepted.
+
+**Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE. No percentage is inferred from CI.
+
+**Next task:** obtain the independent security review described above. Do not implement executor integration as a substitute for that gate.
