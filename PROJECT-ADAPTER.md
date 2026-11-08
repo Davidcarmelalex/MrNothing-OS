@@ -869,3 +869,14 @@ Added pure-JVM tests for the two non-accessibility actions and a Python source-b
 **Independent review status:** source/diff and test assertions were re-read against AGENT-004J and SEC-014F. This is an author-side review, not independent human security approval. The supervisor gate remains PENDING. Exact-head CI and QA must pass after this commit.
 
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
+
+
+## Audit and engineering update — 2026-11-08, AGENT-005P
+
+Audit baseline: feat/phase1-agentic-phone at 0814acbba4c8c4fcab3f99467dea66e5ec5545af; complete recursive tree 361 entries, not truncated; 20 recent commits inspected; branch 309 commits ahead of main and zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 matches this branch, targets main and remains draft; it has no submitted reviews or inline review threads. The local adapter and roadmap exist; repository SKILL.md is absent; the upstream shared package remains unverified and is not claimed installed.
+
+At the starting head, exact-head Phase 1 push/PR, CI-003 push/PR and QA-005 emulator PR all passed. Phase 1 ran 759 Python tests on both events; Android unit/build, repeat-build comparison, dependency-verification negative control and manifest gate passed. CI-003 verified byte-identical unsigned APKs on independent runners (7,867,868 bytes; SHA-256 c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7). QA-005 completed its emulator smoke steps, including launcher/recovery, QA-006–QA-010, QA-013, QA-020B2 and QA-020B3. QA-011 remains service-disabled preflight only; QA-012 is structural semantics only, not spoken TalkBack. This is disposable API 35 x86_64 emulator evidence, not Pixel hardware evidence.
+
+AGENT-005P makes the live final-admission callback mandatory for every durable dispatch claim. The guard is required as a keyword-only argument, must be callable and must return the exact Boolean True; omitted, None, false, non-Boolean or raising guards cannot transition RESERVED to DISPATCH_STARTED. It runs under both database writer locks immediately before the signed-time check and claim. Storage-only tests pass an explicit test-only guard. This does not authenticate arbitrary callbacks inside the same process; only trusted adapter code may call the API, and agent/request data must never provide the guard.
+
+No production Android code, permission, service, listener, dispatcher or executor was connected. CommandRouter remains fail-closed. No physical Pixel 9 Pro, StrongBox hardware, spoken TalkBack, signed production release, deployment or human security approval is claimed.

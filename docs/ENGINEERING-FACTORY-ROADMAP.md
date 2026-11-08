@@ -1630,3 +1630,12 @@ Added pure-JVM tests for the two non-accessibility actions and a Python source-b
 **Independent review status:** source/diff and test assertions were re-read against AGENT-004J and SEC-014F. This is an author-side review, not independent human security approval. The supervisor gate remains PENDING. Exact-head CI and QA must pass after this commit.
 
 Milestones remain M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is complete.
+
+
+## AGENT-005P — make live final admission mandatory (2026-11-08)
+
+The exact-head audit found that DurableActionReservationLedger.claim_dispatch accepted an omitted/None final_admission_guard and treated it as success. That allowed a direct caller with an active enrollment row to move a reservation to DISPATCH_STARTED without proving that it had revalidated the adapter-retained live TLS socket/session and one-use capability. The transport adapter supplied a guard, but the storage API did not enforce that contract for every caller.
+
+**Change:** the keyword-only final_admission_guard is now required. Explicit non-callable/None values are rejected; only the exact Boolean True is accepted; exceptions and non-Boolean truthy values fail closed. The guard is invoked while both the enrollment and reservation database writer locks are held, before the final signed-time check and state transition. Storage-only tests now pass an explicit test guard and a regression test proves omission cannot claim.
+
+**Boundary:** a callback is still trusted in-process code, not a cryptographic capability or protection against hostile code already executing in the host process. Only the reviewed TLS adapter may provide the production guard; it must never come from an agent, LLM or request. No Android executor, listener, permission grant or device action is connected. Independent human security review remains pending.

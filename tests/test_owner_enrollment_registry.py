@@ -412,7 +412,8 @@ class RegistryTests(unittest.TestCase):
         self.registry.apply_signed_enrollment(revoke, now_epoch_ms=NOW)
 
         result = ledger.claim_dispatch(
-            reserved.idempotency_key, enrollment_registry=self.registry
+            reserved.idempotency_key, enrollment_registry=self.registry,
+ final_admission_guard=lambda: True,
         )
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "DEVICE_NOT_ACTIVE")
@@ -429,7 +430,8 @@ class RegistryTests(unittest.TestCase):
         self.registry.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
 
         result = ledger.claim_dispatch(
-            reserved.idempotency_key, enrollment_registry=self.registry
+            reserved.idempotency_key, enrollment_registry=self.registry,
+ final_admission_guard=lambda: True,
         )
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "ENROLLMENT_CREDENTIAL_MISMATCH")
@@ -461,7 +463,8 @@ class RegistryTests(unittest.TestCase):
         def claim_worker():
             try:
                 claim_result.append(ledger.claim_dispatch(
-                    reserved.idempotency_key, enrollment_registry=self.registry
+                    reserved.idempotency_key, enrollment_registry=self.registry,
+ final_admission_guard=lambda: True,
                 ))
             except Exception as exc:
                 errors.append(exc)
@@ -518,7 +521,8 @@ class RegistryTests(unittest.TestCase):
             authority_key_id=KEY_ID,
         )
         result = ledger.claim_dispatch(
-            reserved.idempotency_key, enrollment_registry=unavailable
+            reserved.idempotency_key, enrollment_registry=unavailable,
+ final_admission_guard=lambda: True,
         )
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")

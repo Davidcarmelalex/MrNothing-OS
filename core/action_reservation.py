@@ -373,7 +373,7 @@ class DurableActionReservationLedger:
 
     def claim_dispatch(
         self, key: str, *, enrollment_registry,
-        final_admission_guard: Callable[[], bool] | None = None,
+        final_admission_guard: Callable[[], bool],
     ) -> ReservationDecision:
         """Claim only while the paired owner enrollment is write-locked.
 
@@ -381,15 +381,18 @@ class DurableActionReservationLedger:
         DISPATCH_STARTED commit is therefore ordered against every enrollment
         rotation/revocation that uses the same registry database. This is a
         single-host lock-coupling guarantee, not a distributed transaction.
-        When supplied, final_admission_guard is a trusted, side-effect-free
+        A mandatory final_admission_guard is a trusted, side-effect-free
         adapter revalidation invoked while both database writer locks are held.
-        A false, non-boolean or raising guard fails closed. A successful storage
-        claim is never, by itself, permission to execute an action.
+        Missing guards are rejected by the required keyword-only parameter;
+        explicit None/non-callable values, false/non-boolean results and raised
+        exceptions fail closed. The callback contract cannot defend against
+        hostile code in this process: only trusted adapter code may call this API.
+        A successful storage claim is never, by itself, permission to execute an action.
         This method never executes an action.
         """
         if type(key) is not str or _SHA256.fullmatch(key) is None:
             return ReservationDecision(False, "INVALID_IDEMPOTENCY_KEY", "", None)
-        if final_admission_guard is not None and not callable(final_admission_guard):
+        if not callable(final_admission_guard):
             return ReservationDecision(False, "INVALID_FINAL_ADMISSION_GUARD", key, None)
 
         # Import lazily: the registry also imports transport types that depend
@@ -481,12 +484,10 @@ class DurableActionReservationLedger:
                                 False, reason, key, row["state"],
                             )
                         else:
-                            guard_result = True
-                            if final_admission_guard is not None:
-                                try:
-                                    guard_result = final_admission_guard()
-                                except Exception:
-                                    guard_result = False
+                            try:
+                                guard_result = final_admission_guard()
+                            except Exception:
+                                guard_result = False
                             if type(guard_result) is not bool or guard_result is not True:
                                 pending_decision = ReservationDecision(
                                     False, "FINAL_ADMISSION_REJECTED", key, RESERVED,

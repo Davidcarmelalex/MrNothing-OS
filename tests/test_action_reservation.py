@@ -106,9 +106,15 @@ class DurableActionReservationTests(unittest.TestCase):
         )
         return replace(base, **changes)
 
-    def claim_dispatch(self, key, *, ledger=None, registry=None):
+    def claim_dispatch(
+        self, key, *, ledger=None, registry=None, final_admission_guard=lambda: True
+    ):
+        # The default is test-only storage evidence; production callers must
+        # pass the live adapter-owned guard explicitly.
         return (ledger or self.ledger).claim_dispatch(
-            key, enrollment_registry=registry or self.registry
+            key,
+            enrollment_registry=registry or self.registry,
+            final_admission_guard=final_admission_guard,
         )
 
     def reserve(self, request=None, ledger=None):
@@ -225,7 +231,8 @@ class DurableActionReservationTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=12) as pool:
             results = list(pool.map(
                 lambda ledger: ledger.claim_dispatch(
-                    reserved.idempotency_key, enrollment_registry=self.registry
+                    reserved.idempotency_key, enrollment_registry=self.registry,
+                    final_admission_guard=lambda: True,
                 ),
                 ledgers,
             ))
@@ -552,5 +559,32 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(result.reason, "FINAL_ADMISSION_REJECTED")
         self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
 
+    def test_dispatch_claim_requires_explicit_final_admission_guard(self):
+        reserved = self.reserve()
+        with self.assertRaises(TypeError):
+            self.ledger.claim_dispatch(
+                reserved.idempotency_key, enrollment_registry=self.registry
+            )
+
+        result = self.ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=None,
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "INVALID_FINAL_ADMISSION_GUARD")
+        self.assertEqual(result.state, RESERVED)
+        self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
+
+    def test_dispatch_claim_rejects_non_boolean_final_admission_result(self):
+        reserved = self.reserve()
+        result = self.ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: 1,
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "FINAL_ADMISSION_REJECTED")
+        self.assertEqual(result.state, RESERVED)
 if __name__ == "__main__":
     unittest.main()

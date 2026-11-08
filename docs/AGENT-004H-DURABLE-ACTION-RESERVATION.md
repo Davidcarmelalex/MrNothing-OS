@@ -129,3 +129,12 @@ All signed enrollment rotations/revocations use the same enrollment database wri
 - If the ledger commit succeeds but the enrollment lock cannot cleanly close, the method returns ENROLLMENT_LOCK_COMMIT_UNCERTAIN; the row must be reconciled and must not be dispatched from that response.
 
 This is single-host lock coupling, not a multi-database atomic commit, distributed lock or multi-host guarantee. Both SQLite files must be local to the same host and all enrollment changes must continue to use apply_signed_enrollment. The caller must still revalidate the exact live TLS session and monotonic deadline; this storage boundary does not perform Android permission checks. No executor or device action is connected.
+
+
+## AGENT-005P — mandatory final-admission guard
+
+DurableActionReservationLedger.claim_dispatch now requires the keyword-only final_admission_guard argument; there is no default. Omitting it raises TypeError before a claim can be attempted. Passing None or another non-callable returns INVALID_FINAL_ADMISSION_GUARD. The callback must return the exact Boolean True; false, truthy non-Boolean values and exceptions leave the reservation unclaimed.
+
+The adapter-owned callback runs only after the enrollment writer lock and reservation-ledger writer transaction are both held, immediately before the signed-time check and DISPATCH_STARTED update. This makes the live capability/session revalidation an explicit prerequisite for every call site instead of an optional convention.
+
+This is an API contract inside one trusted process, not a sandbox against hostile in-process code. The callback is not cryptographically authenticated by the ledger; only reviewed adapter code may call claim_dispatch, and no agent/model/request input may supply the callback. Unit tests that exercise storage ordering use an explicit test-only lambda returning True; production adapter integration passes the live verifier-owned guard. The executor remains disconnected.
