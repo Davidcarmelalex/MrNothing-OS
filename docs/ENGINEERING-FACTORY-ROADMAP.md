@@ -1882,3 +1882,26 @@ No runtime source, Android permission, trust record, listener, executor, device 
 **Exact-head CI:** pending at commit creation. Record the actual GitHub Actions outcomes before treating this task as accepted.
 
 **Next:** independent reviewer completes the AGENT-006C packet on the exact current head. Do not connect any executor as a substitute.
+
+
+## AGENT-006E — default-deny legacy OpenClaw network diagnostics (2026-11-08)
+
+**Audit baseline:** authorized branch feat/phase1-agentic-phone at 596593914fd040ea9881605a0e9e183e7d228e09; complete recursive tree 380 entries, not truncated; 20 recent commits inspected; branch 343 ahead / 0 behind main; merge base f3c9a701d2a337de8ef393ac14df044a79843d60. Six open PRs (#1 and #3–#7) were inspected. PR #1 is open/draft against main, with 343 commits and 318 changed files; zero submitted reviews and zero inline review threads. PROJECT-ADAPTER.md exists; repository SKILL.md is absent. The authorized Library search did not locate the upstream shared factory package; it remains unverified and is not claimed installed.
+
+**Finding:** agents/openclaw/agent.py constructed which, ping, nmap, dig, and curl commands as shell strings and accepted an arbitrary target. The CLI could therefore invoke network probes without an explicit per-target authorization step. The module was a legacy Termux prototype and was not connected to the native Android router.
+
+**Bounded implementation:** OpenClaw now accepts only fixed executable names with argv arrays and shell=False; argument count/length and timeouts are bounded. Tool discovery uses shutil.which. Network scans require an exact IPv4 literal in MRNOTHING_OPENCLAW_ALLOWED_TARGETS, restricted to RFC1918 private, loopback, or link-local ranges, plus a fresh typed SCAN <target> confirmation. Public/global IPs, hostnames, URLs, CIDRs, malformed allowlists and whitespace variants fail closed. DNS probing was removed. The socket fallback is reachable only after both gates. Wi-Fi information remains a local read available only after the operator explicitly selects wifi.
+
+Added tests/test_openclaw_agent.py with 17 tests for target parsing, malformed/public/unlisted targets, confirmation absence/decline/type/exception, no-side-effect denial, argv-only subprocess execution, fixed executable allowlisting, bounded timeouts/arguments, no shell-based tool discovery, no DNS probing, socket fallback scope, and local Wi-Fi argv. Added docs/OPENCLAW-LEGACY-SAFETY.md; updated the README agent row and TM-08 threat mapping.
+
+**Tests executed in the isolated working harness before push:** python -m unittest -q tests.test_openclaw_agent — 17/17 passed; python -m compileall -q agents/openclaw/agent.py tests/test_openclaw_agent.py — passed; static source assertions for shell=False, no shell=True, and removal of dig +short — passed. All subprocess/socket boundaries were mocked. No network scan, DNS query, third-party access, Termux installation, Android installation, or physical-device operation was performed. Full repository tests and Android CI must be taken from exact-head GitHub Actions after push.
+
+**Limitations:** the environment allowlist and typed prompt do not prove target ownership, provide strong owner authentication, create a sandbox, or reduce the privileges of an approved Termux process. Keep OpenClaw disconnected from the Android command router. Other legacy helpers require a separate inventory; this change does not claim all shell execution has been removed from the repository.
+
+**Exact-head CI at commit creation:** pending. Record actual push/PR Phase 1, CI-003 and QA-005 outcomes before acceptance.
+
+**Independent review:** AGENT-006C remains PENDING_INDEPENDENT_REVIEW; no reviewer identity or separate GitHub review was available. This implementation does not satisfy or replace that gate.
+
+**Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE.
+
+**Next:** obtain a separate reviewer for the exact-head AGENT-006C security packet. Then inventory any remaining legacy shell helpers (AGENT-006F) without executing them. Do not connect an executor as a substitute for either gate.
