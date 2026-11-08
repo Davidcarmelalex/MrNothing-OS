@@ -579,5 +579,89 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), b"corrupt")
 
 
+
+    def test_final_admission_guard_runs_under_both_database_writer_locks(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        revoke = self.statement(
+            operation="revoke", generation=2,
+            enrollment_id="revoke-after-final-guard",
+            cert=self.cert1, key=self.consent1,
+        )
+
+        revoke_started = threading.Event()
+        cancel_started = threading.Event()
+        revoke_finished = threading.Event()
+        cancel_finished = threading.Event()
+        revoke_results = []
+        cancel_results = []
+        errors = []
+        workers = []
+        blocked = {}
+
+        def revoke_worker():
+            revoke_started.set()
+            try:
+                revoke_results.append(
+                    self.registry.apply_signed_enrollment(
+                        revoke, now_epoch_ms=NOW,
+                    )
+                )
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                revoke_finished.set()
+
+        def cancel_worker():
+            cancel_started.set()
+            try:
+                cancel_results.append(
+                    ledger.cancel_before_dispatch(reserved.idempotency_key)
+                )
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                cancel_finished.set()
+
+        def final_guard():
+            # Competing operations use fresh SQLite connections through the
+            # public APIs. They must not commit while this callback is running.
+            revoke_thread = threading.Thread(target=revoke_worker)
+            cancel_thread = threading.Thread(target=cancel_worker)
+            workers.extend((revoke_thread, cancel_thread))
+            revoke_thread.start()
+            cancel_thread.start()
+
+            started = revoke_started.wait(2) and cancel_started.wait(2)
+            blocked["enrollment_writer"] = (
+                started and not revoke_finished.wait(0.2)
+            )
+            blocked["reservation_writer"] = (
+                started and not cancel_finished.wait(0.2)
+            )
+            return True
+
+        claim = ledger.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=final_guard,
+        )
+        for worker in workers:
+            worker.join(5)
+
+        self.assertTrue(blocked.get("enrollment_writer", False),
+                        "signed revocation was not blocked during final guard")
+        self.assertTrue(blocked.get("reservation_writer", False),
+                        "pre-dispatch cancellation was not blocked during final guard")
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertEqual(errors, [])
+        self.assertTrue(claim.applied, claim.reason)
+        self.assertEqual(claim.state, DISPATCH_STARTED)
+        self.assertEqual(len(cancel_results), 1)
+        self.assertFalse(cancel_results[0].applied)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, DISPATCH_STARTED)
+        self.assertEqual(len(revoke_results), 1)
+        self.assertFalse(revoke_results[0].active)
+
 if __name__ == "__main__":
     unittest.main()

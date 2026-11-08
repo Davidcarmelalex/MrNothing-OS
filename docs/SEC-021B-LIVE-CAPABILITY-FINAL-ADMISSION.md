@@ -40,6 +40,7 @@ A definitive revocation, socket/session mismatch, capability expiry or argument 
 - Monotonic capability expiry after reservation denies admission and cancels the reservation.
 - Action-argument substitution is rejected before reservation.
 - A false or raising final guard fails closed and leaves the reservation RESERVED for the coordinator to reconcile/cancel.
+- A competing signed revocation on a separate SQLite connection and a pre-dispatch cancellation on a separate ledger connection remain blocked while the final guard runs; after the claim commits, cancellation cannot undo `DISPATCH_STARTED`, and revocation commits afterward.
 
 ## Acceptance gates
 
