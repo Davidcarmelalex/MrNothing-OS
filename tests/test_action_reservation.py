@@ -112,6 +112,66 @@ print(json.dumps({
 os._exit(0)
 """
 
+_CRASH_AFTER_LEDGER_COMMIT_SUBPROCESS = r"""
+import base64
+import sys
+import time
+
+from core.action_reservation import DurableActionReservationLedger
+from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
+
+
+class CommitThenPause:
+    def __init__(self, connection, marker_path):
+        self._connection = connection
+        self._marker_path = marker_path
+        self._paused = False
+
+    def execute(self, sql, *args):
+        result = self._connection.execute(sql, *args)
+        if (
+            type(sql) is str
+            and sql.strip().upper() == "COMMIT"
+            and not self._paused
+        ):
+            self._paused = True
+            with open(self._marker_path, "x", encoding="ascii") as marker:
+                marker.write("ledger-commit-durable")
+            # Parent terminates this process after the underlying COMMIT
+            # succeeds but before the enrollment context can be released.
+            while True:
+                time.sleep(0.05)
+        return result
+
+    def close(self):
+        self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+ledger_path, registry_path, authority_b64, key, now_text, marker_path = sys.argv[1:]
+registry = SQLiteOwnerEnrollmentRegistry(
+    registry_path,
+    authority_public_key_spki_der=base64.urlsafe_b64decode(authority_b64),
+    authority_key_id="test-authority",
+    timeout_seconds=10.0,
+)
+ledger = DurableActionReservationLedger(
+    ledger_path,
+    clock_ms=lambda: int(now_text),
+    busy_timeout_ms=10_000,
+)
+original_connect = ledger._connect
+ledger._connect = lambda: CommitThenPause(original_connect(), marker_path)
+ledger.claim_dispatch(
+    key,
+    enrollment_registry=registry,
+    final_admission_guard=lambda: True,
+)
+raise SystemExit("commit pause unexpectedly returned")
+"""
+
 class DurableActionReservationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -403,65 +463,7 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(retry.reason, "ALREADY_CLAIMED")
 
 
-_CRASH_AFTER_LEDGER_COMMIT_SUBPROCESS = r"""
-import base64
-import sys
-import time
 
-from core.action_reservation import DurableActionReservationLedger
-from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
-
-
-class CommitThenPause:
-    def __init__(self, connection, marker_path):
-        self._connection = connection
-        self._marker_path = marker_path
-        self._paused = False
-
-    def execute(self, sql, *args):
-        result = self._connection.execute(sql, *args)
-        if (
-            type(sql) is str
-            and sql.strip().upper() == "COMMIT"
-            and not self._paused
-        ):
-            self._paused = True
-            with open(self._marker_path, "x", encoding="ascii") as marker:
-                marker.write("ledger-commit-durable")
-            # Parent terminates this process after the underlying COMMIT
-            # succeeds but before the enrollment context can be released.
-            while True:
-                time.sleep(0.05)
-        return result
-
-    def close(self):
-        self._connection.close()
-
-    def __getattr__(self, name):
-        return getattr(self._connection, name)
-
-
-ledger_path, registry_path, authority_b64, key, now_text, marker_path = sys.argv[1:]
-registry = SQLiteOwnerEnrollmentRegistry(
-    registry_path,
-    authority_public_key_spki_der=base64.urlsafe_b64decode(authority_b64),
-    authority_key_id="test-authority",
-    timeout_seconds=10.0,
-)
-ledger = DurableActionReservationLedger(
-    ledger_path,
-    clock_ms=lambda: int(now_text),
-    busy_timeout_ms=10_000,
-)
-original_connect = ledger._connect
-ledger._connect = lambda: CommitThenPause(original_connect(), marker_path)
-ledger.claim_dispatch(
-    key,
-    enrollment_registry=registry,
-    final_admission_guard=lambda: True,
-)
-raise SystemExit("commit pause unexpectedly returned")
-"""
 
     def test_process_death_after_ledger_commit_before_enrollment_release_preserves_claim(self):
         reserved = self.reserve()
