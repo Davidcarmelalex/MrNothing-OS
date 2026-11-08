@@ -74,7 +74,7 @@ class ThreatModelDocumentTests(unittest.TestCase):
     def test_network_diagnostics_boundary_is_documented(self):
         self.assertIn("MRNOTHING_NETWORK_ALLOWED_TARGETS", self.text)
         self.assertIn("api.ipify.org", self.text)
-        self.assertIn("speed-test auto-selection is disabled", self.text)
+        self.assertIn("provider-selected speed tests", self.text)
         self.assertIn("process-local", self.text)
 
     def test_independent_review_is_required(self):
