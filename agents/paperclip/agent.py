@@ -181,7 +181,7 @@ def think(prompt, mem):
     else:
         model = check_model()
         if model:
-            log(f"Using local GGUF model: {model.name}")
+            log("Using a local GGUF model; filename redacted")
             response = infer_llama_cpp(prompt, model)
 
         if not response:
@@ -214,37 +214,42 @@ def main():
         print("WARNING: A legacy plaintext memory file exists. It was NOT read,")
         print("migrated, changed, or deleted. Owner-controlled cleanup is required.")
 
-    while True:
-        try:
-            user_input = input("you> ").strip()
-            if not user_input: continue
-            command = user_input.lower()
-            if command == "exit": break
-            if command == "memory on":
-                mem["session_opt_in"] = True
-                print("Session-only memory enabled. It will not be saved to disk.")
-                continue
-            if command in ("memory off", "forget"):
-                clear_memory(mem)
-                print("Session memory cleared and disabled.")
-                continue
-            if command == "memory":
-                if not mem["session_opt_in"]:
-                    print("Session memory is off. Type 'memory on' to opt in.")
+    try:
+        while True:
+            try:
+                user_input = input("you> ").strip()
+                if not user_input: continue
+                command = user_input.lower()
+                if command == "exit": break
+                if command == "memory on":
+                    mem["session_opt_in"] = True
+                    print("Session-only memory enabled. It will not be saved to disk.")
                     continue
-                convs = mem.get("conversations", [])[-5:]
-                for c in convs:
-                    role = c["role"].upper()
-                    print(f"  [{role}]: {c['content'][:100]}")
-                continue
-
-            remember(mem, "user", user_input)
-            log("Processing prompt locally; content redacted")
-            response = think(user_input, mem)
-            print(f"paperclip> {response}\n")
-
-        except (KeyboardInterrupt, EOFError):
-            break
+                if command in ("memory off", "forget"):
+                    clear_memory(mem)
+                    print("Session memory cleared and disabled.")
+                    continue
+                if command == "memory":
+                    if not mem["session_opt_in"]:
+                        print("Session memory is off. Type 'memory on' to opt in.")
+                        continue
+                    convs = mem.get("conversations", [])[-5:]
+                    for c in convs:
+                        role = c["role"].upper()
+                        print(f"  [{role}]: {c['content'][:100]}")
+                    continue
+    
+                remember(mem, "user", user_input)
+                log("Processing prompt locally; content redacted")
+                response = think(user_input, mem)
+                print(f"paperclip> {response}\n")
+    
+            except (KeyboardInterrupt, EOFError):
+                break
+    finally:
+        # Release session references on exit, EOF, or unexpected errors.
+        # This does not guarantee secure erasure of Python/OS memory.
+        clear_memory(mem)
 
 if __name__ == "__main__":
     main()
