@@ -62,6 +62,9 @@ class CI003WorkflowGateTests(unittest.TestCase):
         self.assertIn("--tlsv1.2", self.downloader)
         self.assertIn("--retry 5", self.downloader)
         self.assertIn("--retry-connrefused", self.downloader)
+        self.assertIn('gradle-${version}-bin.zip', self.downloader)
+        self.assertIn('for url in "${urls[@]}"', self.downloader)
+        self.assertNotIn("${dollar}", self.downloader)
         self.assertIn("sha256sum --check --status", self.downloader)
         self.assertLess(
             self.downloader.index("sha256sum --check --status"),

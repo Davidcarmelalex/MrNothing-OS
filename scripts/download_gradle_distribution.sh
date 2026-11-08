@@ -34,12 +34,12 @@ trap cleanup EXIT
 # All three hosts are Gradle-operated distribution endpoints. No community
 # mirror or caller-supplied URL is accepted. Redirects are HTTPS-only.
 urls=(
-  "https://services.gradle.org/distributions/gradle-\${dollar}{version}-bin.zip"
-  "https://downloads.gradle.org/distributions/gradle-\${dollar}{version}-bin.zip"
-  "https://downloads.gradle-dn.com/distributions/gradle-\${dollar}{version}-bin.zip"
+  "https://services.gradle.org/distributions/gradle-${version}-bin.zip"
+  "https://downloads.gradle.org/distributions/gradle-${version}-bin.zip"
+  "https://downloads.gradle-dn.com/distributions/gradle-${version}-bin.zip"
 )
 
-for url in "\${dollar}{urls[@]}"; do
+for url in "${urls[@]}"; do
   printf 'Downloading pinned Gradle %s from %s\n' "$version" "$url" >&2
   if ! curl \
     --fail \

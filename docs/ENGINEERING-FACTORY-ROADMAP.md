@@ -1726,3 +1726,8 @@ The JDK pin change is a deliberate toolchain baseline update from Temurin 17.0.1
 No Android app source, permission, consent, enrollment, executor, shell bridge, network listener, OTA or release-signing path changed. Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains pending. The real device executor remains disconnected. No physical Pixel 9 Pro was tested. No milestone is complete: M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7 BLOCKED; M8 BLOCKED.
 
 Next priority: independently review SEC-021A/B/C and SEC-022/AGENT-005Y, then accept the new exact-head CI results. Do not connect the real executor before independent security approval.
+
+
+### AGENT-005Z correction — shell interpolation guard (2026-11-08)
+
+A post-push source inspection caught a quoting defect in the first downloader commit: the shell URL template placeholders were emitted literally instead of expanding the pinned version and endpoint array. The initial commit is therefore not accepted. The follow-up corrects the shell interpolation and adds explicit static assertions for the URL template and loop expansion. Exact-head CI on the corrected commit is mandatory; no Gradle download/build success is claimed for the defective intermediate commit.
