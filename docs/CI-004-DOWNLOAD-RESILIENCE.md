@@ -51,6 +51,11 @@ This change improves dependency acquisition reliability; it does not establish b
 
 ## Kotlin plugin dependency fallback
 
-The exact-head build logs showed a second independent 504 boundary: `kotlin-compiler-embeddable:2.0.21` was requested from Maven Central and redirected to the JetBrains GitHub release asset, which returned HTTP 504. The Android settings now place the Gradle Plugin Portal before Maven Central for plugin resolution and add Sonatype's canonical Maven Central endpoint `https://repo1.maven.org/maven2/` before `mavenCentral()` in both plugin and application dependency resolution. Sonatype documents repo1 as a canonical HTTPS Central endpoint: [Consume Central](https://central.sonatype.org/consume/). Existing Gradle dependency verification remains enabled, so artifact checksums are still enforced.
+The exact-head build logs showed a second independent 504 boundary: `kotlin-compiler-embeddable:2.0.21` was requested from Maven Central and redirected to the JetBrains GitHub release asset, which returned HTTP 504. The Android settings preserve the original Maven Central-before-Gradle-Plugin-Portal precedence (required by the existing dependency-verification metadata) and add Sonatype's canonical Maven Central endpoint `https://repo1.maven.org/maven2/` after `mavenCentral()` in both plugin and application dependency resolution. Sonatype documents repo1 as a canonical HTTPS Central endpoint: [Consume Central](https://central.sonatype.org/consume/). Existing Gradle dependency verification remains enabled, so artifact checksums are still enforced.
 
 This is a repository-order fallback, not a guarantee that the upstream network will be available. Exact-head Gradle builds must prove it.
+
+
+### Repository-order correction
+
+The first exact-head attempt with Gradle Plugin Portal ahead of Maven Central failed the strict dependency-verification gate for the Kotlin plugin marker POM. The original repository precedence has been restored; the Sonatype repo1 endpoint is now an additional fallback after Maven Central. Dependency verification remains enabled and no checksum was weakened or regenerated from the failing run.

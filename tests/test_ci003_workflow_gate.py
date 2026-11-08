@@ -60,13 +60,14 @@ class CI003WorkflowGateTests(unittest.TestCase):
     def test_plugin_and_maven_repositories_use_official_fallback_order(self):
         repo1 = 'maven { url = uri("https://repo1.maven.org/maven2/") }'
         self.assertEqual(self.settings.count(repo1), 2)
-        plugin_portal = self.settings.index("gradlePluginPortal()")
         first_central = self.settings.index("mavenCentral()")
-        second_repo1 = self.settings.rindex(repo1)
+        first_repo1 = self.settings.index(repo1)
+        plugin_portal = self.settings.index("gradlePluginPortal()")
         second_central = self.settings.rindex("mavenCentral()")
-        self.assertLess(plugin_portal, first_central)
-        self.assertLess(self.settings.index(repo1), first_central)
-        self.assertLess(second_repo1, second_central)
+        second_repo1 = self.settings.rindex(repo1)
+        self.assertLess(first_central, first_repo1)
+        self.assertLess(first_repo1, plugin_portal)
+        self.assertLess(second_central, second_repo1)
 
     def test_downloader_uses_allowlisted_https_sources_and_checksum(self):
         for host in ("services.gradle.org", "downloads.gradle.org"):
