@@ -38,12 +38,24 @@ def save_memory(mem):
     """Fail closed if a legacy caller attempts persistent plaintext storage."""
     raise RuntimeError("Persistent PaperClip memory is disabled pending secure storage")
 
+def _clear_entry_dicts(entries):
+    """Drop mutable entry contents before releasing history references."""
+    for entry in entries:
+        if type(entry) is dict:
+            entry.clear()
+
+
 def clear_memory(mem):
-    """Forget this process's session history and revoke memory opt-in."""
+    """Revoke opt-in and clear mutable session containers in place."""
     if type(mem) is not dict:
         raise TypeError("Invalid memory session")
-    mem["conversations"] = []
-    mem["facts"] = []
+    for key in ("conversations", "facts"):
+        entries = mem.get(key)
+        if type(entries) is list:
+            _clear_entry_dicts(entries)
+            entries.clear()
+        else:
+            mem[key] = []
     mem["session_opt_in"] = False
 
 def remember(mem, role, content):
@@ -58,7 +70,10 @@ def remember(mem, role, content):
     if type(conversations) is not list:
         return False
     conversations.append({"role": role, "content": content, "ts": time.time()})
-    del conversations[:-MAX_SESSION_MEMORY_ENTRIES]
+    overflow = len(conversations) - MAX_SESSION_MEMORY_ENTRIES
+    if overflow > 0:
+        _clear_entry_dicts(conversations[:overflow])
+        del conversations[:overflow]
     return True
 
 def check_model():
