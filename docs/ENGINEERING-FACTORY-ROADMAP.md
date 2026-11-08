@@ -1918,3 +1918,37 @@ A second exact-head Phase 1 push run for 9abd382 also failed: two confirmation t
 
 
 A third exact-head Phase 1 push run for 223ae25 exposed a stale function identifier: the callback-free scan path still called the removed name confirm(canonical), so three authorization tests failed closed. The call now targets the internal confirm_scan(canonical) prompt, and the static test asserts the correct internal function is used and the removed identifier is absent. The isolated 17-test suite and compileall passed after this correction. This is recorded as an implementation defect, not waived.
+
+
+## AGENT-006F — harden legacy agent launch and approval boundaries (2026-11-08)
+
+Implementation commits: c62c587647bf030cab59912b9d4798f62e4d1154 and fb5e1ce81b2ad93f2434e2433c8bd72238fd270c.
+
+- agents/hermes/agent.py now requires an internal exact-command confirmation for interactive shell tasks, uses shlex plus argv-only shell=False, bounds command length and timeout, rejects shell interpreters, and leaves scheduled shell tasks pending for owner review instead of executing them unattended.
+- core/main.py resolves only direct regular child agents, rejects path traversal and symlinks, bounds and parses argv, and requires a fresh exact-list confirmation before configured auto-start. The confirmation callback is not caller-injectable.
+- The follow-up fixed regex and NUL/domain-separator escape literals. tests/test_core_agent_launcher.py covers valid direct-child resolution, traversal, symlinks, bounded argv, challenge binding, startup denial and callback-injection resistance.
+- These are legacy Termux process controls, not a sandbox, Android permission boundary or native executor. A manually launched process still runs with the Termux user's privileges.
+
+Audit at exact source head fb5e1ce81b2ad93f2434e2433c8bd72238fd270c: recursive tree 383 entries, not truncated; 20 recent commits inspected; branch 349 ahead / 0 behind main; six open PRs (#1 and #3–#7). PR #1 is open/draft against main at this exact head, 349 commits, 313 changed files, zero review submissions and zero inline review threads. PROJECT-ADAPTER.md exists; repository SKILL.md is absent; upstream shared package remains unverified. Branch is unprotected; rulesets query returned none.
+
+Exact-head GitHub Actions:
+- Phase 1 push 42498817883 and PR 42498821916: both Android and Python-policy jobs passed. Python security tests/static compilation and Android manifest gate passed; Gradle unit/build, repeat debug-APK comparison, strict dependency verification and modified-dependency negative control passed.
+- CI-003 push 42498817824 and PR 42498822007: both independent builders and the cross-runner verifier passed.
+- QA-005 42498822018: disposable Android 15/API 35 x86_64 emulator workflow passed, including launcher/recovery, large text, HOME consent/recovery, keyboard, owner-enrollment denial, authority UI and credential-prompt probe. QA-011 is explicitly availability preflight, not spoken TalkBack acceptance; QA-012 is structural semantics only.
+
+No physical Pixel 9 Pro, StrongBox, spoken TalkBack, signed release/OTA, production deployment or independent security approval is established. The real Android executor remains disconnected.
+
+## AGENT-006G — require owner confirmation for legacy Termux SMS (2026-11-08)
+
+Scope: modules/whatsapp/whatsapp.py, tests/test_whatsapp_consent.py, docs/AGENT-006G-TERMUX-MESSAGING-CONSENT.md, and TM-14 in docs/THREAT-MODEL.md.
+
+- Direct Termux SMS now requires an internal one-time typed challenge derived from the normalized recipient and exact message. No caller-supplied confirmation callback is accepted.
+- Recipient syntax is bounded; message length is capped at 1,600 characters; empty/NUL-containing messages fail closed.
+- SMS is invoked only through a fixed argv list with shell=False, a 10-second timeout and check=True. Logs record command completion, not carrier delivery, and do not record message content.
+- WhatsApp opens a URL-encoded compose screen only. The log and documentation explicitly state that the owner must review and tap Send; opening the compose screen is not represented as delivery.
+- Regression tests mock all subprocess/input boundaries. No real SMS, WhatsApp message, Termux installation, network request or device operation is performed.
+- This module remains a legacy Termux prototype, not an Android permission provider or native HERMES integration. The interactive challenge is not strong owner authentication; independent review remains required before any agent integration.
+
+Exact-head CI: pending at commit creation; record actual push/PR Phase 1, CI-003 and QA-005 results after completion.
+
+Milestones: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE.
