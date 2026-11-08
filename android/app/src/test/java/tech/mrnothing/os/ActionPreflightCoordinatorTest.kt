@@ -1,3 +1,14 @@
+private fun safeSignals() = ScreenPreflightSignals(
+    trustedOwnerSession = true,
+    safeUnlockedDevice = true,
+    ownAccessibilityServiceEnabled = true,
+    activeProjectionSession = true,
+    consentIndicatorVisible = true,
+    restrictedSurface = false,
+    emergencyStopEngaged = false,
+    sessionRevoked = false
+)
+
 package tech.mrnothing.os
 
 import org.junit.Assert.assertEquals
@@ -51,17 +62,6 @@ class ActionPreflightCoordinatorTest {
             return projectionActive
         }
     }
-
-    private fun safeSignals() = ScreenPreflightSignals(
-        trustedOwnerSession = true,
-        safeUnlockedDevice = true,
-        ownAccessibilityServiceEnabled = true,
-        activeProjectionSession = true,
-        consentIndicatorVisible = true,
-        restrictedSurface = false,
-        emergencyStopEngaged = false,
-        sessionRevoked = false
-    )
 
     private fun coordinator(
         provider: ScreenSafetySignalProvider,
