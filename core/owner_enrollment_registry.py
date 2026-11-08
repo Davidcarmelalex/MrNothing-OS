@@ -19,9 +19,10 @@ import os
 import re
 import sqlite3
 import stat
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
@@ -779,6 +780,87 @@ class SQLiteOwnerEnrollmentRegistry:
             raise EnrollmentRegistryError("atomic consent admission failed") from exc
         finally:
             db.close()
+
+    @contextmanager
+    def hold_active_enrollment_for_dispatch(
+        self,
+        *,
+        owner_id: str,
+        device_id: str,
+        transport_certificate_sha256: str,
+        credential_generation: int,
+        consent_public_key_sha256: str,
+    ) -> Iterator[str]:
+        """Hold the enrollment writer lock across a separate ledger claim.
+
+        Every signed rotation/revocation uses BEGIN IMMEDIATE on this same
+        database. While this context is held, no new enrollment generation
+        can commit. The caller must commit DISPATCH_STARTED in its separate
+        reservation database before leaving the context. This is a local
+        single-host lock-coupling guarantee, not a distributed transaction.
+        """
+        if (
+            type(owner_id) is not str or _IDENTIFIER_RE.fullmatch(owner_id) is None
+            or type(device_id) is not str or _IDENTIFIER_RE.fullmatch(device_id) is None
+            or type(transport_certificate_sha256) is not str
+            or _SHA256_RE.fullmatch(transport_certificate_sha256) is None
+            or type(credential_generation) is not int
+            or not 1 <= credential_generation <= MAX_EPOCH_MS
+            or type(consent_public_key_sha256) is not str
+            or _SHA256_RE.fullmatch(consent_public_key_sha256) is None
+        ):
+            yield "INVALID_ADMISSION_CONTEXT"
+            return
+
+        db = None
+        try:
+            db = self._connect()
+            # Acquire the writer lock before reading current enrollment. The
+            # same lock serializes apply_signed_enrollment rotation/revocation.
+            db.execute("BEGIN IMMEDIATE")
+            self._validate_schema(db)
+            row = db.execute(
+                "SELECT owner_id, transport_certificate_sha256, "
+                "consent_public_key_sha256, credential_generation, active "
+                "FROM owner_device WHERE device_id=?",
+                (device_id,),
+            ).fetchone()
+            if row is None:
+                reason = "DEVICE_NOT_ENROLLED"
+            elif row[4] != 1:
+                reason = "DEVICE_NOT_ACTIVE"
+            elif row[0] != owner_id:
+                reason = "OWNER_DEVICE_MISMATCH"
+            elif (
+                row[1] != transport_certificate_sha256
+                or row[3] != credential_generation
+            ):
+                reason = "ENROLLMENT_CREDENTIAL_MISMATCH"
+            elif row[2] != consent_public_key_sha256:
+                reason = "ENROLLMENT_KEY_MISMATCH"
+            else:
+                reason = "ENROLLMENT_ACTIVE"
+
+            try:
+                yield reason
+                db.execute("COMMIT")
+            except BaseException:
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
+                raise
+        except EnrollmentRegistryError:
+            if db is not None and db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+        except sqlite3.Error as exc:
+            if db is not None and db.in_transaction:
+                db.execute("ROLLBACK")
+            raise EnrollmentRegistryError(
+                "dispatch enrollment lock failed"
+            ) from exc
+        finally:
+            if db is not None:
+                db.close()
 
     def history(self, device_id: str) -> tuple[EnrollmentHistoryEntry, ...]:
         if type(device_id) is not str or _IDENTIFIER_RE.fullmatch(device_id) is None:

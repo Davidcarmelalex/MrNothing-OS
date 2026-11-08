@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import json
 import os
 import sqlite3
 import tempfile
@@ -6,6 +9,12 @@ from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
+
+from core.owner_enrollment_registry import (
+    SCHEMA_NAME, SQLiteOwnerEnrollmentRegistry, _canonical_payload,
+)
 from core.action_reservation import (
     ActionReservationRequest,
     DurableActionReservationLedger,
@@ -29,6 +38,50 @@ class DurableActionReservationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.path = os.path.join(self.temp.name, "actions.sqlite")
         self.now = 1_800_000_000_000
+        self.authority = ed25519.Ed25519PrivateKey.generate()
+        self.consent_key = ec.generate_private_key(ec.SECP256R1())
+        self.consent_spki = self.consent_key.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        self.consent_digest = hashlib.sha256(self.consent_spki).hexdigest()
+        self.registry = SQLiteOwnerEnrollmentRegistry(
+            os.path.join(self.temp.name, "enrollment.sqlite"),
+            authority_public_key_spki_der=self.authority.public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            ),
+            authority_key_id="test-authority",
+        )
+        self.registry.initialize(explicit_first_install=True)
+        payload = {
+            "schema": SCHEMA_NAME,
+            "version": 1,
+            "operation": "enroll",
+            "authority_key_id": "test-authority",
+            "enrollment_id": "test-enrollment-1",
+            "owner_id": "owner-1",
+            "device_id": "pixel-caiman-1",
+            "credential_generation": 1,
+            "issued_at_epoch_ms": self.now - 1_000,
+            "expires_at_epoch_ms": self.now + 60_000,
+            "transport_certificate_sha256": HEX_B,
+            "consent_public_key_spki_der": base64.urlsafe_b64encode(
+                self.consent_spki
+            ).rstrip(b"=").decode("ascii"),
+            "consent_public_key_sha256": self.consent_digest,
+        }
+        envelope = json.dumps(
+            {
+                "payload": payload,
+                "signature": base64.urlsafe_b64encode(
+                    self.authority.sign(_canonical_payload(payload))
+                ).rstrip(b"=").decode("ascii"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        self.registry.apply_signed_enrollment(envelope, now_epoch_ms=self.now)
         self.ledger = DurableActionReservationLedger(
             self.path, clock_ms=lambda: self.now, max_entries=32
         )
@@ -48,10 +101,15 @@ class DurableActionReservationTests(unittest.TestCase):
             issued_at_epoch_ms=self.now - 100,
             expires_at_epoch_ms=self.now + 29_900,
             transport_certificate_sha256=HEX_B,
-            credential_generation=7,
-            consent_public_key_sha256="c" * 64,
+            credential_generation=1,
+            consent_public_key_sha256=self.consent_digest,
         )
         return replace(base, **changes)
+
+    def claim_dispatch(self, key, *, ledger=None, registry=None):
+        return (ledger or self.ledger).claim_dispatch(
+            key, enrollment_registry=registry or self.registry
+        )
 
     def reserve(self, request=None, ledger=None):
         return (ledger or self.ledger).reserve(self.request() if request is None else request)
@@ -66,7 +124,7 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(record.device_id, "pixel-caiman-1")
         self.assertEqual(record.action_id, "navigate")
         self.assertEqual(record.arguments_sha256, HEX_A)
-        self.assertEqual(record.credential_generation, 7)
+        self.assertEqual(record.credential_generation, 1)
         self.assertEqual(record.state, RESERVED)
 
     def test_same_capability_and_binding_is_idempotent_not_dispatchable(self):
@@ -102,8 +160,8 @@ class DurableActionReservationTests(unittest.TestCase):
 
     def test_dispatch_claim_is_one_use(self):
         reserved = self.reserve()
-        first = self.ledger.claim_dispatch(reserved.idempotency_key)
-        second = self.ledger.claim_dispatch(reserved.idempotency_key)
+        first = self.claim_dispatch(reserved.idempotency_key)
+        second = self.claim_dispatch(reserved.idempotency_key)
         self.assertTrue(first.applied)
         self.assertEqual(first.state, DISPATCH_STARTED)
         self.assertFalse(second.applied)
@@ -132,14 +190,14 @@ class DurableActionReservationTests(unittest.TestCase):
         record = self.ledger.get(reserved.idempotency_key)
         self.now = record.expires_at_epoch_ms
 
-        result = self.ledger.claim_dispatch(reserved.idempotency_key)
+        result = self.claim_dispatch(reserved.idempotency_key)
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "CAPABILITY_EXPIRED")
         self.assertEqual(result.state, FAILED_NO_EFFECT)
         expired = self.ledger.get(reserved.idempotency_key)
         self.assertEqual(expired.state, FAILED_NO_EFFECT)
         self.assertEqual(expired.outcome_code, "CAPABILITY_EXPIRED")
-        retry = self.ledger.claim_dispatch(reserved.idempotency_key)
+        retry = self.claim_dispatch(reserved.idempotency_key)
         self.assertFalse(retry.applied)
         self.assertEqual(retry.reason, "TERMINAL_STATE")
 
@@ -148,13 +206,13 @@ class DurableActionReservationTests(unittest.TestCase):
         record = self.ledger.get(reserved.idempotency_key)
         self.now = record.issued_at_epoch_ms - 1
 
-        early = self.ledger.claim_dispatch(reserved.idempotency_key)
+        early = self.claim_dispatch(reserved.idempotency_key)
         self.assertFalse(early.applied)
         self.assertEqual(early.reason, "CAPABILITY_NOT_YET_VALID")
         self.assertEqual(self.ledger.get(reserved.idempotency_key).state, RESERVED)
 
         self.now = record.issued_at_epoch_ms
-        valid = self.ledger.claim_dispatch(reserved.idempotency_key)
+        valid = self.claim_dispatch(reserved.idempotency_key)
         self.assertTrue(valid.applied)
         self.assertEqual(valid.state, DISPATCH_STARTED)
 
@@ -166,7 +224,9 @@ class DurableActionReservationTests(unittest.TestCase):
         ]
         with ThreadPoolExecutor(max_workers=12) as pool:
             results = list(pool.map(
-                lambda ledger: ledger.claim_dispatch(reserved.idempotency_key),
+                lambda ledger: ledger.claim_dispatch(
+                    reserved.idempotency_key, enrollment_registry=self.registry
+                ),
                 ledgers,
             ))
         self.assertEqual(sum(result.applied for result in results), 1)
@@ -189,11 +249,11 @@ class DurableActionReservationTests(unittest.TestCase):
         cancelled = self.ledger.cancel_before_dispatch(reserved.idempotency_key)
         self.assertTrue(cancelled.applied)
         self.assertEqual(cancelled.state, CANCELLED)
-        self.assertFalse(self.ledger.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertFalse(self.claim_dispatch(reserved.idempotency_key).applied)
 
     def test_cancel_after_dispatch_is_not_reported_as_cancelled(self):
         reserved = self.reserve()
-        self.assertTrue(self.ledger.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertTrue(self.claim_dispatch(reserved.idempotency_key).applied)
         cancelled = self.ledger.cancel_before_dispatch(reserved.idempotency_key)
         self.assertFalse(cancelled.applied)
         self.assertEqual(cancelled.reason, "DISPATCH_ALREADY_STARTED")
@@ -215,7 +275,7 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(denied.state, FAILED_NO_EFFECT)
         record = self.ledger.get(reserved.idempotency_key)
         self.assertEqual(record.outcome_code, "PERMISSION_REVOKED")
-        self.assertFalse(self.ledger.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertFalse(self.claim_dispatch(reserved.idempotency_key).applied)
 
     def test_pre_dispatch_denial_is_idempotent_and_conflicts_are_rejected(self):
         reserved = self.reserve()
@@ -236,7 +296,7 @@ class DurableActionReservationTests(unittest.TestCase):
 
     def test_pre_dispatch_denial_loses_to_dispatch_claim_race(self):
         reserved = self.reserve()
-        self.assertTrue(self.ledger.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertTrue(self.claim_dispatch(reserved.idempotency_key).applied)
         denied = self.ledger.reject_before_dispatch(
             reserved.idempotency_key, reason_code="PERMISSION_REVOKED"
         )
@@ -245,7 +305,7 @@ class DurableActionReservationTests(unittest.TestCase):
 
     def test_completed_outcome_is_persisted_and_idempotent(self):
         reserved = self.reserve()
-        self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.claim_dispatch(reserved.idempotency_key)
         first = self.ledger.record_outcome(
             reserved.idempotency_key, state=COMPLETED,
             outcome_code="ACTION_RESULT_VERIFIED", outcome_sha256=HEX_A,
@@ -262,7 +322,7 @@ class DurableActionReservationTests(unittest.TestCase):
 
     def test_conflicting_terminal_outcome_is_rejected(self):
         reserved = self.reserve()
-        self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.claim_dispatch(reserved.idempotency_key)
         self.assertTrue(self.ledger.record_outcome(
             reserved.idempotency_key, state=COMPLETED,
             outcome_code="DONE",
@@ -276,33 +336,33 @@ class DurableActionReservationTests(unittest.TestCase):
 
     def test_unknown_outcome_is_sticky_and_never_reclaimed(self):
         reserved = self.reserve()
-        self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.claim_dispatch(reserved.idempotency_key)
         self.assertTrue(self.ledger.record_outcome(
             reserved.idempotency_key, state=UNKNOWN_OUTCOME,
             outcome_code="PROCESS_INTERRUPTED",
         ).applied)
-        retry = self.ledger.claim_dispatch(reserved.idempotency_key)
+        retry = self.claim_dispatch(reserved.idempotency_key)
         self.assertFalse(retry.applied)
         self.assertEqual(retry.reason, "TERMINAL_STATE")
         self.assertEqual(retry.state, UNKNOWN_OUTCOME)
 
     def test_dispatch_started_survives_restart_without_auto_retry(self):
         reserved = self.reserve()
-        self.assertTrue(self.ledger.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertTrue(self.claim_dispatch(reserved.idempotency_key).applied)
         reopened = DurableActionReservationLedger(
             self.path, clock_ms=lambda: self.now
         )
         record = reopened.get(reserved.idempotency_key)
         self.assertEqual(record.state, DISPATCH_STARTED)
-        self.assertFalse(reopened.claim_dispatch(reserved.idempotency_key).applied)
+        self.assertFalse(self.claim_dispatch(reserved.idempotency_key, ledger=reopened).applied)
         self.assertEqual(
-            reopened.claim_dispatch(reserved.idempotency_key).reason,
+            self.claim_dispatch(reserved.idempotency_key, ledger=reopened).reason,
             "ALREADY_CLAIMED",
         )
 
     def test_restart_preserves_terminal_outcome_and_replay_binding(self):
         reserved = self.reserve()
-        self.ledger.claim_dispatch(reserved.idempotency_key)
+        self.claim_dispatch(reserved.idempotency_key)
         self.ledger.record_outcome(
             reserved.idempotency_key, state=FAILED_NO_EFFECT,
             outcome_code="PRECONDITION_FAILED",
@@ -387,7 +447,7 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(result.reason, "INVALID_STATE")
 
     def test_missing_reservation_cannot_be_claimed(self):
-        result = self.ledger.claim_dispatch("f" * 64)
+        result = self.claim_dispatch("f" * 64)
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "RESERVATION_NOT_FOUND")
 

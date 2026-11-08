@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -17,6 +18,10 @@ from core.owner_enrollment_registry import (
 )
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_transport import EnrolledTransportCertificate
+from core.action_reservation import (
+    ActionReservationRequest, DurableActionReservationLedger,
+    DISPATCH_STARTED, RESERVED,
+)
 
 
 NOW = 1_800_000_000_000
@@ -372,6 +377,153 @@ class RegistryTests(unittest.TestCase):
             self.registry.consume_consent_nonce(**self._admission_args()),
             "ADMITTED",
         )
+
+    def _reserve_action_for_enrolled_device(self, *, nonce="0123456789abcdef0123456789abcdef"):
+        consent_digest = hashlib.sha256(spki(self.consent1)).hexdigest()
+        ledger = DurableActionReservationLedger(
+            Path(self.temp.name) / "actions.sqlite",
+            clock_ms=lambda: NOW,
+        )
+        decision = ledger.reserve(ActionReservationRequest(
+            owner_id="owner-1",
+            device_id="pixel-1",
+            session_id="session-1",
+            capability_nonce=nonce,
+            protocol_version=2,
+            action_id="navigate",
+            arguments_sha256="a" * 64,
+            issued_at_epoch_ms=NOW - 1_000,
+            expires_at_epoch_ms=NOW + 29_000,
+            transport_certificate_sha256=self.cert1,
+            credential_generation=1,
+            consent_public_key_sha256=consent_digest,
+        ))
+        self.assertTrue(decision.created, decision.reason)
+        self.assertEqual(decision.state, RESERVED)
+        return ledger, decision
+
+    def test_dispatch_claim_rejects_revocation_committed_before_claim(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        revoke = self.statement(
+            operation="revoke", generation=2, enrollment_id="revoke-before-claim",
+            cert=self.cert1, key=self.consent1,
+        )
+        self.registry.apply_signed_enrollment(revoke, now_epoch_ms=NOW)
+
+        result = ledger.claim_dispatch(
+            reserved.idempotency_key, enrollment_registry=self.registry
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "DEVICE_NOT_ACTIVE")
+        self.assertEqual(result.state, RESERVED)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, RESERVED)
+
+    def test_dispatch_claim_rejects_rotation_committed_before_claim(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        rotate = self.statement(
+            operation="rotate", generation=2, enrollment_id="rotate-before-claim",
+            cert=self.cert2, key=self.consent2,
+        )
+        self.registry.apply_signed_enrollment(rotate, now_epoch_ms=NOW)
+
+        result = ledger.claim_dispatch(
+            reserved.idempotency_key, enrollment_registry=self.registry
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "ENROLLMENT_CREDENTIAL_MISMATCH")
+        self.assertEqual(result.state, RESERVED)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, RESERVED)
+
+    def test_dispatch_claim_holds_enrollment_lock_until_ledger_commit(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        original = self.registry.hold_active_enrollment_for_dispatch
+        lock_acquired = threading.Event()
+        release_claim = threading.Event()
+        revoke_started = threading.Event()
+        revoke_finished = threading.Event()
+        claim_result = []
+        revoke_result = []
+        errors = []
+
+        @contextmanager
+        def blocking_enrollment_lock(**kwargs):
+            with original(**kwargs) as status:
+                lock_acquired.set()
+                if not release_claim.wait(5):
+                    raise TimeoutError("test did not release enrollment lock")
+                yield status
+
+        self.registry.hold_active_enrollment_for_dispatch = blocking_enrollment_lock
+
+        def claim_worker():
+            try:
+                claim_result.append(ledger.claim_dispatch(
+                    reserved.idempotency_key, enrollment_registry=self.registry
+                ))
+            except Exception as exc:
+                errors.append(exc)
+
+        def revoke_worker():
+            revoke_started.set()
+            try:
+                revoke_result.append(self.registry.apply_signed_enrollment(
+                    self.statement(
+                        operation="revoke", generation=2,
+                        enrollment_id="revoke-after-claim",
+                        cert=self.cert1, key=self.consent1,
+                    ),
+                    now_epoch_ms=NOW,
+                ))
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                revoke_finished.set()
+
+        claim_thread = threading.Thread(target=claim_worker)
+        revoke_thread = threading.Thread(target=revoke_worker)
+        claim_thread.start()
+        self.assertTrue(lock_acquired.wait(5), "claim never acquired enrollment writer lock")
+        revoke_thread.start()
+        self.assertTrue(revoke_started.wait(5), "revocation thread did not start")
+        was_blocked = not revoke_finished.wait(0.1)
+        release_claim.set()
+        claim_thread.join(5)
+        revoke_thread.join(5)
+        self.registry.hold_active_enrollment_for_dispatch = original
+
+        self.assertFalse(claim_thread.is_alive(), "claim thread did not finish")
+        self.assertFalse(revoke_thread.is_alive(), "revocation thread did not finish")
+        self.assertEqual(errors, [])
+        self.assertTrue(was_blocked, "revocation committed while dispatch claim held the enrollment lock")
+        self.assertEqual(len(claim_result), 1)
+        self.assertTrue(claim_result[0].applied, claim_result[0].reason)
+        self.assertEqual(claim_result[0].state, DISPATCH_STARTED)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, DISPATCH_STARTED)
+        self.assertEqual(len(revoke_result), 1)
+        self.assertFalse(revoke_result[0].active)
+        self.assertIsNone(self.registry.lookup_active_device("pixel-1"))
+
+    def test_dispatch_claim_fails_closed_when_enrollment_store_is_unavailable(self):
+        self.enroll()
+        ledger, reserved = self._reserve_action_for_enrolled_device()
+        corrupt_path = Path(self.temp.name) / "corrupt-enrollment.sqlite"
+        corrupt_path.write_bytes(b"corrupt database")
+        os.chmod(corrupt_path, 0o600)
+        unavailable = SQLiteOwnerEnrollmentRegistry(
+            corrupt_path,
+            authority_public_key_spki_der=spki(self.authority),
+            authority_key_id=KEY_ID,
+        )
+        result = ledger.claim_dispatch(
+            reserved.idempotency_key, enrollment_registry=unavailable
+        )
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "ENROLLMENT_REGISTRY_UNAVAILABLE")
+        self.assertEqual(result.state, RESERVED)
+        self.assertEqual(ledger.get(reserved.idempotency_key).state, RESERVED)
 
     def test_v1_database_migration_is_explicit_additive_and_idempotent(self):
         self.enroll()

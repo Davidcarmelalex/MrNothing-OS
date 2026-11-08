@@ -371,48 +371,169 @@ class DurableActionReservationLedger:
             )
         return ReservationDecision(True, "RESERVED", key, RESERVED, True)
 
-    def claim_dispatch(self, key: str) -> ReservationDecision:
-        """Atomically claim RESERVED once; no action is executed by this method."""
+    def claim_dispatch(
+        self, key: str, *, enrollment_registry
+    ) -> ReservationDecision:
+        """Claim only while the paired owner enrollment is write-locked.
+
+        Lock order is enrollment registry -> reservation ledger. The ledger's
+        DISPATCH_STARTED commit is therefore ordered against every enrollment
+        rotation/revocation that uses the same registry database. This is a
+        single-host lock-coupling guarantee, not a distributed transaction.
+        This method never executes an action.
+        """
         if type(key) is not str or _SHA256.fullmatch(key) is None:
             return ReservationDecision(False, "INVALID_IDEMPOTENCY_KEY", "", None)
-        with self._transaction() as db:
-            row = db.execute(
-                "SELECT state,issued_at_epoch_ms,expires_at_epoch_ms "
-                "FROM action_reservations WHERE idempotency_key=?", (key,)
-            ).fetchone()
-            if row is None:
-                return ReservationDecision(False, "RESERVATION_NOT_FOUND", key, None)
-            if row["state"] != RESERVED:
-                reason = "ALREADY_CLAIMED" if row["state"] == DISPATCH_STARTED else "TERMINAL_STATE"
-                return ReservationDecision(False, reason, key, row["state"])
 
-            # Re-read time under the write lock so queueing behind another writer
-            # cannot move the claim past the signed capability's validity window.
-            now = self._now()
-            if now < row["issued_at_epoch_ms"]:
+        # Import lazily: the registry also imports transport types that depend
+        # on this module. Exact type checking prevents a caller-supplied duck
+        # object from pretending to be the durable enrollment lock.
+        from core.owner_enrollment_registry import (
+            EnrollmentRegistryError,
+            SQLiteOwnerEnrollmentRegistry,
+        )
+        if type(enrollment_registry) is not SQLiteOwnerEnrollmentRegistry:
+            return ReservationDecision(
+                False, "INVALID_ENROLLMENT_REGISTRY", key, None,
+            )
+        try:
+            if os.path.samefile(self.path, enrollment_registry.path):
                 return ReservationDecision(
-                    False, "CAPABILITY_NOT_YET_VALID", key, RESERVED,
+                    False, "INVALID_STORE_LAYOUT", key, None,
                 )
-            if now >= row["expires_at_epoch_ms"]:
-                changed = db.execute(
-                    "UPDATE action_reservations SET state=?,outcome_code=?,"
-                    "outcome_sha256=NULL,updated_at_epoch_ms=? "
-                    "WHERE idempotency_key=? AND state=?",
-                    (FAILED_NO_EFFECT, "CAPABILITY_EXPIRED", now, key, RESERVED),
-                ).rowcount
-                if changed != 1:
-                    return ReservationDecision(False, "CLAIM_RACE", key, None)
+        except OSError:
+            return ReservationDecision(
+                False, "ENROLLMENT_REGISTRY_UNAVAILABLE", key, None,
+            )
+
+        try:
+            snapshot = self.get(key)
+        except ReservationStoreUnavailable:
+            return ReservationDecision(
+                False, "RESERVATION_STORE_UNAVAILABLE", key, None,
+            )
+        if snapshot is None:
+            return ReservationDecision(False, "RESERVATION_NOT_FOUND", key, None)
+        if snapshot.state != RESERVED:
+            reason = (
+                "ALREADY_CLAIMED" if snapshot.state == DISPATCH_STARTED
+                else "TERMINAL_STATE"
+            )
+            return ReservationDecision(False, reason, key, snapshot.state)
+
+        claim_decision = None
+        try:
+            # The registry takes BEGIN IMMEDIATE before yielding. Its writer
+            # lock remains held until after the ledger transaction commits.
+            with enrollment_registry.hold_active_enrollment_for_dispatch(
+                owner_id=snapshot.owner_id,
+                device_id=snapshot.device_id,
+                transport_certificate_sha256=snapshot.transport_certificate_sha256,
+                credential_generation=snapshot.credential_generation,
+                consent_public_key_sha256=snapshot.consent_public_key_sha256,
+            ) as enrollment_status:
+                if enrollment_status != "ENROLLMENT_ACTIVE":
+                    return ReservationDecision(
+                        False, enrollment_status, key, snapshot.state,
+                    )
+
+                pending_decision = None
+                with self._transaction() as db:
+                    row = db.execute(
+                        "SELECT * FROM action_reservations WHERE idempotency_key=?",
+                        (key,),
+                    ).fetchone()
+                    if row is None:
+                        pending_decision = ReservationDecision(
+                            False, "RESERVATION_NOT_FOUND", key, None,
+                        )
+                    else:
+                        immutable_fields = (
+                            "idempotency_key", "owner_id", "device_id",
+                            "session_id", "capability_nonce", "protocol_version",
+                            "action_id", "arguments_sha256", "issued_at_epoch_ms",
+                            "expires_at_epoch_ms", "transport_certificate_sha256",
+                            "credential_generation", "consent_public_key_sha256",
+                            "created_at_epoch_ms",
+                        )
+                        if any(
+                            row[name] != getattr(snapshot, name)
+                            for name in immutable_fields
+                        ):
+                            pending_decision = ReservationDecision(
+                                False, "RESERVATION_BINDING_CHANGED", key,
+                                row["state"],
+                            )
+                        elif row["state"] != RESERVED:
+                            reason = (
+                                "ALREADY_CLAIMED"
+                                if row["state"] == DISPATCH_STARTED
+                                else "TERMINAL_STATE"
+                            )
+                            pending_decision = ReservationDecision(
+                                False, reason, key, row["state"],
+                            )
+                        else:
+                            # Re-read time after both the enrollment writer
+                            # lock and ledger writer transaction are acquired.
+                            now = self._now()
+                            if now < row["issued_at_epoch_ms"]:
+                                pending_decision = ReservationDecision(
+                                    False, "CAPABILITY_NOT_YET_VALID", key, RESERVED,
+                                )
+                            elif now >= row["expires_at_epoch_ms"]:
+                                changed = db.execute(
+                                    "UPDATE action_reservations SET state=?,outcome_code=?,"
+                                    "outcome_sha256=NULL,updated_at_epoch_ms=? "
+                                    "WHERE idempotency_key=? AND state=?",
+                                    (
+                                        FAILED_NO_EFFECT, "CAPABILITY_EXPIRED",
+                                        now, key, RESERVED,
+                                    ),
+                                ).rowcount
+                                pending_decision = (
+                                    ReservationDecision(
+                                        False, "CAPABILITY_EXPIRED", key,
+                                        FAILED_NO_EFFECT,
+                                    )
+                                    if changed == 1
+                                    else ReservationDecision(
+                                        False, "CLAIM_RACE", key, None,
+                                    )
+                                )
+                            else:
+                                changed = db.execute(
+                                    "UPDATE action_reservations SET state=?,updated_at_epoch_ms=? "
+                                    "WHERE idempotency_key=? AND state=?",
+                                    (DISPATCH_STARTED, now, key, RESERVED),
+                                ).rowcount
+                                pending_decision = (
+                                    ReservationDecision(
+                                        True, "DISPATCH_CLAIMED", key, DISPATCH_STARTED,
+                                    )
+                                    if changed == 1
+                                    else ReservationDecision(
+                                        False, "CLAIM_RACE", key, None,
+                                    )
+                                )
+                # Assign only after the ledger COMMIT succeeded. If the
+                # enrollment context then fails to commit/release, dispatch
+                # remains denied and the caller must reconcile this row.
+                claim_decision = pending_decision
+            return claim_decision
+        except EnrollmentRegistryError:
+            if claim_decision is not None:
                 return ReservationDecision(
-                    False, "CAPABILITY_EXPIRED", key, FAILED_NO_EFFECT,
+                    False, "ENROLLMENT_LOCK_COMMIT_UNCERTAIN",
+                    key, claim_decision.state,
                 )
-            changed = db.execute(
-                "UPDATE action_reservations SET state=?,updated_at_epoch_ms=? "
-                "WHERE idempotency_key=? AND state=?",
-                (DISPATCH_STARTED, now, key, RESERVED),
-            ).rowcount
-            if changed != 1:
-                return ReservationDecision(False, "CLAIM_RACE", key, None)
-        return ReservationDecision(True, "DISPATCH_CLAIMED", key, DISPATCH_STARTED)
+            return ReservationDecision(
+                False, "ENROLLMENT_REGISTRY_UNAVAILABLE", key, snapshot.state,
+            )
+        except ReservationStoreUnavailable:
+            return ReservationDecision(
+                False, "RESERVATION_STORE_UNAVAILABLE", key, snapshot.state,
+            )
 
     def _finish_before_dispatch(
         self, key: str, *, state: str, code: str, digest: str | None

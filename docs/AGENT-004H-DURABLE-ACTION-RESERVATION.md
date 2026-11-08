@@ -1,6 +1,6 @@
 # AGENT-004H — durable consent-bound action reservation
 
-**Status:** The Python/SQLite state machine is integrated behind an adapter-owned reservation method. It still does not query Android permissions, claim dispatch, or connect to an action executor.
+**Status:** The Python/SQLite state machine is integrated behind an adapter-owned reservation method. It now supports an enrollment-locked pre-dispatch claim. It still does not query Android permissions or connect to an action executor.
 
 ## Why this is not a duplicate replay ledger
 
@@ -116,3 +116,16 @@ The local mTLS tests cover successful v2 reservation, exact argument binding, tr
 The storage state machine now refuses to create a reservation when its signed issue time is still in the future or its expiry has been reached. `claim_dispatch` re-reads the clock only after acquiring the SQLite `BEGIN IMMEDIATE` write transaction and refuses a claim outside the signed validity window. An expired RESERVED record is atomically made terminal as `FAILED_NO_EFFECT/CAPABILITY_EXPIRED`; a future-dated record remains RESERVED but cannot be claimed until its issue time.
 
 The clock read occurs inside the write transaction so a caller queued behind another writer cannot rely on a stale pre-lock timestamp. These checks are defense in depth only: the adapter must still validate the exact live TLS peer, monotonic capability/session expiry, current enrollment generation and Android permission state immediately before any future platform call. This change does not connect `claim_dispatch` to the transport adapter or an executor and does not authorize device actions.
+
+
+## AGENT-005L — enrollment-locked final dispatch claim
+
+claim_dispatch now requires the exact SQLiteOwnerEnrollmentRegistry instance. It first reads the immutable reservation binding, then acquires the enrollment database's BEGIN IMMEDIATE writer lock, validates the active owner/device, transport-certificate fingerprint, credential generation and consent-key digest, and only then enters the reservation ledger's own BEGIN IMMEDIATE transaction. The ledger re-reads the complete immutable binding and commits DISPATCH_STARTED while the enrollment writer lock remains held.
+
+All signed enrollment rotations/revocations use the same enrollment database writer lock. Therefore:
+- If rotation/revocation commits first, the final claim observes the inactive/new generation and is denied.
+- If the final claim acquires the enrollment writer lock first, rotation/revocation cannot commit until the reservation's DISPATCH_STARTED transaction commits; the claim is ordered before the later enrollment change.
+- If either store is unavailable, the claim fails closed.
+- If the ledger commit succeeds but the enrollment lock cannot cleanly close, the method returns ENROLLMENT_LOCK_COMMIT_UNCERTAIN; the row must be reconciled and must not be dispatched from that response.
+
+This is single-host lock coupling, not a multi-database atomic commit, distributed lock or multi-host guarantee. Both SQLite files must be local to the same host and all enrollment changes must continue to use apply_signed_enrollment. The caller must still revalidate the exact live TLS session and monotonic deadline; this storage boundary does not perform Android permission checks. No executor or device action is connected.
