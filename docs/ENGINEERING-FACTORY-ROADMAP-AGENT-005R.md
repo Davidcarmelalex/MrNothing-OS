@@ -31,3 +31,8 @@ No milestone is complete.
 ## Next task
 
 Obtain an independent security review of SEC-021A/B/C and the trusted in-process callback boundary. Do not connect an executor until that review accepts the single-host assumptions, crash semantics, permission preflight and revocation ordering. If independent review is unavailable, keep the gate pending and continue only with isolated no-side-effect verification.
+
+
+## Exact-head CI checkpoint — AGENT-005R
+
+At corrected head `e94f87e903e8b5345eeb9b0b8f4bfea0712f39e0`, Phase 1 push/PR both passed with 765 Python tests each, Android unit/build/repeat-build and dependency-verification gates passed; CI-003 push/PR both passed with byte-identical unsigned APKs and matching runtime/scoped build-environment SBOMs. QA-005 for e94 remained queued behind an earlier emulator run at last inspection. The previous d517 head's 30/30 emulator result is baseline evidence only. Independent human security review remains pending; no milestone is complete.

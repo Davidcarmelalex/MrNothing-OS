@@ -38,7 +38,15 @@ Created SEC-021C and a compact roadmap addendum. No production code, Android sou
 
 ## Verification
 
-The GitHub Actions exact-head Phase 1 and CI-003 runs are triggered by the commit. Results are pending until their workflow jobs complete; no post-commit test pass is claimed in this file at creation time. QA-005 is path-filtered to Android/emulator changes and is not expected to rerun for this Python-test/documentation-only change.
+## Exact-head verification at correction commit e94f87e
+
+The first implementation commit `b1a888c1f1282778bc136fa149f14aa4376ec201` ran 765 tests and exposed three test errors: the test methods referenced the fault-injection proxy before its helper class had been inserted. The failure was a test-harness `NameError`, not a production-code failure. Follow-up commit `e94f87e903e8b5345eeb9b0b8f4bfea0712f39e0` added the missing test-only proxy. The corrected exact head passed:
+
+- Phase 1 push [42443261860](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443261860) and PR [42443266736](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443266736): both **success**. Each Python-policy job ran **765 tests** and reported `OK`. Android `:app:testDebugUnitTest`, `:app:assembleDebug`, clean repeat debug APK byte comparison, strict dependency verification, CI-005 modified-artifact negative control and source-manifest gate passed.
+- CI-003 push [42443261729](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443261729) and PR [42443266755](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443266755): both **success**. Two independent runners produced byte-identical unsigned APKs (7,867,868 bytes; SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; normalized-entry SHA-256 `37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462`). Runtime inventory/SBOM and the scoped 1,260-component build-environment inventory/SBOM matched. The verifier reports `reproducible=true`, `release_ready=false`.
+- QA-005 exact-head PR run [42443266722](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443266722) was **pending/queued** at last inspection behind earlier emulator run [42443183645](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42443183645). It was triggered because PR #1's cumulative diff includes Android/emulator paths, despite this increment changing only Python tests and documentation. The prior-head QA-005 run at `d517b416` passed 30/30 instrumentation tests, but is not substituted for the e94 exact-head run.
+
+A local clone/test attempt failed because the execution container could not resolve `github.com`; no local Python or Gradle result is claimed. All test results above are from GitHub Actions.
 
 A local clone/test run was attempted but DNS resolution for `github.com` was unavailable in the execution container. No local Python or Gradle test result is claimed.
 
