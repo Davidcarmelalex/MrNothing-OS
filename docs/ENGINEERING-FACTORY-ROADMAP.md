@@ -1750,3 +1750,24 @@ The static gate now checks repository order, cache isolation, shared pinned JDK,
 ### AGENT-005ZB repository-order correction (2026-11-08)
 
 The first exact-head run after AGENT-005ZB exposed a strict dependency-verification failure for the Kotlin plugin marker POM when Gradle Plugin Portal was moved ahead of Maven Central. This was an integrity-gate failure, not a reason to update or disable checksums. The repository order was corrected to preserve the original Maven Central-before-Plugin-Portal precedence, with Sonatype repo1 added only after Maven Central. Exact-head CI must re-run on the corrected order. The failed intermediate run is not accepted.
+
+
+## AGENT-005ZC — QA-005 build-tool and cache parity (2026-11-08)
+
+Audit baseline: authorized branch `feat/phase1-agentic-phone` at `44f3b5597c48dbc6a92b2f965a872a6fced1128d`; recursive Git tree contained 374 entries and was not truncated; `main...feat/phase1-agentic-phone` was 329 commits ahead and zero behind. Twenty recent commits were inspected. Six open PRs (#1 and #3–#7) were audited. PR #1 targets `main`, remains open/draft, points to the authorized branch, and has no submitted reviews or inline review comments. `PROJECT-ADAPTER.md` and this roadmap exist; repository `SKILL.md` is absent; the upstream shared factory package remains unverified and is not claimed installed.
+
+Exact-head rerun attempt 3 at the audit head:
+- Phase 1 push [42471149042](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42471149042): passed. Python policy/static suite reported 785 tests; Android debug unit/build, clean repeat APK comparison and CI-005 modified-dependency negative control passed.
+- Phase 1 PR [42471152946](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42471152946): Python policy/static suite reported 785 tests and passed; Android Gradle distribution acquisition failed after repeated HTTP 504 responses from both official Gradle endpoints.
+- CI-003 push [42471149025](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42471149025) and PR [42471152940](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42471152940): independent builder jobs failed resolving `kotlin-compiler-embeddable:2.0.21` after the Maven Central request redirected to the JetBrains GitHub release and returned HTTP 504; the cross-runner verifier was skipped.
+- QA-005 PR [42471152984](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42471152984): failed during Gradle dependency resolution on the same Kotlin compiler HTTP 504; the emulator did not start.
+
+These failures occurred during external tool/dependency acquisition, before Android test/build assertions or emulator instrumentation. No checksum was weakened and no community mirror was introduced.
+
+AGENT-005ZC closes a workflow-parity gap: QA-005 now pins Temurin 17.0.21+9, uses the same Gradle dependency/distribution cache paths as Phase 1 and CI-003, marks pull-request cache consumers read-only, and calls the shared `scripts/download_gradle_distribution.sh` helper. Two static regression tests enforce the shared JDK/cache configuration and prohibit a separate direct single-host Gradle download. CI-004 documentation now covers all three Android workflows.
+
+Only CI workflow, CI static-test, CI documentation and roadmap files change. No Android application source, Python security runtime, permission, consent, enrollment, executor, network listener, OTA or release-signing behavior changes. Exact-head CI after this commit is pending; the prior-head passing Phase 1 push is not substituted for new-head acceptance.
+
+Independent human security review of SEC-021A/B/C and SEC-022/AGENT-005Y remains PENDING. No physical Pixel 9 Pro was tested. The executor remains disconnected. No milestone is complete.
+
+Next priority: obtain independent security review of SEC-021A/B/C and SEC-022/AGENT-005Y, including the trusted final-admission callback boundary. Keep the real executor disconnected until that gate is approved.

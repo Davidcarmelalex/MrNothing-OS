@@ -13,6 +13,32 @@ class Qa005WorkflowGateTests(unittest.TestCase):
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
+    def test_qa_uses_the_shared_pinned_jdk_and_gradle_cache(self):
+        self.assertIn("java-version: '17.0.21+9'", self.workflow)
+        self.assertIn("cache: gradle", self.workflow)
+        self.assertIn("cache-path: |", self.workflow)
+        self.assertIn("~/.gradle/caches", self.workflow)
+        self.assertIn("~/.gradle/distributions", self.workflow)
+        self.assertIn(
+            "cache-read-only: ${{ github.event_name == 'pull_request' }}",
+            self.workflow,
+        )
+
+    def test_qa_uses_the_shared_checksum_verified_gradle_downloader(self):
+        self.assertIn(
+            "bash ../scripts/download_gradle_distribution.sh 8.9",
+            self.workflow,
+        )
+        self.assertIn(
+            '$HOME/.gradle/distributions/gradle-8.9-bin.zip',
+            self.workflow,
+        )
+        self.assertNotIn("curl -fsSL", self.workflow)
+        self.assertNotIn(
+            "https://services.gradle.org/distributions/gradle-8.9-bin.zip",
+            self.workflow,
+        )
+
     def test_single_pr_trigger_prevents_duplicate_push_emulators(self):
         self.assertIn("pull_request:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
