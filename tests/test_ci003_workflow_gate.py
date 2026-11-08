@@ -21,7 +21,7 @@ class CI003WorkflowGateTests(unittest.TestCase):
 
     def test_new_commit_does_not_cancel_active_independent_builders(self):
         self.assertIn(
-            "group: ${{ github.event.pull_request.number || github.ref }}",
+            "group: ci003-${{ github.event.pull_request.number || github.ref }}",
             self.workflow,
         )
         self.assertIn("cancel-in-progress: false", self.workflow)
