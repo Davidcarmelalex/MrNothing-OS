@@ -172,6 +172,70 @@ ledger.claim_dispatch(
 raise SystemExit("commit pause unexpectedly returned")
 """
 
+
+_CRASH_BEFORE_LEDGER_COMMIT_SUBPROCESS = r"""
+import base64
+import sys
+import time
+
+from core.action_reservation import DurableActionReservationLedger
+from core.owner_enrollment_registry import SQLiteOwnerEnrollmentRegistry
+
+
+class PauseBeforeCommit:
+    def __init__(self, connection, marker_path):
+        self._connection = connection
+        self._marker_path = marker_path
+        self._paused = False
+
+    @property
+    def in_transaction(self):
+        return self._connection.in_transaction
+
+    def execute(self, sql, *args):
+        if (
+            type(sql) is str
+            and sql.strip().upper() == "COMMIT"
+            and not self._paused
+        ):
+            self._paused = True
+            # This marker is emitted before the underlying SQLite COMMIT call.
+            # The parent kills this process while the UPDATE remains uncommitted.
+            with open(self._marker_path, "x", encoding="ascii") as marker:
+                marker.write("ledger-commit-not-executed")
+            while True:
+                time.sleep(0.05)
+        return self._connection.execute(sql, *args)
+
+    def close(self):
+        self._connection.close()
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+ledger_path, registry_path, authority_b64, key, now_text, marker_path = sys.argv[1:]
+registry = SQLiteOwnerEnrollmentRegistry(
+    registry_path,
+    authority_public_key_spki_der=base64.urlsafe_b64decode(authority_b64),
+    authority_key_id="test-authority",
+    timeout_seconds=10.0,
+)
+ledger = DurableActionReservationLedger(
+    ledger_path,
+    clock_ms=lambda: int(now_text),
+    busy_timeout_ms=10_000,
+)
+original_connect = ledger._connect
+ledger._connect = lambda: PauseBeforeCommit(original_connect(), marker_path)
+ledger.claim_dispatch(
+    key,
+    enrollment_registry=registry,
+    final_admission_guard=lambda: True,
+)
+raise SystemExit("pre-commit pause unexpectedly returned")
+"""
+
 class DurableActionReservationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -545,6 +609,97 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertFalse(retry.applied)
         self.assertEqual(retry.reason, "ALREADY_CLAIMED")
         self.assertEqual(retry.state, DISPATCH_STARTED)
+
+    def test_process_death_before_ledger_commit_rolls_back_and_allows_one_claim(self):
+        reserved = self.reserve()
+        authority_spki = self.authority.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        authority_b64 = base64.urlsafe_b64encode(authority_spki).decode("ascii")
+        marker_path = os.path.join(self.temp.name, "ledger-commit-not-executed")
+        command = [
+            sys.executable,
+            "-c",
+            _CRASH_BEFORE_LEDGER_COMMIT_SUBPROCESS,
+            self.path,
+            str(self.registry.path),
+            authority_b64,
+            reserved.idempotency_key,
+            str(self.now),
+            marker_path,
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            deadline = time.monotonic() + 20.0
+            while not os.path.isfile(marker_path):
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate(timeout=5)
+                    self.fail(
+                        "claim subprocess exited before pre-commit marker: "
+                        f"returncode={process.returncode}, stdout={stdout!r}, "
+                        f"stderr={stderr!r}"
+                    )
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    stdout, stderr = process.communicate(timeout=5)
+                    self.fail(
+                        "claim subprocess did not reach pre-commit pause: "
+                        f"stdout={stdout!r}, stderr={stderr!r}"
+                    )
+                time.sleep(0.01)
+
+            # The proxy writes this marker before calling the real SQLite
+            # COMMIT. The preceding DISPATCH_STARTED UPDATE is still uncommitted.
+            self.assertIsNone(process.poll())
+            process.kill()
+            process.communicate(timeout=10)
+            self.assertNotEqual(process.returncode, 0)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+
+        reopened = DurableActionReservationLedger(
+            self.path, clock_ms=lambda: self.now
+        )
+        record = reopened.get(reserved.idempotency_key)
+        self.assertEqual(record.state, RESERVED)
+
+        # Process death must release the enrollment writer lock as well as
+        # roll back the uncommitted action-ledger transaction.
+        with self.registry.hold_active_enrollment_for_dispatch(
+            owner_id=record.owner_id,
+            device_id=record.device_id,
+            transport_certificate_sha256=record.transport_certificate_sha256,
+            credential_generation=record.credential_generation,
+            consent_public_key_sha256=record.consent_public_key_sha256,
+        ) as status:
+            self.assertEqual(status, "ENROLLMENT_ACTIVE")
+
+        first = reopened.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: True,
+        )
+        self.assertTrue(first.applied)
+        self.assertEqual(first.state, DISPATCH_STARTED)
+
+        duplicate = reopened.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(duplicate.applied)
+        self.assertEqual(duplicate.reason, "ALREADY_CLAIMED")
+        self.assertEqual(duplicate.state, DISPATCH_STARTED)
 
     def test_concurrent_duplicate_reservations_have_exactly_one_creator(self):
         ledgers = [

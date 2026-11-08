@@ -68,3 +68,18 @@ Acceptance assertions:
 - No executor, Android API, shell, network or external side effect is invoked.
 
 This tests one same-host process-death boundary between the two SQLite commits. It is not a power-cut, filesystem-corruption, distributed transaction or hardware durability test. The reservation remains non-replayable; no automatic retry is introduced.
+
+
+## AGENT-005U — process death before the action-ledger COMMIT (2026-11-08)
+
+The new test_process_death_before_ledger_commit_rolls_back_and_allows_one_claim regression complements AGENT-005T by testing the opposite side of the SQLite commit boundary. A separate Python interpreter acquires the enrollment writer lock, opens the action-ledger write transaction, applies the DISPATCH_STARTED update, and pauses in a test-only connection proxy immediately **before** the underlying SQLite COMMIT call. The parent observes a marker emitted before that call and terminates the child process.
+
+Acceptance assertions:
+
+- Reopening the action ledger recovers the original reservation as RESERVED; the uncommitted DISPATCH_STARTED update is not visible.
+- The enrollment database is readable and reports the matching owner/device generation as active; process death released its writer lock.
+- A subsequent valid claim can transition the reservation to DISPATCH_STARTED exactly once.
+- A second claim is rejected as ALREADY_CLAIMED.
+- No executor, Android API, shell, network or external side effect is invoked.
+
+Together, AGENT-005T and AGENT-005U exercise process death immediately after and immediately before the action-ledger commit boundary. They are same-host SQLite process-crash tests, not power-cut, filesystem-corruption, distributed-transaction, storage-controller or external exactly-once guarantees. The test guard is not a production authorization capability. No production code or Android behavior changes.
