@@ -586,5 +586,139 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "FINAL_ADMISSION_REJECTED")
         self.assertEqual(result.state, RESERVED)
+    def test_ledger_commit_ack_loss_is_not_replayed_after_restart(self):
+        reserved = self.reserve()
+        original_connect = self.ledger._connect
+        self.ledger._connect = lambda: _CommitAcknowledgementLostConnection(
+            original_connect()
+        )
+        try:
+            claim = self.ledger.claim_dispatch(
+                reserved.idempotency_key,
+                enrollment_registry=self.registry,
+                final_admission_guard=lambda: True,
+            )
+        finally:
+            self.ledger._connect = original_connect
+
+        # The API reports uncertainty using its pre-claim snapshot, while the
+        # SQLite COMMIT actually succeeded. Recovery must inspect durable state.
+        self.assertFalse(claim.applied)
+        self.assertEqual(claim.reason, "RESERVATION_STORE_UNAVAILABLE")
+        self.assertEqual(claim.state, RESERVED)
+
+        reopened = DurableActionReservationLedger(
+            self.path, clock_ms=lambda: self.now
+        )
+        self.assertEqual(
+            reopened.get(reserved.idempotency_key).state, DISPATCH_STARTED
+        )
+        retry = reopened.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(retry.applied)
+        self.assertEqual(retry.reason, "ALREADY_CLAIMED")
+
+        unknown = reopened.record_outcome(
+            reserved.idempotency_key,
+            state=UNKNOWN_OUTCOME,
+            outcome_code="LEDGER_COMMIT_ACK_LOST",
+        )
+        self.assertTrue(unknown.applied)
+        self.assertEqual(
+            reopened.get(reserved.idempotency_key).state, UNKNOWN_OUTCOME
+        )
+        replay = reopened.reserve(self.request())
+        self.assertFalse(replay.applied)
+        self.assertEqual(replay.reason, "IDEMPOTENT_REPLAY")
+        self.assertEqual(replay.state, UNKNOWN_OUTCOME)
+        self.assertEqual(
+            reopened.claim_dispatch(
+                reserved.idempotency_key,
+                enrollment_registry=self.registry,
+                final_admission_guard=lambda: True,
+            ).reason,
+            "TERMINAL_STATE",
+        )
+
+    def test_enrollment_commit_ack_loss_is_reported_after_ledger_claim(self):
+        reserved = self.reserve()
+        original_connect = self.registry._connect
+        self.registry._connect = lambda: _CommitAcknowledgementLostConnection(
+            original_connect()
+        )
+        try:
+            claim = self.ledger.claim_dispatch(
+                reserved.idempotency_key,
+                enrollment_registry=self.registry,
+                final_admission_guard=lambda: True,
+            )
+        finally:
+            self.registry._connect = original_connect
+
+        # The enrollment context's COMMIT acknowledgement is lost only after
+        # the action-ledger DISPATCH_STARTED commit has already succeeded.
+        self.assertFalse(claim.applied)
+        self.assertEqual(claim.reason, "ENROLLMENT_LOCK_COMMIT_UNCERTAIN")
+        self.assertEqual(claim.state, DISPATCH_STARTED)
+        self.assertEqual(
+            self.ledger.get(reserved.idempotency_key).state, DISPATCH_STARTED
+        )
+
+        reopened = DurableActionReservationLedger(
+            self.path, clock_ms=lambda: self.now
+        )
+        retry = reopened.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(retry.applied)
+        self.assertEqual(retry.reason, "ALREADY_CLAIMED")
+        self.assertEqual(
+            reopened.get(reserved.idempotency_key).state, DISPATCH_STARTED
+        )
+
+    def test_outcome_commit_ack_loss_preserves_terminal_unknown_state(self):
+        reserved = self.reserve()
+        self.assertTrue(self.claim_dispatch(reserved.idempotency_key).applied)
+        original_connect = self.ledger._connect
+        self.ledger._connect = lambda: _CommitAcknowledgementLostConnection(
+            original_connect()
+        )
+        try:
+            with self.assertRaises(ReservationStoreUnavailable):
+                self.ledger.record_outcome(
+                    reserved.idempotency_key,
+                    state=UNKNOWN_OUTCOME,
+                    outcome_code="OUTCOME_COMMIT_ACK_LOST",
+                )
+        finally:
+            self.ledger._connect = original_connect
+
+        reopened = DurableActionReservationLedger(
+            self.path, clock_ms=lambda: self.now
+        )
+        self.assertEqual(
+            reopened.get(reserved.idempotency_key).state, UNKNOWN_OUTCOME
+        )
+        duplicate = reopened.record_outcome(
+            reserved.idempotency_key,
+            state=UNKNOWN_OUTCOME,
+            outcome_code="OUTCOME_COMMIT_ACK_LOST",
+        )
+        self.assertTrue(duplicate.applied)
+        self.assertEqual(duplicate.reason, "OUTCOME_ALREADY_RECORDED")
+        retry = reopened.claim_dispatch(
+            reserved.idempotency_key,
+            enrollment_registry=self.registry,
+            final_admission_guard=lambda: True,
+        )
+        self.assertFalse(retry.applied)
+        self.assertEqual(retry.reason, "TERMINAL_STATE")
+
+
 if __name__ == "__main__":
     unittest.main()
