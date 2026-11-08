@@ -4,12 +4,12 @@
 
 ## Finding and bounded change
 
-PaperClip already defaults memory to off and disables plaintext disk persistence, but an opted-in session previously relied on Python process termination to release references when the user exited, input ended, or an unexpected exception occurred. Its inference path also logged the selected local GGUF filename, which could encode owner-private information.
+PaperClip already defaults memory to off and disables plaintext disk persistence, but an opted-in session previously relied on Python process termination to release references when the user exited, input ended, or an unexpected exception occurred. Its inference path also logged the selected local GGUF filename and displayed it in the startup banner, which could encode owner-private information.
 
 - Wrap the interactive loop in `try/finally`, calling `clear_memory(mem)` for explicit exit, EOF, KeyboardInterrupt, and unexpected exceptions.
 - Keep exception propagation and all existing consent semantics. Do not read, migrate, overwrite, or delete legacy `memory.json`.
-- Replace the filename-bearing inference log with a fixed redacted message.
-- Add six offline regressions in `tests/test_paperclip_session_cleanup.py`. They exercise a real opted-in in-memory prompt before teardown, preserve a synthetic legacy file byte-for-byte, and verify no filename reaches the event logger.
+- Replace the filename-bearing inference log and startup banner with fixed redacted messages.
+- Add seven offline regressions in `tests/test_paperclip_session_cleanup.py`. They exercise a real opted-in in-memory prompt before teardown, preserve a synthetic legacy file byte-for-byte, and verify no filename reaches the event logger or startup banner.
 - No external model, microphone, wallet, network target, or Android device is used by these tests.
 
 ## Security limitations
