@@ -144,7 +144,9 @@ def infer_llama_cpp(prompt, model_path):
     argv = [
         str(llama_bin),
         "-m", str(resolved_model),
-        "-p", prompt,
+        # Read the prompt from a pipe, not argv (/proc/<pid>/cmdline).
+        # llama-cli supports -f FILE; /dev/stdin is an in-memory pipe on Android/Linux.
+        "-f", "/dev/stdin",
         "-n", str(MAX_GENERATION_TOKENS),
         "--temp", "0.7",
         "-q",
@@ -153,6 +155,7 @@ def infer_llama_cpp(prompt, model_path):
         result = subprocess.run(
             argv,
             shell=False,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=INFERENCE_TIMEOUT_SECONDS,

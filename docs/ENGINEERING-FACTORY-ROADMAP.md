@@ -2019,3 +2019,14 @@ Audited parent: `d07390768eae1747fe759726b7d524d50a291299`. The existing `PROJEC
 **Milestones:** M1 foundation IN PROGRESS; M2 OS interface IN PROGRESS; M3 agentic intelligence PARTIAL; M4 device integrations NOT STARTED; M5 Pixel 9 Pro compatibility NOT ACCEPTED; M6 security/privacy IN PROGRESS; M7 physical hardware BLOCKED; M8 production readiness BLOCKED. No milestone COMPLETE.
 
 **Next bounded task:** independent security acceptance of SEC-021A/B/C, SEC-022 and legacy-module boundaries; then a separately reviewed encrypted persistent-memory design with owner opt-in and deletion/recovery tests. Maintain disconnected Android executor and draft PR status.
+
+
+## AGENT-006M — PaperClip prompt argument privacy (2026-11-09)
+
+**Audit baseline:** `003e376f3fe7a5439d22dee3ff6a72d6e97676a4`; 394-entry complete repository tree; six open PRs; PR #1 draft, independent reviews absent. Local PROJECT-ADAPTER.md present, upstream SKILL.md absent and shared package unverified. All five preceding exact-head workflows at baseline passed (Phase 1 push/PR, CI-003 push/PR, QA-005 PR); this does not establish physical Pixel, spoken TalkBack, signed OTA or independent security acceptance.
+
+**Bounded mitigation:** PaperClip no longer places user prompt content in the `llama-cli` process argument vector. Uses `-f /dev/stdin` and a subprocess input pipe; retains local-only model/executable selection, fixed argv, bounds and redacted failures. No prompt file is created. Synthetic local-child pipe regression added. Full details: [AGENT-006M-PAPERCLIP-ARGV-PRIVACY.md](AGENT-006M-PAPERCLIP-ARGV-PRIVACY.md).
+
+**Local evidence:** isolated authorized server clone, 21/21 focused PaperClip tests, 917/917 full Python preflight tests, launcher source gate, Python compilation and diff whitespace check passed. Actual llama-cli/Termux, Android Gradle, emulator, physical Pixel and signed release not tested locally. Exact-head hosted CI to be checked after commit.
+
+**Independent gate:** pending. Real llama-cli `-f /dev/stdin` compatibility and prompt echo must be checked on the intended runtime; stdin and child memory are not a complete confidentiality boundary. Keep Android executor disconnected. M1/M2/M6 in progress, M3 partial, M4 not started, M5 not accepted, M7/M8 blocked. No milestone complete. Next: independently review SEC-021/SEC-022 and PaperClip privacy, then design owner-authenticated encrypted persistence with deletion/recovery tests.

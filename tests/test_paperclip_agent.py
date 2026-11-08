@@ -93,12 +93,40 @@ class PaperclipOfflineInferenceTests(unittest.TestCase):
             argv = run.call_args.args[0]
             self.assertEqual(argv[0], str(binary.resolve()))
             self.assertEqual(argv[1:], [
-                "-m", str(model.resolve()), "-p", "hello",
+                "-m", str(model.resolve()), "-f", "/dev/stdin",
                 "-n", "256", "--temp", "0.7", "-q",
             ])
+            self.assertNotIn("hello", argv)
+            self.assertEqual(run.call_args.kwargs["input"], "hello")
             self.assertIs(run.call_args.kwargs["shell"], False)
             self.assertEqual(run.call_args.kwargs["timeout"], 120)
             self.assertIs(run.call_args.kwargs["check"], False)
+
+    def test_prompt_pipe_works_with_local_synthetic_executable(self):
+        """Verify the pipe handoff with a real child, without invoking a model."""
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "mrnothing"
+            models = home / "models"
+            bin_dir = home / "bin"
+            models.mkdir(parents=True)
+            bin_dir.mkdir()
+            model = models / "model.gguf"
+            model.write_bytes(b"synthetic model")
+            binary = bin_dir / "llama-cli"
+            binary.write_text(
+                "#!/usr/bin/env python3\\n"
+                "import sys\\n"
+                "assert sys.argv[sys.argv.index('-f') + 1] == '/dev/stdin'\\n"
+                "assert 'private test prompt' not in sys.argv\\n"
+                "assert sys.stdin.read() == 'private test prompt'\\n"
+                "print('pipe accepted')\\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o700)
+            with patch.object(AGENT, "HOME", home), patch.object(AGENT, "MODELS_DIR", models):
+                self.assertEqual(
+                    AGENT.infer_llama_cpp("private test prompt", model), "pipe accepted"
+                )
 
     def test_inference_rejects_symlinked_model_before_subprocess(self):
         with tempfile.TemporaryDirectory() as temporary:
