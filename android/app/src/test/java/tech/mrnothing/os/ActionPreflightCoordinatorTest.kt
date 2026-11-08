@@ -1,3 +1,9 @@
+package tech.mrnothing.os
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
 private fun safeSignals() = ScreenPreflightSignals(
     trustedOwnerSession = true,
     safeUnlockedDevice = true,
@@ -8,12 +14,6 @@ private fun safeSignals() = ScreenPreflightSignals(
     emergencyStopEngaged = false,
     sessionRevoked = false
 )
-
-package tech.mrnothing.os
-
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
 
 /** Pure-JVM composition tests; no Android permission or device action is performed. */
 class ActionPreflightCoordinatorTest {
