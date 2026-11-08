@@ -45,7 +45,7 @@ class ThreatModelDocumentTests(unittest.TestCase):
                 self.assertIn(category, self.text)
 
     def test_threat_register_has_unique_ids(self):
-        for threat_id in (f"TM-{i:02d}" for i in range(1, 14)):
+        for threat_id in (f"TM-{i:02d}" for i in range(1, 16)):
             with self.subTest(threat_id=threat_id):
                 self.assertEqual(self.text.count(threat_id), 1)
 
@@ -65,6 +65,11 @@ class ThreatModelDocumentTests(unittest.TestCase):
         self.assertIn("subprocess shell execution", self.text)
         self.assertIn("production autonomous executor", self.text)
         self.assertIn("rejects every request", self.text)
+
+    def test_paperclip_model_download_risk_is_documented(self):
+        self.assertIn("TM-15", self.text)
+        self.assertIn("model-hub fallback", self.text)
+        self.assertIn("local GGUF", self.text)
 
     def test_independent_review_is_required(self):
         self.assertIn("The document author cannot self-approve.", self.text)

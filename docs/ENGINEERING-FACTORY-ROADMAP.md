@@ -1952,3 +1952,26 @@ Scope: modules/whatsapp/whatsapp.py, tests/test_whatsapp_consent.py, docs/AGENT-
 Exact-head CI: pending at commit creation; record actual push/PR Phase 1, CI-003 and QA-005 results after completion.
 
 Milestones: M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED pending authorized physical Pixel 9 Pro validation; M8 BLOCKED. No milestone is COMPLETE.
+
+
+## AGENT-006H — make PaperClip local-only and inventory legacy external effects (2026-11-08)
+
+**Audit baseline:** \`feat/phase1-agentic-phone\` at \`0f849e9d0fbbafba6c75bc69de2f8fa50432217b\`; complete recursive tree 385 entries, not truncated; latest 20 commits inspected; branch 351 commits ahead of \`main\`, zero behind. Six open PRs (#1 and #3–#7) were inspected. PR #1 remains open/draft against \`main\` at this head with 351 commits and 313 changed files; it has zero submitted reviews and zero inline review threads. PRs #3–#7 remain separate QA-014/SEC-016/AGENT-004A workstreams; their branches were not modified. \`PROJECT-ADAPTER.md\` exists; repository \`SKILL.md\` is absent; the upstream shared package remains unverified and is not claimed installed.
+
+**Baseline exact-head evidence:** Phase 1 push [42501121955](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501121955) and PR [42501126635](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126635) passed; both Python-policy jobs reported 850 tests, and Android unit/build, repeat-build, dependency-verification negative control and manifest gate passed. CI-003 push [42501121902](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501121902) and PR [42501126640](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126640) passed; independent builders produced byte-identical unsigned APKs and provenance reported \`release_ready=false\`. QA-005 PR [42501126615](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126615) passed on a disposable Android 15/API 35 x86_64 emulator. QA-011 remains read-only availability, not spoken TalkBack acceptance; QA-012 is structural semantics only. No physical Pixel 9 Pro was tested.
+
+**Finding:** \`agents/paperclip/agent.py\` claimed local-only inference but called a Transformers pipeline with a remote TinyLlama model identifier when no local llama.cpp result was available. That could retrieve model/config artifacts from a model hub during ordinary prompt handling without a separate per-model network approval. The prompt itself was not shown to be uploaded, but implicit artifact retrieval contradicted the local-only claim and introduced unpinned model supply-chain contact.
+
+**Implementation:** removed the Transformers/model-hub fallback. PaperClip now selects only a direct-child local GGUF file, rejects symlinked model directories/files/executables, resolves only \`$HOME/mrnothing/bin/llama-cli\` (no PATH/which fallback), uses argv-only \`shell=False\`, a 120-second timeout and 256-token cap, rejects non-text/NUL/over-8,192-character prompts, and redacts prompt content from processing logs. If no local model/executable is ready, it uses deterministic local fallback text. Local model provenance and executable integrity remain the owner's responsibility; this is not a sandbox.
+
+**Legacy inventory:** added \`docs/AGENT-006H-PAPERCLIP-OFFLINE-BOUNDARY.md\` covering PaperClip, HERMES, core agent launch, OpenClaw, network, voice, WhatsApp/SMS, Web3 wallet and the native Android router. It records that the native external-effect allowlist is currently empty and that the document is not a runtime policy engine. Critical remaining risks include plaintext wallet private-key persistence and an invalid fallback key/address pair; unconfirmed network diagnostics; microphone/transcript handling; and plaintext PaperClip conversation memory.
+
+**Regression coverage:** added 10 PaperClip tests for direct-child local GGUF selection, symlink rejection, fixed local executable resolution, no PATH fallback, argv-only execution, prompt bounds, no model-hub fallback and prompt-log redaction. The threat-model structural test now requires unique threat IDs through TM-15. All subprocess/model execution boundaries are mocked; no network probe, model download, model execution, SMS, WhatsApp message, microphone capture, wallet generation/signing, Termux install or device operation is performed.
+
+**Exact-head CI for this implementation commit:** pending at commit creation; record the actual push/PR Phase 1, CI-003 and QA-005 outcomes in the PR verification comment after completion.
+
+**Independent review:** AGENT-006C remains PENDING_INDEPENDENT_REVIEW. This inventory does not satisfy that gate or authorize executor integration.
+
+**Milestones:** M1 FOUNDATION IN PROGRESS; M2 OS INTERFACE IN PROGRESS; M3 AGENTIC INTELLIGENCE PARTIAL; M4 NOT STARTED; M5 PIXEL 9 PRO COMPATIBILITY NOT ACCEPTED; M6 SECURITY/PRIVACY IN PROGRESS; M7 BLOCKED; M8 BLOCKED. No milestone is COMPLETE.
+
+**Next:** AGENT-006I should block legacy wallet use with real funds until plaintext private-key persistence and the invalid fallback are removed; then harden network and voice modules with explicit target/capture consent. Keep all legacy modules disconnected from the native Android router.

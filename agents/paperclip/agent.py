@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 PaperClip Agent — Local AI Reasoning Engine
-Runs Transformers/GGUF models locally on Android CPU via Termux.
-No API calls. No cloud. Zero cost.
+Uses only user-provided local GGUF models through a local llama.cpp executable.
+It never downloads model files or contacts a model hub.
 """
-import os, sys, json, time, subprocess
+import os, json, time, subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -14,6 +14,9 @@ HOME = Path.home() / "mrnothing"
 MODELS_DIR = HOME / "models"
 LOG = HOME / "logs" / "paperclip.log"
 MEMORY_FILE = HOME / "agents" / AGENT_NAME / "memory.json"
+MAX_PROMPT_CHARS = 8192
+MAX_GENERATION_TOKENS = 256
+INFERENCE_TIMEOUT_SECONDS = 120
 
 def log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
@@ -38,61 +41,135 @@ def remember(mem, role, content):
     save_memory(mem)
 
 def check_model():
-    """Check if a local model is available."""
-    model_paths = list(MODELS_DIR.glob("*.gguf")) + list(MODELS_DIR.glob("*.bin"))
-    return model_paths[0] if model_paths else None
+    """Return a direct-child local GGUF model; reject symlinks and path escapes."""
+    if HOME.is_symlink() or MODELS_DIR.is_symlink() or not MODELS_DIR.is_dir():
+        return None
+    try:
+        home_root = HOME.resolve(strict=True)
+        models_root = MODELS_DIR.resolve(strict=True)
+        if models_root.parent != home_root:
+            return None
+        candidates = sorted(models_root.glob("*.gguf"))
+    except (OSError, RuntimeError):
+        return None
+
+    for candidate in candidates:
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if resolved.parent == models_root and resolved.suffix.lower() == ".gguf":
+            return resolved
+    return None
+
+
+def _local_llama_binary():
+    """Resolve only the expected local executable; never search PATH."""
+    if HOME.is_symlink():
+        return None
+    try:
+        home_root = HOME.resolve(strict=True)
+        bin_dir = HOME / "bin"
+        if bin_dir.is_symlink() or not bin_dir.is_dir():
+            return None
+        bin_root = bin_dir.resolve(strict=True)
+        if bin_root.parent != home_root:
+            return None
+        candidate = bin_root / "llama-cli"
+        if candidate.is_symlink() or not candidate.is_file():
+            return None
+        resolved = candidate.resolve(strict=True)
+        if resolved.parent != bin_root or not os.access(resolved, os.X_OK):
+            return None
+        return resolved
+    except (OSError, RuntimeError):
+        return None
+
 
 def infer_llama_cpp(prompt, model_path):
-    """Run inference via llama.cpp if installed."""
-    llama_bin = Path.home() / "mrnothing" / "bin" / "llama-cli"
-    if not llama_bin.exists():
-        llama_bin = subprocess.run(["which", "llama-cli"], capture_output=True, text=True).stdout.strip()
-    if not llama_bin:
+    """Run bounded inference with the fixed local llama.cpp executable only."""
+    if (
+        type(prompt) is not str
+        or not prompt.strip()
+        or len(prompt) > MAX_PROMPT_CHARS
+        or "\x00" in prompt
+    ):
         return None
-    result = subprocess.run(
-        [str(llama_bin), "-m", str(model_path), "-p", prompt, "-n", "256", "--temp", "0.7", "-q"],
-        capture_output=True, text=True, timeout=120
-    )
-    return result.stdout.strip()
+    if not isinstance(model_path, (str, Path)):
+        return None
 
-def infer_transformers(prompt):
-    """Fallback: use transformers pipeline if available."""
+    if HOME.is_symlink() or MODELS_DIR.is_symlink():
+        return None
     try:
-        from transformers import pipeline
-        log("Loading local transformer model (first run may be slow)...")
-        gen = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-                       device=-1, max_new_tokens=200)
-        result = gen(prompt, do_sample=True, temperature=0.7)
-        return result[0]["generated_text"][len(prompt):]
-    except ImportError:
+        home_root = HOME.resolve(strict=True)
+        models_root = MODELS_DIR.resolve(strict=True)
+        if models_root.parent != home_root:
+            return None
+        candidate = Path(model_path)
+        if candidate.is_symlink() or not candidate.is_file():
+            return None
+        resolved_model = candidate.resolve(strict=True)
+        if resolved_model.parent != models_root or resolved_model.suffix.lower() != ".gguf":
+            return None
+    except (OSError, RuntimeError, TypeError, ValueError):
         return None
-    except Exception as e:
-        log(f"Transformers error: {e}")
+
+    llama_bin = _local_llama_binary()
+    if llama_bin is None:
         return None
+
+    argv = [
+        str(llama_bin),
+        "-m", str(resolved_model),
+        "-p", prompt,
+        "-n", str(MAX_GENERATION_TOKENS),
+        "--temp", "0.7",
+        "-q",
+    ]
+    try:
+        result = subprocess.run(
+            argv,
+            shell=False,
+            capture_output=True,
+            text=True,
+            timeout=INFERENCE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        log(f"Local inference failed: {type(error).__name__}")
+        return None
+
+    if result.returncode != 0:
+        log("Local inference failed: llama.cpp returned a non-zero status")
+        return None
+    return (result.stdout or "").strip() or None
+
 
 def think(prompt, mem):
-    """Main reasoning function."""
-    model = check_model()
+    """Reason locally only; use deterministic fallback when no local model is ready."""
     response = None
+    if type(prompt) is not str:
+        response = "[Prompt rejected: expected text.]"
+    elif len(prompt) > MAX_PROMPT_CHARS or "\x00" in prompt:
+        response = f"[Prompt rejected: local limit is {MAX_PROMPT_CHARS} characters.]"
+    else:
+        model = check_model()
+        if model:
+            log(f"Using local GGUF model: {model.name}")
+            response = infer_llama_cpp(prompt, model)
 
-    if model:
-        log(f"Using model: {model.name}")
-        response = infer_llama_cpp(prompt, model)
-
-    if not response:
-        response = infer_transformers(prompt)
-
-    if not response:
-        # Fallback: rule-based responses
-        p = prompt.lower()
-        if "hello" in p or "hi" in p:
-            response = "Hello. PaperClip online. How can I assist you?"
-        elif "status" in p:
-            response = f"MrNothing OS running. Memory: {len(mem['conversations'])} exchanges stored."
-        elif "help" in p:
-            response = "I can reason, remember, and assist with tasks. Ask me anything."
-        else:
-            response = f"[No local model loaded. Place a .gguf model in {MODELS_DIR}]"
+        if not response:
+            p = prompt.lower()
+            if "hello" in p or "hi" in p:
+                response = "Hello. PaperClip online. How can I assist you?"
+            elif "status" in p:
+                response = f"MrNothing OS running. Memory: {len(mem['conversations'])} exchanges stored."
+            elif "help" in p:
+                response = "I can reason, remember, and assist with tasks. Ask me anything."
+            else:
+                response = f"[No local model loaded. Place a trusted .gguf model in {MODELS_DIR}]"
 
     remember(mem, "assistant", response)
     return response
@@ -104,7 +181,7 @@ def main():
         print(f"Model loaded: {model.name}")
     else:
         print(f"No model found. Place a GGUF model in: {MODELS_DIR}")
-        print("Recommended: TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf (~700MB)")
+        print("Add only a model you have independently verified; PaperClip never downloads model files.")
     print("Type 'exit' to quit, 'memory' to see history.\n")
 
     mem = load_memory()
@@ -122,7 +199,7 @@ def main():
                 continue
 
             remember(mem, "user", user_input)
-            log(f"Thinking about: {user_input[:50]}...")
+            log("Processing prompt locally; content redacted")
             response = think(user_input, mem)
             print(f"paperclip> {response}\n")
 

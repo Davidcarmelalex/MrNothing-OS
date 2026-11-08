@@ -3,7 +3,7 @@
 **Status:** Draft for independent security review; not a security certification.  
 **Repository:** Davidcarmelalex/MrNothing-OS  
 **Authorized branch:** feat/phase1-agentic-phone  
-**Evidence baseline:** 2026-11-08, source head `3fd85d229debc361ddece0e9cf2aeec567e104cd` (AGENT-005ZF; this threat-model refresh is documentation-only).  
+**Evidence baseline:** 2026-11-08, source head `0f849e9d0fbbafba6c75bc69de2f8fa50432217b` (complete audit baseline before AGENT-006H).  
 **Target:** Google Pixel 9 Pro (codename caiman); no physical-device validation is claimed.
 
 ## 1. Purpose, scope and system reality
@@ -68,6 +68,7 @@ Out of scope for this version:
 | B7: router to device executor | Approved typed action | Require all gates again at the execution boundary; no arbitrary shell or model-selected intent | No integrated executor; all Android requests rejected |
 | B8: source/dependency to CI artifact | Source, toolchain, dependencies and APK | Pin tools, verify dependencies, bind provenance and compare independent builds | CI checks pass; unsigned artifacts are not for release |
 | B9: release/OTA to physical device | Signed package and rollback metadata | Protected signing keys, verified boot compatibility, recovery and rollback | Not implemented or hardware-tested |
+| B10: PaperClip model loader to local model files/executable | Prompt, local GGUF path and model bytes | No model-hub fallback; direct-child local model and executable paths only; bounded prompt and execution; prompt content excluded from logs | AGENT-006H removes implicit model retrieval; model provenance, local memory protection and Termux process isolation remain unverified | High |
 
 ## 5. Threat actors and assumptions
 
@@ -91,6 +92,7 @@ Assumptions: Android's platform permission and credential UI are trusted for the
 - Cancellation before dispatch prevents the side effect. An unknown outcome after dispatch must not be retried blindly.
 - No arbitrary shell strings, subprocess invocation, hidden UI automation, biometric/credential bypass or restricted-screen bypass may enter the native Android path.
 - No CI debug or unsigned artifact is a production release. No production key or secret belongs in Git.
+- Model inference must not resolve remote model identifiers or implicitly retrieve model artifacts. Only explicitly supplied local model files and a fixed local executable may be used; prompt content must not be written to inference logs.
 - No physical flash, bootloader unlock, OTA deployment or irreversible device operation is authorized by this engineering workflow.
 
 ## 7. STRIDE threat register
@@ -113,6 +115,7 @@ Risk ratings are preliminary engineering priorities, not measured likelihoods. S
 | TM-12 Denial of service / repudiation | Owner cancellation, stale callbacks or ambiguous outcomes cause repeated or untraceable side effects. | One-shot consent state, cancellation tests, durable reservation lifecycle, process-local lease generations, SEC-021C action-ledger commit-ack-loss/process-death tests, and SEC-022 typed enrollment uncertainty with `APPLIED`/`NOT_OBSERVED`/`UNRESOLVED` read-only reconciliation; automatic retry remains disabled. | No executor, external side-effect journal or production audit stream. Local SQLite tests do not prove power-loss durability or exactly-once external effects. A future executor needs its own durable idempotency/reconciliation contract and independent review. | High |
 | TM-13 Tampering / availability | An unverified OTA or firmware update bricks the device or downgrades security state. | No firmware flash or OTA deployment is performed by CI; release gates explicitly block production. | Signed A/B update, verified boot/rollback analysis, recovery image, caiman vendor/boot chain matrix and physical rollback drill are not implemented. | Critical |
 | TM-14 Repudiation / elevation of privilege | A legacy agent or unattended helper invokes the Termux SMS API without the owner reviewing the exact recipient and message, causing unsolicited communication or financial/social harm. | The isolated WhatsApp module validates a bounded phone literal and message, requires an internal one-time challenge bound to the exact SMS recipient/message, uses argv-only shell=False, and makes WhatsApp open a prefilled compose screen that still requires the owner to tap Send. | This is a Termux CLI prompt, not strong Android owner authentication or a platform permission boundary. The module remains disconnected from the native Android router; no agent integration, delivery receipt, or production audit exists. Require a separately reviewed Android consent/provider boundary before integration. | High |
+| TM-15 Information disclosure / supply chain | PaperClip's implicit Transformers model identifier may contact a model hub and retrieve unpinned model artifacts without an explicit network approval; conversation history is also persisted as plaintext local JSON. | AGENT-006H removes the model-hub fallback and restricts inference to a direct-child local GGUF model plus a fixed local llama.cpp executable; prompts are bounded and not logged. | Model authenticity/signature, memory encryption/retention/opt-in and Termux filesystem/process isolation remain unresolved. This mitigation is not a sandbox or proof of local-file provenance. | High |
 
 ## 8. Data handling and retention requirements
 
@@ -124,29 +127,31 @@ Risk ratings are preliminary engineering priorities, not measured likelihoods. S
 | Screen/audio/message content | No production capture currently | Per-session consent, visible indicator, redaction, local-only default and explicit retention/deletion |
 | App/package metadata | Read only when required for a visible action | Minimize collection and avoid unnecessary telemetry |
 | Logs and CI artifacts | Redact secrets; synthetic credentials only | Access control, retention, tamper evidence and artifact expiry |
+| Local model artifacts and PaperClip memory | Local GGUF files only after AGENT-006H; conversation memory remains local plaintext JSON, capped at 100 entries | Verify model provenance; add explicit memory opt-in, encryption, access control, retention and deletion; prohibit automatic model downloads |
 | Test fixtures | Synthetic keys, dummy fields and disposable emulator PIN only | Never substitute test material for production authority or user credentials |
 
 ## 9. Verified implementation and test evidence at source baseline
 
-**Source/test baseline:** `3fd85d229debc361ddece0e9cf2aeec567e104cd` on `feat/phase1-agentic-phone`. The branch contained 377 recursive tree entries (not truncated), was 333 commits ahead of `main` and zero behind, and the latest 20 branch commits were inspected. Six PRs (#1 and #3–#7) were open. PR #1 was open/draft against `main`, at this exact head, with 333 commits and 313 changed files; it had zero submitted review submissions and zero inline review threads. No merge was performed.
+**Source/test baseline:** `0f849e9d0fbbafba6c75bc69de2f8fa50432217b` on `feat/phase1-agentic-phone`. The complete recursive tree contained 385 entries (not truncated); the branch was 351 commits ahead of `main` and zero behind, with merge base `f3c9a701d2a337de8ef393ac14df044a79843d60`. The latest 20 commits were inspected. Six PRs (#1 and #3–#7) were open. PR #1 was open/draft against `main`, at this head, with 351 commits and 313 changed files; it had zero submitted review submissions and zero inline review threads. PRs #3–#7 remain separate workstreams covering QA-014, SEC-016 and AGENT-004A; their branches were not modified. `PROJECT-ADAPTER.md` exists; repository `SKILL.md` is absent; the upstream shared package remains unverified and is not claimed installed.
 
 ### Security implementation present at this baseline
 
-- **SEC-021A:** the Python reservation prototype acquires the owner-enrollment writer lock before the action-ledger writer transaction, rechecks immutable reservation bindings and commits `DISPATCH_STARTED` while the enrollment lock remains held. This orders local same-host claims against signed enrollment rotation/revocation.
-- **SEC-021B:** the no-side-effect TLS-adapter prototype revalidates the exact adapter-retained capability, live server-side TLS socket/session, challenge/action/argument binding and monotonic deadlines, then supplies a trusted final-admission guard while both SQLite writer locks are held. A successful storage claim is immediately recorded as `FAILED_NO_EFFECT/NO_EXECUTOR_CONNECTED`; it is not permission to execute.
-- **SEC-021C:** synthetic tests cover action-ledger COMMIT acknowledgement loss, enrollment-lock COMMIT acknowledgement loss, outcome COMMIT acknowledgement loss, cross-process single-winner behavior and process death before/after the action-ledger and enrollment commits. These are same-host SQLite/process tests, not power-cut, filesystem/controller, distributed or external-side-effect guarantees.
-- **SEC-022 / AGENT-005Y / AGENT-005ZF:** `EnrollmentOutcomeUnknown` distinguishes ambiguous enrollment COMMIT outcomes. Read-only reconciliation uses `PRAGMA query_only=ON`, validates matching history/current state and returns `APPLIED`, `NOT_OBSERVED` or `UNRESOLVED`; every result denies automatic retry. Query-only enforcement and divergent-current-state regressions are present.
-- The Android `CommandRouter` remains fail-closed. No production listener, authority provisioning, Android device executor, AccessibilityService, MediaProjection provider, shell bridge or device action is connected.
+- **SEC-021A/B/C and SEC-022:** same-host Python no-side-effect reservation, live-capability final-admission, commit-acknowledgement-loss/process-death tests, typed enrollment uncertainty and read-only reconciliation. These do not establish a production listener, distributed lock, power-loss durability or external-effect recovery.
+- **AGENT-006F:** legacy HERMES shell tasks require exact interactive command confirmation and argv-only `shell=False`; scheduled shell tasks remain pending for owner review. The core launcher rejects traversal/symlinked agent paths and requires exact-list confirmation for configured startup. These are Termux-user process controls, not a sandbox.
+- **OpenClaw:** fixed executable allowlist, argv-only `shell=False`, bounded arguments/timeouts, exact private-IPv4 allowlist and per-target typed confirmation. The allowlist does not prove target ownership; the module remains disconnected from Android.
+- **AGENT-006G:** direct Termux SMS requires an internal challenge bound to recipient and exact message; WhatsApp opens a prefilled compose screen and requires the owner to tap Send. This is not strong Android owner authentication and is not connected to HERMES.
+- **PaperClip at this baseline:** the legacy source contained a Transformers pipeline with a remote TinyLlama model identifier. The initial model resolution could retrieve artifacts from a model hub without a separate per-model network approval. AGENT-006H removes that fallback; see the dedicated implementation record.
+- The Android `CommandRouter` remains fail-closed. No production listener, Android device executor, AccessibilityService, MediaProjection provider, shell bridge or device action is connected.
 
-### Exact-head automated evidence
+### Exact-head automated evidence for this baseline
 
-- **Phase 1 push** [42476490546](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476490546) and **PR** [42476493866](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493866) completed successfully. Both Python policy jobs reported **792 tests passed**. Android `:app:testDebugUnitTest`, `:app:assembleDebug`, repeat debug-APK byte comparison within each runner, strict dependency verification, modified-dependency negative control and source-manifest security checks passed.
-- **CI-003 push** [42476490516](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476490516) and **PR** [42476493841](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493841) completed successfully. Both independent release builders and the cross-runner verifier passed. The unsigned APKs were byte-identical: **7,867,868 bytes**, 21 ZIP entries, SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; normalized-entry SHA-256 `37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462`. The scoped build-environment inventory covered 1,260 components. Provenance reports `reproducible=true` and `release_ready=false`; the inventory is not a complete hosted-runner image SBOM.
-- **QA-005 exact-head emulator** [42476493897](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493897) completed successfully on a disposable Android API 35 x86_64 emulator. Instrumentation progress reported 30/30, 0 failed and 0 skipped. QA-005 through QA-010, QA-013, QA-020B2 and QA-020B3 passed. QA-011 reported `blocked_service_disabled` and `spoken_navigation_verified=false`; QA-012 was a structural audit only with `spoken_navigation_verified=false` and `acceptance_passed=false`. Neither establishes spoken TalkBack navigation.
-- These workflows do not establish physical Pixel 9 Pro compatibility, StrongBox hardware behavior, signed release/OTA, power-cut durability, independent security approval or production readiness.
+- **Phase 1 push** [42501121955](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501121955) and **PR** [42501126635](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126635) completed successfully. Both Python-policy jobs reported **850 tests passed**. Android `:app:testDebugUnitTest`, `:app:assembleDebug`, repeat debug-APK byte comparison within each runner, strict dependency verification, modified-dependency negative control and source-manifest security checks passed.
+- **CI-003 push** [42501121902](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501121902) and **PR** [42501126640](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126640) completed successfully. Independent runners produced byte-identical unsigned APKs: **7,867,868 bytes**, 21 ZIP entries, SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; normalized-entry SHA-256 `37b7e6846eaa4f58f143f430cb84aa481e4858c0cde392a7f2526cd8b89b9462`. The scoped build-environment inventory covered 1,260 components, not the complete hosted-runner image. Provenance reports `reproducible=true` and `release_ready=false`.
+- **QA-005** [42501126615](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42501126615) completed successfully on a disposable Android 15/API 35 x86_64 emulator. The emulator job, instrumentation, launcher/recovery, large-font, HOME consent/cancel, stock-launcher recovery, keyboard, enrollment-denial, owner-trust UI and credential-prompt steps completed. QA-011 reports `blocked_service_disabled` and `spoken_navigation_verified=false`; QA-012 reports `spoken_navigation_verified=false` and `acceptance_passed=false`. Neither establishes spoken TalkBack acceptance.
+- These checks do not establish physical Pixel 9 Pro compatibility, StrongBox hardware behavior, signed release/OTA, power-cut durability, independent security approval or production readiness.
 
-**Review status:** the threat model remains DRAFT. PR #1 has no independent review submission or inline review thread. This author-side evidence reconciliation is not an independent security review. No milestone is COMPLETE; the real executor remains disconnected.
- 
+**Review status:** the AGENT-006C independent security packet remains `PENDING_INDEPENDENT_REVIEW`; PR #1 has no submitted review or inline review thread. The author cannot self-approve. No milestone is COMPLETE; the real executor remains disconnected.
+
 ## 10. Residual risks and required owners
 
 | Risk | Owner | Required closure evidence |
@@ -159,6 +164,8 @@ Risk ratings are preliminary engineering priorities, not measured likelihoods. S
 | Pixel 9 Pro hardware and boot chain | Hardware/release | Authorized physical device, caiman build/ABI/vendor matrix, StrongBox, reboot, SIM/Wi-Fi/Bluetooth, thermal and recovery evidence |
 | Signed OTA/release | Hardware/release + supervisor | Protected signing, reproducible signed artifacts, SBOM, signature verification, rollback and recovery drill |
 | Legacy shell-based Termux prototypes | AI/agents + security | Demonstrated isolation or replacement with typed APIs; no native bridge to shell helpers |
+| Legacy network, voice and wallet modules | Security + AI/agents | Require target-scoped network consent, visible microphone permission/capture lifecycle, and hardware-backed wallet signing/storage; remove plaintext private-key persistence and invalid key-generation fallbacks before use |
+| PaperClip model provenance and memory retention | AI/agents + security | Verify local model provenance; add explicit memory opt-in, encryption, access control, retention and deletion tests |
 | Operational audit and rate limiting | Security + CI/QA | Redacted append-only audit, abuse limits, retention/deletion and monitoring tests |
 
 ## 11. Milestone gates
@@ -192,4 +199,4 @@ The document author cannot self-approve. Until that independent review exists, M
 
 ## 13. Change triggers
 
-Re-review this model before introducing any of the following: a network listener; production mTLS/client-certificate issuance; Android AccessibilityService; MediaProjection; SMS/call/contacts/notification access; an action dispatcher or executor; a new permission or exported component; cloud/third-party connector; persistent session restoration; signed OTA; bootloader/firmware change; or a change to key storage, trust anchors, replay retention or action-reservation transactions.
+Re-review this model before introducing any of the following: a model loader or model-artifact source, a persistent-memory format, a legacy network/voice/wallet bridge, a network listener; production mTLS/client-certificate issuance; Android AccessibilityService; MediaProjection; SMS/call/contacts/notification access; an action dispatcher or executor; a new permission or exported component; cloud/third-party connector; persistent session restoration; signed OTA; bootloader/firmware change; or a change to key storage, trust anchors, replay retention or action-reservation transactions.
