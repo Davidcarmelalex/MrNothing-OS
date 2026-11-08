@@ -1,5 +1,26 @@
 # Engineering scorecard — evidence-based
 
+## Current verified snapshot — 2026-11-08
+
+**Source/test baseline:** `3fd85d229debc361ddece0e9cf2aeec567e104cd` on `feat/phase1-agentic-phone`. Current branch comparison: 333 commits ahead of `main`, zero behind. The full recursive tree has 377 entries. Six PRs (#1 and #3–#7) are open; PR #1 remains draft with no independent review submissions or inline review threads.
+
+| Area | Current verified evidence | Remaining gate |
+| --- | --- | --- |
+| Android launcher | Exact-head QA-005 [run 42476493897](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493897): API 35 x86_64 emulator; 30/30 instrumentation progress, 0 failed/0 skipped; HOME consent/cancel, stock-launcher recovery, 200% font scale and keyboard checks passed | TalkBack service was disabled; spoken navigation and physical Pixel behavior remain unverified |
+| Python/security | Phase 1 push [42476490546](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476490546) and PR [42476493866](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493866): 792 tests passed on each; manifest/source security gates passed | Independent security review of enrollment, revocation, cross-store admission and callback provenance |
+| Android build integrity | Gradle unit/build, repeat debug-APK comparison, strict dependency verification and tampered-dependency negative control passed on push and PR | Signed release and physical device validation |
+| Reproducible release evidence | CI-003 [push 42476490516](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476490516) and [PR 42476493841](https://github.com/Davidcarmelalex/MrNothing-OS/actions/runs/42476493841): independent unsigned APKs byte-identical; 7,867,868 bytes; SHA-256 `c7036c64e3a49ea9d8642c29082c42537e2c8ba0863d43d3cbd4fbb098603da7`; scoped 1,260-component build inventory | Provenance explicitly says `release_ready=false`; no protected signing key, signed OTA or complete hosted-runner image SBOM |
+| Enrollment/dispatch | SEC-021A/B/C and SEC-022 prototypes; durable lock-coupled claim, live-capability final guard, acknowledgement-loss tests and read-only reconciliation | Single-host/trusted in-process assumptions; no executor; independent reviewer must challenge callback provenance and storage guarantees |
+| HERMES | Offline planning/sandbox and typed policy foundations | No integrated Android executor or production network service |
+| Pixel 9 Pro | Target remains Google Pixel 9 Pro (caiman) | No physical Pixel, StrongBox, SIM/VoLTE, firmware or rollback validation |
+| Release | Unsigned reproducible CI artifact only | Signed reproducible release, protected keys, OTA/recovery drill and independent signoff |
+
+**Milestones:** M1 IN PROGRESS; M2 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M6 IN PROGRESS; M7 BLOCKED on physical hardware; M8 BLOCKED. **No milestone is COMPLETE.** The upstream shared `SKILL.md` remains unverified; the repository contains the project-specific `PROJECT-ADAPTER.md`. No percentage is inferred from CI.
+
+---
+
+## Historical scorecard snapshot — 2026-11-02
+
 **Audit date:** 2026-11-02. **Branch:** `feat/phase1-agentic-phone`. **Source of truth:** [engineering roadmap](ENGINEERING-FACTORY-ROADMAP.md) and current GitHub Actions results.
 
 | Area | Verified evidence | Remaining gate |
