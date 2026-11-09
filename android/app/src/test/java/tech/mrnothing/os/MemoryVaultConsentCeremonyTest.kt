@@ -10,6 +10,33 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 
 class MemoryVaultConsentCeremonyTest {
+
+    // This verifies formatting and use of the shared local CSPRNG API, not entropy quality.
+    @Test fun localFreshNonceIsCanonical256BitHex() {
+        val nonce = MemoryVaultConsentNonce.freshHex()
+        assertTrue(Regex("^[0-9a-f]{64}$").matches(nonce))
+        assertNotEquals("0".repeat(64), nonce)
+    }
+
+    @Test fun localFreshNoncesAreDistinctAcrossBoundedSample() {
+        val values = (1..32).map { MemoryVaultConsentNonce.freshHex() }
+        assertEquals(32, values.toSet().size)
+    }
+
+    @Test fun freshNonceChangesConsentBindingWithoutGrantingAuthorization() {
+        val first = valid.copy(requestNonceHex = MemoryVaultConsentNonce.freshHex())
+        val second = valid.copy(requestNonceHex = MemoryVaultConsentNonce.freshHex())
+        assertNotEquals(
+            MemoryVaultConsentCeremony.bindingFor(first),
+            MemoryVaultConsentCeremony.bindingFor(second)
+        )
+        val c = ceremony()
+        assertNotNull(c.begin(first))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(second, true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(first, true))
+    }
+
+
     private var now = 10L
     private fun ceremony() = MemoryVaultConsentCeremony { now }
     private val valid = MemoryVaultConsentSnapshot(

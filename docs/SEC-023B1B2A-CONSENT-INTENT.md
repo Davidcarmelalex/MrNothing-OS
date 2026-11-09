@@ -87,3 +87,18 @@ synthetic serialization tests, **not** proofs of nonce entropy, Android caller
 provenance, hardware-backed keys, user presence, CryptoObject authentication
 or encrypted-memory authorization. The service remains disabled; independent
 security acceptance remains pending.
+
+## SEC-023B1B2A-N — local nonce source (2026-11-10)
+
+The dormant `MemoryVaultConsentNonce.freshHex()` now delegates to the existing
+`OwnerAttestationChallenge.create()` 32-byte `SecureRandom` generator, validates
+the returned size, emits canonical lowercase 64-character hexadecimal and wipes
+the temporary byte array in `finally`. It introduces no new entropy provider
+or Android permission. Three JVM regressions check formatting, bounded-sample
+distinctness and nonce-dependent one-shot consent binding; three Python source
+tests enforce delegation and side-effect boundaries. This does **not** prove
+entropy quality or trusted UI provenance, and the helper is not wired into an
+Activity. The future trusted owner UI must call it locally for each request,
+derive all security assertions from Android and require genuine CryptoObject
+proof. MemoryVault remains disabled and PaperClip RAM-only. Independent security
+review, PR #13–#18 reconciliation and physical Pixel validation remain pending.

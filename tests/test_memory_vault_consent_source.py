@@ -13,6 +13,23 @@ class MemoryVaultConsentSourceTests(unittest.TestCase):
         cls.source = SRC.read_text(encoding="utf-8")
         cls.tests = TEST.read_text(encoding="utf-8")
 
+    def test_nonce_helper_reuses_existing_local_csprng(self):
+        self.assertIn("internal object MemoryVaultConsentNonce", self.source)
+        self.assertIn("OwnerAttestationChallenge.create()", self.source)
+        self.assertIn("check(bytes.size == 32)", self.source)
+
+    def test_nonce_helper_zeroizes_temporary_byte_array(self):
+        self.assertIn("finally {", self.source)
+        self.assertIn("bytes.fill(0)", self.source)
+
+    def test_nonce_generation_remains_separate_from_authorization(self):
+        for name in ("localFreshNonceIsCanonical256BitHex",
+                     "localFreshNoncesAreDistinctAcrossBoundedSample",
+                     "freshNonceChangesConsentBindingWithoutGrantingAuthorization"):
+            self.assertIn("fun " + name, self.tests)
+        self.assertNotIn("MemoryVaultConsentNonce.freshHex()", self.source.split(
+            "internal class MemoryVaultConsentCeremony", 1)[1])
+
     def test_dormant_no_android_side_effects(self):
         for forbidden in (
             "KeyStore.getInstance(", "KeyGenerator.getInstance(",

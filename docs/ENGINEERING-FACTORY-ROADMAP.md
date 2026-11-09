@@ -2074,3 +2074,12 @@ remains disabled, PaperClip RAM-only; independent security review and
 reconciliation with draft PRs #15–#18 are required before integration.
 M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8
 blocked. No milestone independently complete. Upstream SKILL.md unverified.
+
+## SEC-023B1B2A-N local nonce formatting (2026-11-10)
+
+Scoped PR #19 follow-up: reuse existing CSPRNG generator for a dormant
+canonical 256-bit consent nonce; no second RNG implementation or UI/Keystore
+integration. Kotlin and Python tests verify format, non-replay and byte-array
+cleanup. No physical-device or cryptographic owner authentication claim.
+M1/M2/M6 in progress, M3 partial, M4 not started, M5 not accepted, M7/M8
+blocked; independent security approval pending. Upstream SKILL.md unverified.

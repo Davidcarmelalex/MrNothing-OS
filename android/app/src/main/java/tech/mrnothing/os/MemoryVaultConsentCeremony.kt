@@ -40,6 +40,25 @@ internal enum class MemoryVaultConsentProgress {
     AWAITING_CRYPTOOBJECT_PROOF
 }
 
+
+/**
+ * SEC-023B1B2A-N: reusable local CSPRNG nonce formatting for a future trusted UI.
+ * Reuses the existing 32-byte Android owner-attestation challenge generator;
+ * does NOT attest the UI, device identity, user presence or consent.
+ * The UI must call this locally for each new ceremony, not accept agent input.
+ */
+internal object MemoryVaultConsentNonce {
+    fun freshHex(): String {
+        val bytes = OwnerAttestationChallenge.create()
+        return try {
+            check(bytes.size == 32) { "Unexpected nonce size" }
+            bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+}
+
 /**
  * One attempt per instance. Reuses the existing 30-second monotonic,
  * consume-on-mismatch OwnerAuthorityConfirmationState instead of inventing
