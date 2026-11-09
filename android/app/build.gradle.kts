@@ -22,7 +22,8 @@ android {
             "tech.mrnothing.os.AndroidAtomicAuthorityRecordPersistenceTest",
             "tech.mrnothing.os.AndroidAuthorityTrustCryptoFailureModeTest",
             "tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest",
-            "tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest"
+            "tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest",
+            "tech.mrnothing.os.MemoryVaultKeySpecContractTest"
         ).joinToString(",")
     }
     compileOptions {
