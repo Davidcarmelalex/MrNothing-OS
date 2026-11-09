@@ -52,3 +52,14 @@ recorded separately; source tests alone are not cryptographic assurance.
 Milestones: M1/M2/M6 IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT
 ACCEPTED, M7/M8 BLOCKED. No milestone independently COMPLETE. Project-specific
 PROJECT-ADAPTER.md exists; upstream shared SKILL.md remains unverified.
+
+## QA-023B1B2A — post-preview negative-path hardening (2026-11-10)
+
+Ten additional pure-JVM regression cases require foreground loss, device lock,
+checkbox withdrawal, credential removal, StrongBox loss, alias appearance and
+owner-profile change at completion to consume the pending intent. Clock
+exceptions, negative monotonic time at start and replay after the
+AWAITING_CRYPTOOBJECT_PROOF result are also tested. Tests only: no production
+policy, Android permissions, CryptoObject or persistence changed. The snapshots
+remain synthetic and the future trusted UI must derive them from platform state.
+Independent security and physical Pixel validation remain pending.

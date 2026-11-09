@@ -163,4 +163,90 @@ class MemoryVaultConsentCeremonyTest {
         assertNull(c.begin(valid))
         assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
     }
+
+    // QA-023B1B2A: all transient trust assertions are rechecked on completion.
+    @Test fun foregroundLossAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(foregroundOwnerUi = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun deviceLockAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(deviceUnlocked = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun consentWithdrawalAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(explicitCheckboxChecked = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun credentialRemovalAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(secureCredentialConfigured = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun strongBoxLossAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(strongBoxAdvertised = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun keyAliasAppearsAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(aliasAbsent = false), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun ownerProfileChangesAfterPreviewConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(ownerUserId = 10), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun clockFailureDuringFinishConsumesIntent() {
+        var throwClock = false
+        val c = MemoryVaultConsentCeremony {
+            if (throwClock) throw IllegalStateException("synthetic clock failure")
+            10L
+        }
+        assertNotNull(c.begin(valid))
+        throwClock = true
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+        throwClock = false
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun invalidMonotonicStartCannotAuthorizeLater() {
+        val c = MemoryVaultConsentCeremony { -1L }
+        assertNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+        assertNull(c.begin(valid))
+    }
+
+    @Test fun successfulPreviewCompletionIsNotReplayable() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.AWAITING_CRYPTOOBJECT_PROOF,
+            c.finish(valid, true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+        assertNull(c.begin(valid))
+    }
 }

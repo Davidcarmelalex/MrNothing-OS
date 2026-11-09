@@ -2065,3 +2065,12 @@ MemoryVault activation, persistence, IPC or physical Pixel interaction.
 See docs/SEC-023B1B2A-CONSENT-INTENT.md. SEC-023B1B1 PR #18 and earlier
 MemoryVault PRs remain unmerged, with independent review pending.
 Upstream shared SKILL.md absent/unverified. No M1–M8 milestone complete.
+
+## QA-023B1B2A — owner-consent completion negative paths (2026-11-10)
+
+Scoped test-only follow-up to draft PR #19. Ten JVM regressions cover
+post-preview trust changes, clock failure, invalid time and replay. The service
+remains disabled, PaperClip RAM-only; independent security review and
+reconciliation with draft PRs #15–#18 are required before integration.
+M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8
+blocked. No milestone independently complete. Upstream SKILL.md unverified.
