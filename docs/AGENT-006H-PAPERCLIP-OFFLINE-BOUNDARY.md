@@ -4,6 +4,8 @@
 **Audit baseline:** `0f849e9d0fbbafba6c75bc69de2f8fa50432217b` (2026-11-08).
 **Scope:** legacy Termux/Python entrypoints and their separation from the native Android command path.
 
+**Historical snapshot notice (2026-11-09):** The memory, voice and network rows below describe the AGENT-006H audit baseline, not the latest feature-branch behavior. AGENT-006L disables PaperClip plaintext persistence and requires per-session RAM opt-in; AGENT-006O adds best-effort mutable-reference clearing; AGENT-006J/K subsequently harden network and voice. Existing legacy memory.json is preserved but not automatically loaded. No encrypted memory provider or Android executor has been approved. Consult the current docs/THREAT-MODEL.md TM-15 and section 8 for active memory controls.
+
 ## 1. Finding and bounded correction
 
 At the audit baseline, `agents/paperclip/agent.py` described a local-only model but fell back to:
