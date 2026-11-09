@@ -2051,3 +2051,38 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+
+## AGENT-006R — bounded PaperClip event logs (2026-11-09)
+
+**Source baseline:** f42af837bcb8eed478cadbc472b7571441449a7a,
+with 402-entry complete tree, six open PRs, and five exact-head workflows
+already successful (Phase 1 push/PR, CI-003 push/PR, QA-005 PR).
+PROJECT-ADAPTER.md is local; repository SKILL.md is absent and upstream
+shared package remains unverified. Existing shared server checkout was locked
+and behind the remote; work used an isolated clone and scoped feature branch.
+
+**Bounded M6 mitigation:** cap PaperClip content-free event log at 1 MiB,
+serialize cooperating writers with nonblocking Linux flock, and refuse
+new events if the full record would exceed the cap. Never truncate or delete
+existing records. Four offline tests cover exact cap, too-small cap,
+oversized preservation, and lock contention. See
+AGENT-006R-PAPERCLIP-BOUNDED-LOGGING.md.
+
+**Local VPS evidence:** 46/46 focused PaperClip tests, 942/942 full Python
+tests, Android source-manifest security gate, five launcher accessibility
+source tests, Python compileall, and git diff --check passed. Python 3.14
+emitted pre-existing SQLite ResourceWarning messages. No local Android
+Gradle, emulator, physical Pixel 9 Pro, llama-cli, release signing or
+production integration was executed. Exact-head GitHub CI is a separate
+gate to inspect after publishing.
+
+**Independent review:** pending; reviewer must inspect advisory locking,
+noncooperating writers, multi-write crash behavior, log cap and privacy
+boundaries. No author self-approval. No native executor or Android permission
+is enabled. M1/M2/M6 in progress, M3 partial, M4 not started, M5 not accepted,
+M7/M8 blocked. No milestone complete.
+
+**Next:** reconcile exact-head CI, independent review of SEC-021/SEC-022 and
+PaperClip privacy, then design owner-authenticated encrypted persistent memory
+under a separate security acceptance gate.

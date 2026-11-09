@@ -1,6 +1,7 @@
 """Offline tests for PaperClip content-free, symlink-resistant event logging."""
 import importlib.util
 import io
+import fcntl
 import os
 import stat
 import tempfile
@@ -60,6 +61,51 @@ class PaperclipSecureLoggingTests(unittest.TestCase):
                 self.assertFalse(AGENT.log(EVENT))
             self.assertFalse((logs / "paperclip.log").exists())
             self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o777)
+
+    def test_log_cap_preserves_existing_records_and_refuses_overflow(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertTrue(AGENT.log(EVENT))
+                log_path = home / "logs" / "paperclip.log"
+                original = log_path.read_bytes()
+                with patch.object(AGENT, "MAX_LOG_BYTES", len(original)):
+                    self.assertFalse(AGENT.log(EVENT))
+                self.assertEqual(log_path.read_bytes(), original)
+
+    def test_too_small_cap_creates_no_event_record(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            with patch.object(AGENT, "HOME", home), patch.object(AGENT, "MAX_LOG_BYTES", 1):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertEqual((home / "logs" / "paperclip.log").read_bytes(), b"")
+
+    def test_existing_oversized_log_is_never_truncated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            logs = home / "logs"
+            logs.mkdir(parents=True)
+            path = logs / "paperclip.log"
+            original = b"legacy-log" * 50
+            path.write_bytes(original)
+            with patch.object(AGENT, "HOME", home), patch.object(AGENT, "MAX_LOG_BYTES", 32):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_contended_log_lock_fails_closed_without_append(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertTrue(AGENT.log(EVENT))
+                path = home / "logs" / "paperclip.log"
+                original = path.read_bytes()
+                with path.open("rb") as reader:
+                    fcntl.flock(reader.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.assertFalse(AGENT.log(EVENT))
+                    self.assertEqual(path.read_bytes(), original)
+                    fcntl.flock(reader.fileno(), fcntl.LOCK_UN)
+                self.assertTrue(AGENT.log(EVENT))
+                self.assertGreater(path.stat().st_size, len(original))
 
     def test_unapproved_event_is_not_printed_or_persisted(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -4,7 +4,7 @@ PaperClip Agent — Local AI Reasoning Engine
 Uses only user-provided local GGUF models through a local llama.cpp executable.
 It never downloads model files or contacts a model hub.
 """
-import os, time, subprocess, stat
+import os, time, subprocess, stat, fcntl
 from pathlib import Path
 from datetime import datetime
 
@@ -16,6 +16,8 @@ MEMORY_FILE = HOME / "agents" / AGENT_NAME / "memory.json"
 MAX_PROMPT_CHARS = 8192
 MAX_GENERATION_TOKENS = 256
 INFERENCE_TIMEOUT_SECONDS = 120
+# Refuse further events when the existing log reaches this size; never truncate it.
+MAX_LOG_BYTES = 1024 * 1024
 
 # Only these content-free events may reach the terminal or the local log.
 # In particular, never accept caller-supplied prompts, model paths or exceptions.
@@ -75,7 +77,13 @@ def log(msg):
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
             return False
         os.fchmod(file_fd, 0o600)
+        # Serialize cooperating writers without waiting on a stuck process.
+        # The bound is checked under the lock, immediately before append.
+        fcntl.flock(file_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         data = (line + "\n").encode("utf-8")
+        current_size = os.fstat(file_fd).st_size
+        if current_size < 0 or current_size + len(data) > MAX_LOG_BYTES:
+            return False
         while data:
             written = os.write(file_fd, data)
             if written <= 0:
