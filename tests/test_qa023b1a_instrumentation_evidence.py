@@ -84,6 +84,54 @@ class MemoryVaultInstrumentationEvidenceTests(unittest.TestCase):
         with self.assertRaises(EvidenceError):
             verify_reports(self.root)
 
+    def test_rejects_declared_failure_without_failure_child(self):
+        self.write(
+            '<testsuite name="' + CLASS + '" tests="2" failures="1">'
+            + case(A) + case(B) + '</testsuite>'
+        )
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_rejects_declared_error_or_skip_without_child(self):
+        for key in ("errors", "skipped"):
+            with self.subTest(key=key):
+                self.write(
+                    '<testsuite name="' + CLASS + '" tests="2" ' + key + '="1">'
+                    + case(A) + case(B) + '</testsuite>'
+                )
+                with self.assertRaises(EvidenceError):
+                    verify_reports(self.root)
+
+    def test_rejects_mismatched_declared_test_count(self):
+        self.write(
+            '<testsuite name="' + CLASS + '" tests="3">'
+            + case(A) + case(B) + '</testsuite>'
+        )
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_rejects_malformed_aggregate_counter(self):
+        self.write(
+            '<testsuite name="' + CLASS + '" failures="NaN">'
+            + case(A) + case(B) + '</testsuite>'
+        )
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_rejects_suite_level_error_without_case_failure(self):
+        self.write(suite([case(A), case(B)])[:-12] + '<error/></testsuite>')
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_accepts_consistent_aggregate_counters(self):
+        self.write(
+            '<testsuites tests="2" failures="0" errors="0" skipped="0">'
+            '<testsuite name="' + CLASS + '" tests="2" failures="0" '
+            'errors="0" skipped="0">' + case(A) + case(B)
+            + '</testsuite></testsuites>'
+        )
+        self.assertEqual(verify_reports(self.root)["result"], "pass")
+
     def test_accepts_suite_class_fallback(self):
         self.write(suite([
             '<testcase name="' + A + '"/>',

@@ -42,8 +42,34 @@ def verify_reports(directory: Path) -> dict:
 
         def walk(node: ET.Element, suite: str = "") -> None:
             nonlocal all_cases
+            if node.tag in {"testsuite", "testsuites"}:
+                # JUnit producers may report aggregate failures without child
+                # <failure> nodes. Treat contradictory or malformed counters as
+                # untrustworthy evidence rather than accepting a green summary.
+                for key in ("tests", "failures", "errors", "skipped"):
+                    raw = node.get(key)
+                    if raw is None:
+                        continue
+                    if not raw.isascii() or not raw.isdecimal() or len(raw) > 9:
+                        raise EvidenceError(
+                            f"invalid JUnit {key} counter in {report}: {raw!r}"
+                        )
+                    value = int(raw)
+                    if key == "tests":
+                        actual = sum(1 for _ in node.iter("testcase"))
+                        if value != actual:
+                            raise EvidenceError(
+                                f"JUnit tests counter mismatch in {report}: "
+                                f"declared={value} actual={actual}"
+                            )
+                    elif value != 0:
+                        raise EvidenceError(
+                            f"JUnit reports {value} {key} in {report}"
+                        )
             if node.tag == "testsuite":
                 suite = node.get("name", suite)
+            if node.tag in {"failure", "error", "skipped"}:
+                raise EvidenceError(f"JUnit {node.tag} outside testcase in {report}")
             if node.tag == "testcase":
                 all_cases += 1
                 classname = node.get("classname") or suite

@@ -26,3 +26,17 @@ The repository's `PROJECT-ADAPTER.md` is project-specific. The shared upstream `
 ## SEC-023B1A-QA — installed-manifest boundary follow-up (2026-11-09)
 
 Two **instrumentation tests** inspect the installed/merged manifest through Android PackageManager: the service must remain disabled, non-exported, direct-boot-inaccessible, permission-free, same-process, and without a runtime component-state override; an implicit vault probe must not resolve. The explicit instrumentation runner class inventory is updated from five to six classes, and the Phase 1 hosted Android job now compiles the instrumentation APK (`:app:assembleDebugAndroidTest`). The existing QA-005 emulator workflow is scoped to PRs against `main`, so this scoped feature-branch PR does **not** establish that these new tests have run on an emulator. Instrumentation execution and Pixel 9 Pro hardware verification remain pending. No production service behavior, permissions, memory persistence, signing or trust state changed.
+
+
+## QA-023B1A-C — JUnit aggregate-counter integrity (2026-11-09)
+
+The XML evidence gate now rejects contradictory or malformed JUnit aggregate
+`tests`, `failures`, `errors` and `skipped` attributes, and suite-level
+failure/error/skip nodes outside individual testcases. This closes an evidence
+integrity gap in which a report could declare an aggregate failure without a
+child failure element and still satisfy the two required method names.
+
+This change is confined to offline CI evidence parsing and synthetic regression
+tests. It does not modify Android app behavior, unlock the disabled vault, or
+constitute an independent security approval. Exact-head hosted Android/emulator
+results must be rechecked for the new commit.
