@@ -2051,3 +2051,9 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023A — Canonical envelope preflight (scoped review, 2026-11-09)
+
+Baseline `feat/phase1-agentic-phone` at `f42af837bcb8eed478cadbc472b7571441449a7a`. Draft SEC-023 design is in PR #13 and remains unmerged. This bounded task adds `core/memory_vault_schema.py`, synthetic-only schema/AAD negative tests and `docs/SEC-023A-CANONICAL-ENVELOPE-PREFLIGHT.md`. It does **not** enable memory persistence, authenticate ciphertext, connect an Android executor or claim hardware-backed encryption. `PROJECT-ADAPTER.md` is the local project-specific adapter; upstream `SKILL.md` remains absent/unverified.
+
+Security + AI/agents own the schema and nonintegration boundary; CI/QA owns repeatable negative fixtures; Android, UX/accessibility and hardware/release own later SEC-023B/C/F gates. Independent supervisor must review canonical bytes, trusted identity provenance, nonce ledger scope and future AEAD integration before accepting this gate. M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone independently complete.
