@@ -2035,3 +2035,19 @@ Audited parent: `d07390768eae1747fe759726b7d524d50a291299`. The existing `PROJEC
 ## AGENT-006N — PaperClip session teardown and model-filename privacy (2026-11-09)
 
 Bounded M6 legacy PaperClip hardening: `main()` clears opted-in RAM session references in `finally` on exit, EOF, interrupt, and unexpected exception; `think()` no longer logs private GGUF filenames, and the startup banner no longer prints them. Seven new synthetic/offline regressions check teardown and preservation of existing plaintext legacy files. See [AGENT-006N evidence](AGENT-006N-PAPERCLIP-SESSION-PRIVACY.md). This is **not** secure memory erasure, encrypted persistence, production Android integration, independent review, or physical Pixel validation. Upstream shared `SKILL.md` remains unverified. **M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8 blocked. No milestone complete.** Exact-head CI must be checked independently after push; independent security approval remains pending.
+
+
+## AGENT-006Q — PaperClip event-log directory privacy (2026-11-09)
+
+The AGENT-006P event logger now verifies that both its HOME and logs directories
+are owned by the effective user and are not group/other-writable, and tightens
+owner-owned 0755 directories to 0700 by descriptor. Three offline regression
+tests cover the two refusal paths and private-mode tightening. Local VPS
+verification: 42 focused PaperClip tests, 938 full Python tests, compileall and
+git diff --check passed. Python 3.14 emitted pre-existing SQLite resource
+warnings. Hosted exact-head CI and independent security review must be tracked
+separately. No real executor, Android permission, physical Pixel, signing or
+deployment was involved. Upstream SKILL.md remains absent/unverified.
+
+M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
+M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.

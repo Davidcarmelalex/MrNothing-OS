@@ -28,6 +28,39 @@ class PaperclipSecureLoggingTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE((home / "logs").stat().st_mode), 0o700)
 
+    def test_existing_readable_directories_are_tightened(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            logs = home / "logs"
+            logs.mkdir(parents=True)
+            home.chmod(0o755)
+            logs.chmod(0o755)
+            with patch.object(AGENT, "HOME", home):
+                self.assertTrue(AGENT.log(EVENT))
+            self.assertEqual(stat.S_IMODE(home.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o700)
+
+    def test_group_writable_home_refuses_without_log_creation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            home.mkdir()
+            home.chmod(0o770)
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse((home / "logs").exists())
+            self.assertEqual(stat.S_IMODE(home.stat().st_mode), 0o770)
+
+    def test_world_writable_logs_refuses_without_log_creation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            logs = home / "logs"
+            logs.mkdir(parents=True)
+            logs.chmod(0o777)
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse((logs / "paperclip.log").exists())
+            self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o777)
+
     def test_unapproved_event_is_not_printed_or_persisted(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp) / "mrnothing"

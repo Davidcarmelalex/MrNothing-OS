@@ -27,6 +27,16 @@ SAFE_LOG_EVENTS = frozenset({
 })
 
 
+def _harden_log_directory(fd):
+    """Reject shared-writable directories; tighten owner-owned directories."""
+    info = os.fstat(fd)
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+            or info.st_mode & 0o022):
+        return False
+    os.fchmod(fd, 0o700)
+    return True
+
+
 def log(msg):
     """Best-effort, owner-only local event logging; never follow log symlinks."""
     if type(msg) is not str or msg not in SAFE_LOG_EVENTS:
@@ -45,11 +55,15 @@ def log(msg):
         except FileExistsError:
             pass
         home_fd = os.open(HOME.name, flags, dir_fd=parent_fd)
+        if not _harden_log_directory(home_fd):
+            return False
         try:
             os.mkdir("logs", mode=0o700, dir_fd=home_fd)
         except FileExistsError:
             pass
         logs_fd = os.open("logs", flags, dir_fd=home_fd)
+        if not _harden_log_directory(logs_fd):
+            return False
         # O_NONBLOCK avoids a hang on a pre-existing FIFO.
         file_fd = os.open(
             "paperclip.log",
@@ -58,7 +72,7 @@ def log(msg):
             dir_fd=logs_fd,
         )
         info = os.fstat(file_fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
             return False
         os.fchmod(file_fd, 0o600)
         data = (line + "\n").encode("utf-8")
