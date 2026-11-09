@@ -1,0 +1,85 @@
+# AGENT-004D — mTLS peer-to-session adapter
+
+**Scope:** `feat/phase1-agentic-phone` only.  
+**Status:** transport adapter and local synthetic mTLS tests implemented; no listener, endpoint, production enrollment service or command executor.
+
+## Purpose
+
+AGENT-004C accepts an `AuthenticatedOwnerSession` value from its caller. That dataclass is constructible by any Python caller and is not proof of authentication. AGENT-004D adds a narrow adapter that derives the session assertion from an already-handshaken server-side `ssl.SSLSocket` rather than accepting a caller-supplied authenticated flag or session object.
+
+## Admission sequence
+
+1. A separately managed server accepts a connection using `build_owner_consent_server_context`.
+2. The context requires client certificates, TLS 1.2 or later, the owner-consent ALPN identifier and an explicitly supplied client-enrollment CA bundle. System default roots are not loaded.
+3. The adapter accepts only an open server-side `SSLSocket` created with that exact context and a negotiated TLS 1.2/1.3 session.
+4. The adapter requires the exact ALPN protocol and a peer leaf certificate.
+5. It validates the leaf certificate's current validity, non-CA status, digital-signature key usage, client-auth EKU and P-256 public-key curve.
+6. It computes the SHA-256 leaf-certificate fingerprint and resolves that exact fingerprint through a trusted transport-enrollment registry. Inactive, unknown, mismatched or unavailable registry records fail closed.
+7. It creates a fresh random session identifier internally and stores the resulting session against the exact server-side SSLSocket object in a weak-key map. A new or resumed TLS connection is a different socket object and cannot inherit that session.
+8. It caps the session at 30 seconds and certificate expiry, and records every issued challenge against that socket with a monotonic expiry deadline and a bounded outstanding-challenge count.
+9. Verification is exposed only as OwnerConsentTlsAdapter.verify_and_consume(peer, envelope, challenge). The caller cannot supply an authentication boolean, session identifier, certificate fingerprint, credential generation or public verification key.
+10. At verification, the adapter rechecks the live socket, TLS context, ALPN, certificate profile, current transport enrollment and generation; it requires the exact challenge previously issued on that socket; then it loads the current consent key and invokes the atomic enrollment/replay transaction.
+
+The transport-certificate registry is queried for every challenge issuance, so revocation blocks subsequent issuances. The existing consent challenge remains valid only for its bounded lifetime; the verifier does not yet perform an online revocation lookup at consumption time.
+
+## Credential separation
+
+The mTLS client certificate is a **transport identity**, not the per-use owner-consent signing key. The transport registry and consent registry must be populated by one trusted enrollment ceremony that binds both credentials to the same owner/device. This commit does not implement that enrollment ceremony, remote attestation, Android client-certificate provisioning or proof that either key is StrongBox-backed.
+
+The Android AGENT-004B signer remains a separate per-use biometric/device-credential-gated P-256 operation. It is not wired to TLS, and this adapter does not weaken or replace that owner prompt.
+
+## Implemented files
+
+- `core/owner_consent_transport.py` — strict mTLS peer validation and internal session construction.
+- `tests/test_owner_consent_transport.py` — local socket-pair mTLS tests with ephemeral software-generated CA, server and client certificates.
+- `docs/AGENT-004D-MTLS-SESSION-ADAPTER.md` — this design and limitation record.
+
+The test harness does not open a public port. It uses synthetic certificates and an in-memory registry. It is not a Pixel 9 Pro, Android Keystore, StrongBox, remote-attestation or production TLS test.
+
+## Explicit non-goals and remaining blockers
+
+- No network listener, HTTP/RPC endpoint, socket accept loop or firewall change.
+- No production CA, server private key, trust bundle, certificate enrollment database or key-rotation service.
+- No OCSP/CRL validation or verified-boot/Android-key-attestation verification. Leaf revocation is represented by the trusted enrollment registry's active flag; CA trust rotation remains an operational dependency.
+- No rate limiter, durable security audit log, persistent session store or distributed revocation service.
+- No device permission grant, screen capture, accessibility control, action execution or HERMES executor integration.
+- No proof that transport and consent keys were bound by a real owner-approved enrollment ceremony.
+- No physical Pixel 9 Pro validation or production release.
+
+The adapter is a host-side library boundary. The server must call it only with accepted sockets from the configured server context and trusted registry implementations. The in-memory test registries are not production substitutes.
+
+## Acceptance gates
+
+1. The full Python preflight passes with the pinned CI cryptography dependency.
+2. Exact-head Android Gradle/JUnit and repeat debug-APK checks pass.
+3. Exact-head disposable emulator workflow remains green; this does not prove hardware TLS or StrongBox behavior.
+4. Independent security review verifies TLS-context provenance, CA provisioning, certificate profile, fingerprint enrollment, owner/device binding, session lifetime and revocation semantics.
+5. A later enrollment task binds the transport certificate and per-use consent key in a deliberate owner-approved ceremony.
+6. Rate limiting, audit logging, CA rotation and verifier-time revocation checks are implemented before any production endpoint is considered.
+
+Keep M3 partial and M6 in progress. No milestone is complete by this adapter or its synthetic tests. The upstream shared `SKILL.md` remains unverified.
+
+
+## SEC-019B verification boundary
+
+SEC-019B adds the verifier-side half of this adapter. The adapter retains issued challenges against the exact live SSLSocket object, checks exact challenge equality, uses monotonic session/challenge deadlines, and re-derives the current transport certificate enrollment on every verification. A reconnect or TLS-resumed connection cannot present a challenge from an earlier socket object. The supported verification call has only three arguments: peer, signed envelope and the adapter-issued challenge. Transport booleans and identity snapshots are no longer part of the request-facing API.
+
+The private cryptographic helper remains a testable implementation primitive; production integration must call the adapter method. The adapter still has no socket accept loop or public endpoint. A future executor must revalidate the live peer/session and owner authorization at its own admission boundary; this change returns only ADMITTED_NO_EXECUTION.
+
+
+## M3 one-use action capability (test harness only)
+
+The adapter now supports a narrow read_screen capability after successful owner-signature verification. The v1 wire challenge has no argument field, so this path accepts only an exactly empty argument object and computes a domain-separated digest for that fixed schema. It refuses non-empty arguments and does not authorize navigate or scroll.
+
+The returned opaque handle is recognized only by the adapter instance that minted it and only in the state associated with the exact live server-side SSLSocket. Before consumption, the adapter revalidates the peer certificate, current transport enrollment/generation, owner/device enrollment, consent-key digest, challenge and session expiry. Successful consumption is one-use and returns CAPABILITY_CONSUMED_NO_EXECUTION.
+
+core/noop_action_executor.py is a test harness that consumes the capability and reports SIMULATED_ONLY with device_actions_executed=false. It does not call Android, shell, process, network or device APIs. The opaque object handle is an in-process capability, not protection from arbitrary malicious code already running inside the trusted Python interpreter.
+
+The existing v1 signer/UI still displays action/device/session but does not preview arbitrary arguments. Therefore no non-empty action arguments may be authorized by this path. A versioned signed argument-digest protocol and owner-visible argument preview are required before extending it. The Android CommandRouter remains fail-closed; no listener or real executor is connected.
+
+### Follow-up verifier-provenance review
+
+The verifier admission result now carries the SHA-256 digest of the exact public key used for signature verification and nonce consumption. Capability minting compares that verified digest with the current registry key; if the key changes during the interval, no capability is returned. Capability consumption also compares the current transport registry owner/device mapping and credential generation with the issuance record, and checks the retained challenge owner/device values.
+
+These checks protect the no-op admission harness against the identified key-rotation and transport-remapping races. They do not provide an atomic authorization-plus-side-effect transaction. A real executor remains blocked until a durable final admission/idempotency reservation can atomically validate the current enrollment generation and reserve the action.
+
