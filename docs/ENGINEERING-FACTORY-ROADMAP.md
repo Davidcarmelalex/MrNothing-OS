@@ -2051,3 +2051,7 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023B1B2B-C — Frozen MemoryVault composite candidate (2026-11-10)
+
+A separate draft candidate assembles the exact published source from #13–#20 without modifying `feat/phase1-agentic-phone` or other PR heads. Reconciles the two instrumentation classes and a PR-local source test that assumed the dormant service was absent. See [composite provenance, conflicts and acceptance gates](SEC-023B1B2B-COMPOSITE-CANDIDATE.md). Source-level REVIEW_REQUIRED is **not** a pass or release approval. Keep MemoryVault disabled, PaperClip RAM-only and the Android executor disconnected. Exact-head Android build, emulator evidence, independent security review, real owner CryptoObject proof, Pixel hardware, spoken TalkBack and signed OTA/recovery remain required. M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone independently COMPLETE. Upstream SKILL.md remains absent/unverified.
