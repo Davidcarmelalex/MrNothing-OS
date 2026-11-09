@@ -2051,3 +2051,13 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023B1B1 dormant MemoryVault provisioning policy (2026-11-09)
+
+Scoped independent proposal off feat/phase1-agentic-phone: strict preflight
+for future owner ceremony plus an **uninstalled** StrongBox AES-256/GCM
+KeyGenParameterSpec draft. No key creation, consent proof, CryptoObject, IPC,
+persistence, Android permission, runtime integration or hardware validation.
+See SEC-023B1B1-DORMANT-PROVISIONING.md. The upstream shared SKILL.md remains
+absent/unverified. M3/M6 are not complete; independent security review and
+Pixel 9 Pro compatibility remain blocking gates.
