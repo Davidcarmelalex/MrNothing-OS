@@ -2055,3 +2055,8 @@ M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
 ## SEC-023B1A — Dormant non-exported Android MemoryVault component (2026-11-09)
 
 A bounded prerequisite to SEC-023B1: register a disabled/non-exported Android Service with no Binder or storage behavior, and enforce the dormant manifest boundary using offline mutation tests. No authentication, encryption, IPC, persistence, hardware validation or integration is claimed. The service MUST remain disabled until independent review and negative Android instrumentation gates. SEC-023/023A/023B0 are still separate unmerged draft PRs. Next: SEC-023B1B per-use Keystore CryptoObject proof and identity-bound native IPC, then key invalidation/negative instrumentation; no memory persistence before approval. All M1–M8 acceptance statuses unchanged.
+
+
+## SEC-023B1A-QA — installed-manifest instrumentation prerequisite (2026-11-09)
+
+Test-only follow-up on the scoped SEC-023B1A draft: inspect Android PackageManager's merged service declaration and compile the explicit instrumentation allowlist in hosted Phase 1 CI. Actual instrumentation execution, independent security review, SEC-023B1B Keystore authentication, identity-bound IPC and all M1–M8 acceptance gates remain pending. Upstream shared SKILL.md remains absent/unverified; no production feature is enabled.
