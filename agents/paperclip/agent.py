@@ -45,7 +45,12 @@ def log(msg):
         return False
     ts = datetime.now().strftime("%H:%M:%S")
     line = f"[{ts}] [PAPERCLIP] {msg}"
-    print(line)
+    # Terminal output is best-effort telemetry, never an inference dependency.
+    # A closed stdout pipe must not interrupt a permitted local operation.
+    try:
+        print(line)
+    except (OSError, ValueError):
+        pass
     # Resolve each untrusted child relative to an opened directory descriptor.
     # No path-based open is used for the logs directory or the log file.
     parent_fd = home_fd = logs_fd = file_fd = None
@@ -95,7 +100,12 @@ def log(msg):
     finally:
         for fd in (file_fd, logs_fd, home_fd, parent_fd):
             if fd is not None:
-                os.close(fd)
+                try:
+                    os.close(fd)
+                except OSError:
+                    # Cleanup errors must not turn optional telemetry into a
+                    # fatal exception. Never retry close: fd may be reused.
+                    pass
 
 # Persistent plaintext conversation storage is intentionally disabled.
 # Existing memory.json files are never read, migrated, overwritten, or deleted.

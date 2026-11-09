@@ -2086,3 +2086,20 @@ M7/M8 blocked. No milestone complete.
 **Next:** reconcile exact-head CI, independent review of SEC-021/SEC-022 and
 PaperClip privacy, then design owner-authenticated encrypted persistent memory
 under a separate security acceptance gate.
+
+
+## AGENT-006S — optional PaperClip telemetry failure isolation (2026-11-09)
+
+Scoped follow-up to AGENT-006R draft PR #10. Noncritical allowlisted
+PaperClip event logging no longer propagates closed/broken stdout errors or
+descriptor-close OSErrors into inference/teardown. Four offline regressions
+exercise successful append and unsafe-target refusal under these faults.
+Existing 1 MiB cap, nonblocking flock, owner-only directory/file checks and
+no-plaintext-persistence policy remain unchanged. See
+AGENT-006S-PAPERCLIP-TELEMETRY-FAILURE-ISOLATION.md.
+
+The upstream SKILL.md is absent/unverified; PROJECT-ADAPTER.md remains the
+local adapter. Independent security acceptance remains PENDING. M1/M2/M6
+IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED.
+No milestone complete. Next: review SEC-021/SEC-022, then owner-authenticated
+encrypted-memory design and hardware/StrongBox acceptance gates.

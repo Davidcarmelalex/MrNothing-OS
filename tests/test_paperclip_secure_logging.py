@@ -107,6 +107,49 @@ class PaperclipSecureLoggingTests(unittest.TestCase):
                 self.assertTrue(AGENT.log(EVENT))
                 self.assertGreater(path.stat().st_size, len(original))
 
+    def test_broken_stdout_pipe_does_not_interrupt_file_logging(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            with patch.object(AGENT, "HOME", home), patch("builtins.print", side_effect=BrokenPipeError):
+                self.assertTrue(AGENT.log(EVENT))
+            self.assertIn(EVENT, (home / "logs" / "paperclip.log").read_text())
+
+    def test_closed_stdout_does_not_interrupt_file_logging(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            with patch.object(AGENT, "HOME", home), patch("builtins.print", side_effect=ValueError("closed")):
+                self.assertTrue(AGENT.log(EVENT))
+            self.assertIn(EVENT, (home / "logs" / "paperclip.log").read_text())
+
+    def test_close_errors_do_not_turn_successful_telemetry_into_exception(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            real_close = os.close
+
+            def close_then_fail(fd):
+                real_close(fd)
+                raise OSError("synthetic close error after close")
+
+            with patch.object(AGENT, "HOME", home), patch.object(AGENT.os, "close", side_effect=close_then_fail):
+                self.assertTrue(AGENT.log(EVENT))
+            self.assertIn(EVENT, (home / "logs" / "paperclip.log").read_text())
+
+    def test_close_errors_do_not_mask_unsafe_target_refusal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / "mrnothing"
+            target = Path(temp) / "target"
+            target.mkdir()
+            home.symlink_to(target, target_is_directory=True)
+            real_close = os.close
+
+            def close_then_fail(fd):
+                real_close(fd)
+                raise OSError("synthetic close error after close")
+
+            with patch.object(AGENT, "HOME", home), patch.object(AGENT.os, "close", side_effect=close_then_fail):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertEqual(list(target.iterdir()), [])
+
     def test_unapproved_event_is_not_printed_or_persisted(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp) / "mrnothing"
