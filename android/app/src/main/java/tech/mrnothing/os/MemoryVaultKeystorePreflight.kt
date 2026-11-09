@@ -77,7 +77,8 @@ internal object MemoryVaultKeystorePreflight {
             val factory = SecretKeyFactory.getInstance(
                 KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
             )
-            val info = factory.getKeySpec(key, KeyInfo::class.java)
+            val info = factory.getKeySpec(key, KeyInfo::class.java) as? KeyInfo
+                ?: return MemoryVaultKeyReadiness.BLOCKED
             val purposes = KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             MemoryVaultKeyPolicy.evaluate(
                 Build.VERSION.SDK_INT,

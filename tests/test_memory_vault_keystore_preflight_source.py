@@ -13,7 +13,7 @@ class MemoryVaultKeystorePreflightSourceTest(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn('KeyStore.getInstance("AndroidKeyStore")', source)
         self.assertIn('getEntry(KEY_ALIAS, null)', source)
-        self.assertIn('KeyInfo::class.java', source)
+        self.assertIn('KeyInfo::class.java) as? KeyInfo', source)
         self.assertNotRegex(source, r"\b(?:KeyGenerator|generateKey|setEntry|deleteEntry|Cipher|BiometricPrompt|Binder)\b")
         self.assertNotIn("setUserAuthenticationParameters(", source)
 
