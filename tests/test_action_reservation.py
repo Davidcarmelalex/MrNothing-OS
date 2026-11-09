@@ -114,6 +114,7 @@ os._exit(0)
 
 _CRASH_AFTER_LEDGER_COMMIT_SUBPROCESS = r"""
 import base64
+import os
 import sys
 import time
 
@@ -135,8 +136,12 @@ class CommitThenPause:
             and not self._paused
         ):
             self._paused = True
-            with open(self._marker_path, "x", encoding="ascii") as marker:
+            # Publish only after the marker contents are fully written.
+            # A visible-but-empty marker previously allowed a premature kill.
+            staged_marker = self._marker_path + ".partial"
+            with open(staged_marker, "x", encoding="ascii") as marker:
                 marker.write("ledger-commit-durable")
+            os.replace(staged_marker, self._marker_path)
             # Parent terminates this process after the underlying COMMIT
             # succeeds but before the enrollment context can be released.
             while True:
@@ -175,6 +180,7 @@ raise SystemExit("commit pause unexpectedly returned")
 
 _CRASH_BEFORE_LEDGER_COMMIT_SUBPROCESS = r"""
 import base64
+import os
 import sys
 import time
 
@@ -201,8 +207,10 @@ class PauseBeforeCommit:
             self._paused = True
             # This marker is emitted before the underlying SQLite COMMIT call.
             # The parent kills this process while the UPDATE remains uncommitted.
-            with open(self._marker_path, "x", encoding="ascii") as marker:
+            staged_marker = self._marker_path + ".partial"
+            with open(staged_marker, "x", encoding="ascii") as marker:
                 marker.write("ledger-commit-not-executed")
+            os.replace(staged_marker, self._marker_path)
             while True:
                 time.sleep(0.05)
         return self._connection.execute(sql, *args)
@@ -575,6 +583,10 @@ class DurableActionReservationTests(unittest.TestCase):
                     )
                 time.sleep(0.01)
 
+            with open(marker_path, encoding="ascii") as marker:
+                self.assertEqual(marker.read(), "ledger-commit-durable")
+            self.assertFalse(os.path.exists(marker_path + ".partial"))
+
             # Terminate after SQLite committed DISPATCH_STARTED but before the
             # enrollment context exits and before claim_dispatch can return.
             process.kill()
@@ -655,6 +667,10 @@ class DurableActionReservationTests(unittest.TestCase):
                         f"stdout={stdout!r}, stderr={stderr!r}"
                     )
                 time.sleep(0.01)
+
+            with open(marker_path, encoding="ascii") as marker:
+                self.assertEqual(marker.read(), "ledger-commit-not-executed")
+            self.assertFalse(os.path.exists(marker_path + ".partial"))
 
             # The proxy writes this marker before calling the real SQLite
             # COMMIT. The preceding DISPATCH_STARTED UPDATE is still uncommitted.
