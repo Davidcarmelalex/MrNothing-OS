@@ -2051,3 +2051,7 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## 2026-11-09 — SEC-023B1B0 read-only MemoryVault key policy (scoped proposal)
+
+Audited `feat/phase1-agentic-phone` at `f42af837bcb8eed478cadbc472b7571441449a7a`. The local `PROJECT-ADAPTER.md` exists, but upstream `SKILL.md` is absent/unverified. Related SEC-023 through SEC-023B1A PRs #13–#16 remain separate, unmerged draft branches. This proposal adds only a read-only AndroidKeyStore KeyInfo preflight for a distinct future AES-GCM alias, strict pure-JVM StrongBox/credential/per-use key metadata policy, and negative tests. It does not create or use a key, authenticate the owner, enable a service, expose IPC, persist data, change permissions, or integrate agents. Exact-head hosted Android tests and independent security review are mandatory before acceptance. M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone complete.
