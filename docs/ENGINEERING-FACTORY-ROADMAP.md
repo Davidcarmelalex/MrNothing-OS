@@ -2051,3 +2051,7 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023B0 — Dormant Android MemoryVault admission preflight (2026-11-09)
+
+Scoped branch from `f42af837` adds a pure-JVM trusted-snapshot policy and single-use, 30-second process-local owner-intent registry. Sixteen synthetic JUnit tests cover UID/signature/profile binding, owner foreground/unlock/consent, absent cryptographic authentication, cancellation, expiry, rollback, replay and concurrency. See [SEC-023B0 evidence](SEC-023B0-MEMORY-VAULT-ADMISSION-BOUNDARY.md). This is NOT a native vault service, CryptoObject verification, encrypted persistence, IPC or hardware proof. SEC-023/SEC-023A are still draft PRs; upstream shared SKILL.md is absent/unverified. No milestone is independently complete. Next: independently review SEC-023A/B0 and SEC-021/022, then build a non-exported Keystore-backed native service with negative IPC tests, preserving explicit consent and fail-closed persistence.
