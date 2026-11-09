@@ -24,11 +24,16 @@ class MemoryVaultKeystorePreflightSourceTest(unittest.TestCase):
         for required in (
             'SECURITY_LEVEL_STRONGBOX', 'AUTH_DEVICE_CREDENTIAL',
             'userAuthenticationValidityDurationSeconds == -1',
-            'isUnlockedDeviceRequired', 'isRandomizedEncryptionRequired',
             'ORIGIN_GENERATED', 'PURPOSE_ENCRYPT', 'PURPOSE_DECRYPT',
             'BLOCK_MODE_GCM', 'ENCRYPTION_PADDING_NONE'
         ):
             self.assertIn(required, source)
+
+    def test_does_not_invent_unavailable_keyinfo_signals(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertNotIn("info.isUnlockedDeviceRequired", source)
+        self.assertNotIn("info.isRandomizedEncryptionRequired", source)
+        self.assertIn("KeyInfo does not", source)
 
     def test_preflight_not_integrated_with_existing_service_or_launcher(self):
         manifest = MANIFEST.read_text(encoding="utf-8")

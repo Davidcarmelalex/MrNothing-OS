@@ -13,7 +13,9 @@ import javax.crypto.SecretKeyFactory
  *
  * A positive result means only that the key's reported parameters satisfy the
  * local policy. It is NOT proof of owner authentication, authorization, consent,
- * a valid CryptoObject, or a usable encrypted-memory service.
+ * a valid CryptoObject, or a usable encrypted-memory service. KeyInfo does not
+ * expose unlocked-device or randomized-encryption policy; those must be
+ * verified separately from a controlled key-generation specification.
  *
  * No key is created, imported, replaced, used for cryptography or deleted here.
  */
@@ -28,9 +30,7 @@ internal data class MemoryVaultKeySignals(
     val strongBoxBacked: Boolean,
     val credentialOnlyAuth: Boolean,
     val authenticationRequired: Boolean,
-    val perUseAuthentication: Boolean,
-    val unlockedDeviceRequired: Boolean,
-    val randomizedEncryptionRequired: Boolean
+    val perUseAuthentication: Boolean
 )
 
 internal enum class MemoryVaultKeyReadiness {
@@ -50,8 +50,7 @@ internal object MemoryVaultKeyPolicy {
             s.gcmOnly && s.noPaddingOnly && s.encryptDecryptOnly &&
             s.generatedInKeystore && s.strongBoxBacked &&
             s.credentialOnlyAuth && s.authenticationRequired &&
-            s.perUseAuthentication && s.unlockedDeviceRequired &&
-            s.randomizedEncryptionRequired
+            s.perUseAuthentication
         ) MemoryVaultKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH
         else MemoryVaultKeyReadiness.BLOCKED
 }
@@ -96,9 +95,7 @@ internal object MemoryVaultKeystorePreflight {
                     credentialOnlyAuth = info.userAuthenticationType ==
                         KeyProperties.AUTH_DEVICE_CREDENTIAL,
                     authenticationRequired = info.isUserAuthenticationRequired,
-                    perUseAuthentication = info.userAuthenticationValidityDurationSeconds == -1,
-                    unlockedDeviceRequired = info.isUnlockedDeviceRequired,
-                    randomizedEncryptionRequired = info.isRandomizedEncryptionRequired
+                    perUseAuthentication = info.userAuthenticationValidityDurationSeconds == -1
                 )
             )
         } catch (_: GeneralSecurityException) {

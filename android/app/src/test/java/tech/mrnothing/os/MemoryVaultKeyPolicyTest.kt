@@ -15,9 +15,7 @@ class MemoryVaultKeyPolicyTest {
         strongBoxBacked = true,
         credentialOnlyAuth = true,
         authenticationRequired = true,
-        perUseAuthentication = true,
-        unlockedDeviceRequired = true,
-        randomizedEncryptionRequired = true
+        perUseAuthentication = true
     )
     private fun blocked(s: MemoryVaultKeySignals) {
         assertEquals(MemoryVaultKeyReadiness.BLOCKED, MemoryVaultKeyPolicy.evaluate(35, s))
@@ -61,12 +59,6 @@ class MemoryVaultKeyPolicyTest {
     @Test fun noAuthenticationRequirementRejected() {
         blocked(valid.copy(authenticationRequired = false))
     }
-    @Test fun unlockedDeviceRequirementCannotBeRelaxed() {
-        blocked(valid.copy(unlockedDeviceRequired = false))
-    }
-    @Test fun callerControlledIvCapabilityRejected() {
-        blocked(valid.copy(randomizedEncryptionRequired = false))
-    }
     @Test fun everyRequiredSignalIndependentlyFailsClosed() {
         val mutations = listOf(
             valid.copy(keyPresent = false),
@@ -79,11 +71,9 @@ class MemoryVaultKeyPolicyTest {
             valid.copy(strongBoxBacked = false),
             valid.copy(credentialOnlyAuth = false),
             valid.copy(authenticationRequired = false),
-            valid.copy(perUseAuthentication = false),
-            valid.copy(unlockedDeviceRequired = false),
-            valid.copy(randomizedEncryptionRequired = false)
+            valid.copy(perUseAuthentication = false)
         )
-        assertEquals(13, mutations.size)
+        assertEquals(11, mutations.size)
         mutations.forEach(::blocked)
     }
 }

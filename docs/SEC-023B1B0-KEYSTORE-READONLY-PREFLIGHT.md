@@ -10,7 +10,7 @@ A positive `EXISTING_KEY_REQUIRES_OWNER_AUTH` result **does not** mean that an o
 
 ## Required properties
 
-Android API 31+ (StrongBox security-level inspection), AES-256, GCM-only, NoPadding-only, exactly encrypt/decrypt purposes, Keystore-generated origin, StrongBox security level, device-credential-only user authentication with per-operation validity (KeyInfo reports -1; the modern key-generation parameter uses timeout 0), unlocked-device requirement, and randomized encryption. Key metadata is local self-report, **not remote attestation or proof of owner consent**.
+Android API 31+ (StrongBox security-level inspection), AES-256, GCM-only, NoPadding-only, exactly encrypt/decrypt purposes, Keystore-generated origin, StrongBox security level, device-credential-only user authentication with per-operation validity (KeyInfo reports -1; the modern key-generation parameter uses timeout 0). Key metadata is local self-report, **not remote attestation or proof of owner consent**.
 
 ## Follow-on acceptance gates — not implemented here
 
@@ -26,3 +26,5 @@ Android API 31+ (StrongBox security-level inspection), AES-256, GCM-only, NoPadd
 **Platform reference:** [Android KeyInfo](https://developer.android.com/reference/android/security/keystore/KeyInfo#getUserAuthenticationValidityDurationSeconds()) documents -1 for every-use authorization. Do not confuse this readback value with the 0 timeout passed to `KeyGenParameterSpec.Builder.setUserAuthenticationParameters`. The StrongBox/credential-only combination and prompt interoperability still require physical hardware evidence.
 
 **CI correction:** The initial hosted Kotlin compilation revealed that `SecretKeyFactory.getKeySpec` returns the general `KeySpec` type; the adapter now explicitly performs a nullable `KeyInfo` cast and refuses an unexpected type. The initial failed run is retained as evidence, not counted as a pass.
+
+**CI correction 2:** Android SDK's `KeyInfo` does **not** expose `isUnlockedDeviceRequired` or `isRandomizedEncryptionRequired` (those belong to `KeyGenParameterSpec` / `KeyProtection`). The read-only preflight cannot prove those two controls. The policy therefore checks only actual KeyInfo metadata; explicit owner-consented key-generation spec, cryptographic operation and physical runtime verification must establish unlocked-device and randomized-IV behavior. The second failed hosted compilation is preserved as evidence.
