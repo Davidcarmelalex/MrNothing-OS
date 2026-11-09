@@ -2051,3 +2051,17 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023B1B2A dormant owner MemoryVault consent-intent binding (2026-11-09)
+
+Separate scoped draft proposal off feat/phase1-agentic-phone, reusing
+OwnerAuthorityConfirmationState for one-shot, 30-second monotonic owner
+intent binding. Canonical digest binds owner profile, signing identity,
+retention, future key alias and fresh caller-supplied nonce. Fail-closed
+preflights and cancellation/replay/rollback/concurrency regressions are
+synthetic only. A successful result is AWAITING_CRYPTOOBJECT_PROOF, not
+authorization. No real credential prompt, CryptoObject, Keystore operation,
+MemoryVault activation, persistence, IPC or physical Pixel interaction.
+See docs/SEC-023B1B2A-CONSENT-INTENT.md. SEC-023B1B1 PR #18 and earlier
+MemoryVault PRs remain unmerged, with independent review pending.
+Upstream shared SKILL.md absent/unverified. No M1–M8 milestone complete.

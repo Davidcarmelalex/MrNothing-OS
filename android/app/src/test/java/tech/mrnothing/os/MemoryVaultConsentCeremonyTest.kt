@@ -1,0 +1,166 @@
+package tech.mrnothing.os
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
+
+class MemoryVaultConsentCeremonyTest {
+    private var now = 10L
+    private fun ceremony() = MemoryVaultConsentCeremony { now }
+    private val valid = MemoryVaultConsentSnapshot(
+        ownerUserId = 0,
+        appSigningSha256 = "a".repeat(64),
+        retentionDays = 30,
+        requestNonceHex = "b".repeat(64),
+        foregroundOwnerUi = true,
+        deviceUnlocked = true,
+        secureCredentialConfigured = true,
+        explicitCheckboxChecked = true,
+        strongBoxAdvertised = true,
+        aliasAbsent = true
+    )
+
+    @Test fun previewIsExplicitlyNotAuthorization() {
+        val preview = ceremony().begin(valid)
+        assertNotNull(preview)
+        assertEquals(30, preview!!.retentionDays)
+        assertTrue(preview.disclosure.contains("Nothing is enabled"))
+        assertEquals(64, preview.bindingSha256.length)
+    }
+
+    @Test fun positiveReportedCredentialStillRequiresCryptographicProof() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.AWAITING_CRYPTOOBJECT_PROOF,
+            c.finish(valid, true))
+    }
+
+    @Test fun noCheckboxDenied() = assertNull(ceremony().begin(
+        valid.copy(explicitCheckboxChecked = false)))
+    @Test fun secondaryProfileDenied() = assertNull(ceremony().begin(
+        valid.copy(ownerUserId = 10)))
+    @Test fun backgroundDenied() = assertNull(ceremony().begin(
+        valid.copy(foregroundOwnerUi = false)))
+    @Test fun lockedDeviceDenied() = assertNull(ceremony().begin(
+        valid.copy(deviceUnlocked = false)))
+    @Test fun missingCredentialDenied() = assertNull(ceremony().begin(
+        valid.copy(secureCredentialConfigured = false)))
+    @Test fun missingStrongBoxDenied() = assertNull(ceremony().begin(
+        valid.copy(strongBoxAdvertised = false)))
+    @Test fun existingAliasDenied() = assertNull(ceremony().begin(
+        valid.copy(aliasAbsent = false)))
+    @Test fun invalidRetentionDenied() {
+        assertNull(ceremony().begin(valid.copy(retentionDays = 0)))
+        assertNull(ceremony().begin(valid.copy(retentionDays = 91)))
+    }
+    @Test fun invalidSigningDigestDenied() {
+        assertNull(ceremony().begin(valid.copy(appSigningSha256 = "A".repeat(64))))
+        assertNull(ceremony().begin(valid.copy(appSigningSha256 = "a".repeat(63))))
+    }
+    @Test fun invalidNonceDenied() {
+        assertNull(ceremony().begin(valid.copy(requestNonceHex = "")))
+        assertNull(ceremony().begin(valid.copy(requestNonceHex = "B".repeat(64))))
+    }
+
+    @Test fun changedRetentionConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(retentionDays = 31), true))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+
+    @Test fun changedSigningIdentityConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(appSigningSha256 = "c".repeat(64)), true))
+    }
+
+    @Test fun changedNonceConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED,
+            c.finish(valid.copy(requestNonceHex = "c".repeat(64)), true))
+    }
+
+    @Test fun cancellationConsumesIntentAndCannotRestart() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, false))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+        assertNull(c.begin(valid))
+    }
+
+    @Test fun explicitRevocationConsumesIntent() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        c.revoke()
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+        assertNull(c.begin(valid))
+    }
+
+    @Test fun timeoutAndClockRollbackDenied() {
+        val expired = ceremony()
+        assertNotNull(expired.begin(valid))
+        now += OwnerAuthorityConfirmationState.MAX_AGE_NANOS + 1L
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, expired.finish(valid, true))
+        now = 10L
+        val rollback = ceremony()
+        assertNotNull(rollback.begin(valid))
+        now = 9L
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, rollback.finish(valid, true))
+    }
+
+    @Test fun bindingChangesWithEverySensitiveTerm() {
+        val a = MemoryVaultConsentCeremony.bindingFor(valid)
+        assertNotNull(a)
+        assertNotEquals(a, MemoryVaultConsentCeremony.bindingFor(valid.copy(retentionDays = 29)))
+        assertNotEquals(a, MemoryVaultConsentCeremony.bindingFor(valid.copy(
+            appSigningSha256 = "c".repeat(64))))
+        assertNotEquals(a, MemoryVaultConsentCeremony.bindingFor(valid.copy(
+            requestNonceHex = "d".repeat(64))))
+        assertEquals(a, MemoryVaultConsentCeremony.bindingFor(valid))
+    }
+
+    @Test fun concurrentFinishAtMostOnePositive() {
+        val c = ceremony()
+        assertNotNull(c.begin(valid))
+        val start = CountDownLatch(1)
+        val completed = CountDownLatch(2)
+        val positive = AtomicInteger(0)
+        repeat(2) {
+            Thread {
+                try {
+                    start.await()
+                    if (c.finish(valid, true) ==
+                        MemoryVaultConsentProgress.AWAITING_CRYPTOOBJECT_PROOF
+                    ) positive.incrementAndGet()
+                } finally {
+                    completed.countDown()
+                }
+            }.start()
+        }
+        start.countDown()
+        assertTrue(completed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(1, positive.get())
+    }
+
+    @Test fun revokeBeforeBeginCannotBeRestarted() {
+        val c = ceremony()
+        c.revoke()
+        assertNull(c.begin(valid))
+    }
+
+    @Test fun invalidFirstAttemptCannotBeReused() {
+        val c = ceremony()
+        assertNull(c.begin(valid.copy(explicitCheckboxChecked = false)))
+        assertNull(c.begin(valid))
+        assertEquals(MemoryVaultConsentProgress.BLOCKED, c.finish(valid, true))
+    }
+}
