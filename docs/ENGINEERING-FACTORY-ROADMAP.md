@@ -2051,3 +2051,7 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
+
+## SEC-023B1A — Dormant non-exported Android MemoryVault component (2026-11-09)
+
+A bounded prerequisite to SEC-023B1: register a disabled/non-exported Android Service with no Binder or storage behavior, and enforce the dormant manifest boundary using offline mutation tests. No authentication, encryption, IPC, persistence, hardware validation or integration is claimed. The service MUST remain disabled until independent review and negative Android instrumentation gates. SEC-023/023A/023B0 are still separate unmerged draft PRs. Next: SEC-023B1B per-use Keystore CryptoObject proof and identity-bound native IPC, then key invalidation/negative instrumentation; no memory persistence before approval. All M1–M8 acceptance statuses unchanged.
