@@ -25,6 +25,28 @@ class MemoryVaultConsentCeremonyTest {
         aliasAbsent = true
     )
 
+    // Independent Python reference: SHA-256 of six US-ASCII fields, each prefixed
+    // with its 4-byte unsigned big-endian length. These vectors freeze the
+    // cross-language wire contract before any Android CryptoObject integration.
+    @Test fun canonicalBindingGoldenVectorDefaultRetention() {
+        assertEquals(
+            "a813f8bf88f1a515d7e3b1a0e9964430f96a15de43929e8c63d5ecad2afd8ed4",
+            MemoryVaultConsentCeremony.bindingFor(valid)
+        )
+    }
+
+    @Test fun canonicalBindingGoldenVectorDifferentIdentityAndRetention() {
+        val changed = valid.copy(
+            appSigningSha256 = "c".repeat(64),
+            retentionDays = 90,
+            requestNonceHex = "d".repeat(64)
+        )
+        assertEquals(
+            "159612156d4e2fd250882f3840ade57d9ccc0f4949b82840e3312637084547d3",
+            MemoryVaultConsentCeremony.bindingFor(changed)
+        )
+    }
+
     @Test fun previewIsExplicitlyNotAuthorization() {
         val preview = ceremony().begin(valid)
         assertNotNull(preview)

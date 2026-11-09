@@ -63,3 +63,27 @@ AWAITING_CRYPTOOBJECT_PROOF result are also tested. Tests only: no production
 policy, Android permissions, CryptoObject or persistence changed. The snapshots
 remain synthetic and the future trusted UI must derive them from platform state.
 Independent security and physical Pixel validation remain pending.
+
+
+## QA-023B1B2A-V — independent canonical binding vectors (2026-11-10)
+
+To prevent silent serialization drift between Android and future independent
+verifiers, the six ASCII fields are ordered as PURPOSE, KEY_ALIAS, owner ID,
+lowercase app-signing SHA-256, decimal retention days and lowercase nonce hex.
+Each is encoded as a **four-byte big-endian length** followed by its raw ASCII
+bytes, with SHA-256 over the concatenation. No delimiters, JSON, locale-sensitive
+formatting or little-endian prefixes are permitted.
+
+- Vector A: owner 0, signing digest 'a' repeated 64 times, retention 30,
+  nonce 'b' repeated 64 times:
+  a813f8bf88f1a515d7e3b1a0e9964430f96a15de43929e8c63d5ecad2afd8ed4.
+- Vector B: owner 0, signing digest 'c' repeated 64 times, retention 90,
+  nonce 'd' repeated 64 times:
+  159612156d4e2fd250882f3840ade57d9ccc0f4949b82840e3312637084547d3.
+
+The Python source test independently computes the values; the Kotlin JUnit
+test asserts that the implementation returns the fixed digests. These are
+synthetic serialization tests, **not** proofs of nonce entropy, Android caller
+provenance, hardware-backed keys, user presence, CryptoObject authentication
+or encrypted-memory authorization. The service remains disabled; independent
+security acceptance remains pending.
