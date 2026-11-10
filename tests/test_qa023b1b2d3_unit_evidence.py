@@ -37,12 +37,12 @@ class UnitEvidenceGateTests(unittest.TestCase):
     def test_accepts_complete_execution(self):
         self.write(self.valid_xml())
         result = verify_reports(self.root)
-        self.assertEqual(result["required_methods_verified"], 42)
-        self.assertEqual(result["all_jvm_cases"], 42)
+        self.assertEqual(result["required_methods_verified"], 54)
+        self.assertEqual(result["all_jvm_cases"], 54)
 
     def test_accepts_unrelated_successful_tests(self):
         self.write(self.valid_xml()[:-13] + suite("OtherTest", ["works"]) + "</testsuites>")
-        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 43)
+        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 55)
 
     def test_rejects_missing_directory(self):
         with self.assertRaises(EvidenceError):
@@ -65,6 +65,13 @@ class UnitEvidenceGateTests(unittest.TestCase):
     def test_rejects_missing_required_method(self):
         cls = "MemoryVaultCompletionCancellationFenceTest"
         xml = self.valid_xml().replace(case(cls, "cannotFinishWithoutBeginning"), "")
+        self.write(xml)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_rejects_missing_signed_witness_test(self):
+        cls = "MemoryVaultSignedWitnessPolicyTest"
+        xml = self.valid_xml().replace(case(cls, "wrongSigningKeyBlocks"), "")
         self.write(xml)
         with self.assertRaises(EvidenceError):
             verify_reports(self.root)
