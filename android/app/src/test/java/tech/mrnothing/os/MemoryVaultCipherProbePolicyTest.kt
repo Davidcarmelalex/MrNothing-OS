@@ -11,26 +11,32 @@ class MemoryVaultCipherProbePolicyTest {
 
     @Test fun positiveResultStillDoesNotAuthorizePersistence() {
         assertEquals(MemoryVaultCipherProbeOutcome.CRYPTO_OPERATION_EXECUTED_NOT_AUTHORIZED,
-            MemoryVaultCipherProbePolicy.evaluate(callback, key, 16))
+            MemoryVaultCipherProbePolicy.evaluate(callback, key, key, 16))
     }
     @Test fun callbackMismatchBlocks() {
         assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(
-            MemoryVaultCryptoCallbackProgress.BLOCKED, key, 16))
+            MemoryVaultCryptoCallbackProgress.BLOCKED, key, key, 16))
     }
     @Test fun missingKeyBlocks() {
         assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(
-            callback, MemoryVaultKeyReadiness.BLOCKED, 16))
+            callback, MemoryVaultKeyReadiness.BLOCKED, key, 16))
     }
+    @Test fun postOperationReadinessFailureBlocks() {
+        // An alias removed or downgraded during doFinal must fail closed.
+        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(
+            callback, key, MemoryVaultKeyReadiness.BLOCKED, 16))
+    }
+
     @Test fun shortTagBlocks() {
-        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, 12))
+        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, key, 12))
     }
     @Test fun longTagBlocks() {
-        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, 32))
+        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, key, 32))
     }
     @Test fun emptyTagBlocks() {
-        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, 0))
+        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, key, 0))
     }
     @Test fun negativeTagLengthBlocks() {
-        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, -1))
+        assertEquals(blocked, MemoryVaultCipherProbePolicy.evaluate(callback, key, key, -1))
     }
 }

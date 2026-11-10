@@ -33,6 +33,13 @@ class MemoryVaultCipherProbeSourceTests(unittest.TestCase):
         self.assertIn("if (attempted) return null", PROBE)
         self.assertIn("callbackGate.revoke()", PROBE)
 
+    def test_post_operation_alias_policy_reinspection_is_required(self):
+        complete = PROBE.split("fun complete(", 1)[1]
+        self.assertLess(complete.index("cipher.doFinal(ByteArray(0))"),
+                        complete.index("val readinessAfter = MemoryVaultKeystorePreflight.inspectExisting()"))
+        self.assertIn("callback, readiness, readinessAfter, tag.size", complete)
+        self.assertIn("Matching metadata is NOT proof of same key generation", complete)
+
     def test_no_authorization_or_persistence_wiring(self):
         self.assertIn("CRYPTO_OPERATION_EXECUTED_NOT_AUTHORIZED", PROBE)
         for forbidden in ("GRANTED", "MemoryVaultService(", "startActivity(", "authenticate(",

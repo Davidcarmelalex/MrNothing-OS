@@ -24,10 +24,12 @@ internal object MemoryVaultCipherProbePolicy {
     fun evaluate(
         callback: MemoryVaultCryptoCallbackProgress,
         keyReadiness: MemoryVaultKeyReadiness,
+        postOperationKeyReadiness: MemoryVaultKeyReadiness,
         gcmTagBytes: Int
     ): MemoryVaultCipherProbeOutcome =
         if (callback == MemoryVaultCryptoCallbackProgress.AWAITING_AUTHENTICATED_CIPHER_OPERATION &&
             keyReadiness == MemoryVaultKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH &&
+            postOperationKeyReadiness == MemoryVaultKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH &&
             gcmTagBytes == 16
         ) MemoryVaultCipherProbeOutcome.CRYPTO_OPERATION_EXECUTED_NOT_AUTHORIZED
         else MemoryVaultCipherProbeOutcome.BLOCKED
@@ -122,7 +124,12 @@ internal class MemoryVaultAuthenticatedCipherProbe {
                     }
                     cipher.updateAAD(aad)
                     tag = cipher.doFinal(ByteArray(0))
-                    val classified = MemoryVaultCipherProbePolicy.evaluate(callback, readiness, tag.size)
+                    // Reinspect AFTER the operation: deletion or policy downgrade must block.
+                    // Matching metadata is NOT proof of same key generation after alias replacement.
+                    val readinessAfter = MemoryVaultKeystorePreflight.inspectExisting()
+                    val classified = MemoryVaultCipherProbePolicy.evaluate(
+                        callback, readiness, readinessAfter, tag.size
+                    )
                     if (cancellationFence.finish()) classified
                     else MemoryVaultCipherProbeOutcome.BLOCKED
                 }
