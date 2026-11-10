@@ -39,6 +39,20 @@ class AgentPlanPreviewSourceTests(unittest.TestCase):
         self.assertIn("onStop()", activity)
         self.assertIn("Preview only.", activity)
 
+    def test_bounded_plan_preview_is_display_only(self):
+        activity = (SRC / "AgentPlanPreviewActivity.kt").read_text()
+        plan = (SRC / "AgentPlanPreviewPlan.kt").read_text()
+        self.assertIn("Preview multi-step plan", activity)
+        self.assertIn("AgentPlanPreviewPlan.inspect", activity)
+        self.assertIn("private const val MAX_STEPS = 20", plan)
+        self.assertIn("steps.any { it.risk == ActionRisk.DENY }", plan)
+        self.assertIn("val authorized: Boolean get() = false", plan)
+        self.assertIn("val deviceActionsExecuted: Boolean get() = false", plan)
+        for forbidden in ("CommandRouter", "AppCatalog.launch", "ProcessBuilder",
+                          "OwnerConsentSigner", "startActivity(", "Socket("):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, plan)
+
 
 if __name__ == "__main__":
     unittest.main()
