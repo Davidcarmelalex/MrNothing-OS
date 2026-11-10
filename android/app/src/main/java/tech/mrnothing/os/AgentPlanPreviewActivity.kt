@@ -40,6 +40,18 @@ class AgentPlanPreviewActivity : Activity() {
             "Authorized: No · Device actions executed: No · Preview only."
     }
 
+    private fun previewPlan() {
+        val plan = AgentPlanPreviewPlan.inspect(
+            listOf("get_battery", "open_app", "send_message")
+        )
+        val lines = plan.steps.mapIndexed { index, step ->
+            (index + 1).toString() + ". " + step.action + ": " + step.risk
+        }.joinToString("\n")
+        status.text = "Fixed sample plan (no AI inference):\n" + lines + "\n" +
+            "Whole-plan risk: " + plan.risk + "\n" + plan.description + "\n" +
+            "Authorized: No · Device actions executed: No · Preview only."
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -74,6 +86,10 @@ class AgentPlanPreviewActivity : Activity() {
         }
         button(root, "Preview unknown request", "Inspect rejected sample action") {
             preview("root_shell")
+        }
+        button(root, "Preview multi-step plan",
+            "Inspect three fixed sample steps; no device action is executed") {
+            previewPlan()
         }
         button(root, "Cancel and clear", "Clear the sample plan preview") {
             clear()
