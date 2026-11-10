@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.WindowManager
 import android.widget.Button
@@ -18,6 +19,7 @@ import kotlin.math.roundToInt
  */
 class AgentPlanPreviewActivity : Activity() {
     private lateinit var status: TextView
+    private val rehearsal = AgentPlanRehearsal { SystemClock.elapsedRealtime() }
     private fun dp(n: Int): Int = (n * resources.displayMetrics.density).roundToInt()
 
     private fun button(root: LinearLayout, text: String, hint: String, run: () -> Unit) {
@@ -50,6 +52,15 @@ class AgentPlanPreviewActivity : Activity() {
         status.text = "Fixed sample plan (no AI inference):\n" + lines + "\n" +
             "Whole-plan risk: " + plan.risk + "\n" + plan.description + "\n" +
             "Authorized: No · Device actions executed: No · Preview only."
+    }
+
+    private fun showRehearsal(snapshot: RehearsalSnapshot) {
+        status.text = "Offline sample rehearsal (no AI inference):\n" +
+            "State: ${snapshot.phase}\n" +
+            "Step: ${snapshot.displayedStep ?: "None"}\n" +
+            "Previewed: ${snapshot.reviewedSteps}/${snapshot.totalSteps}\n" +
+            "${snapshot.explanation}\n" +
+            "Authorized: No · Device actions executed: No · No consent granted."
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,6 +102,18 @@ class AgentPlanPreviewActivity : Activity() {
             "Inspect three fixed sample steps; no device action is executed") {
             previewPlan()
         }
+        button(root, "Start offline sample rehearsal",
+            "Start a supervised display-only sample, not an agent execution") {
+            showRehearsal(rehearsal.begin(listOf("get_battery", "open_app", "send_message")))
+        }
+        button(root, "Acknowledge simulation instructions",
+            "Acknowledge sample instructions only; no owner consent is granted") {
+            showRehearsal(rehearsal.acknowledgeSampleReview())
+        }
+        button(root, "Preview next sample step",
+            "Advance display-only sample step without device control") {
+            showRehearsal(rehearsal.previewNext())
+        }
         button(root, "Cancel and clear", "Clear the sample plan preview") {
             clear()
         }
@@ -102,6 +125,7 @@ class AgentPlanPreviewActivity : Activity() {
     }
 
     private fun clear() {
+        rehearsal.cancel()
         status.text = "Preview cleared. No consent, permission or device action granted."
     }
 
