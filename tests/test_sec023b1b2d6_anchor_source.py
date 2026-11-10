@@ -26,7 +26,8 @@ class AnchorPreflightSourceTests(unittest.TestCase):
         name = "MemoryVaultGenerationAnchorPolicy"
         app = ROOT / "android/app/src/main/java/tech/mrnothing/os"
         users = [p.name for p in app.glob("*.kt") if p != MAIN and name in p.read_text(encoding="utf-8")]
-        self.assertEqual(users, [])
+        # SEC-023B1B2D7 may consume the pure-JVM diagnostic, but no app runtime may.
+        self.assertEqual(users, ["MemoryVaultSignedWitnessPolicy.kt"])
 
     def test_security_document_records_forged_witness_limitation(self):
         text = (ROOT / "docs/SEC-023B1B2D6-GENERATION-ANCHOR-PREFLIGHT.md").read_text(encoding="utf-8")
