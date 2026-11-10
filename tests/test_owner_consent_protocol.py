@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from core.owner_consent_issuer import EnrolledOwnerDevice
 from core.owner_consent_protocol import (
-    ConsentChallenge, MAX_CAPABILITY_TTL_MS, canonical_payload,
+    ConsentChallenge, MAX_CAPABILITY_TTL_MS, MAX_EPOCH_MS, canonical_payload,
     _verify_and_consume_bound,
 )
 from core.owner_action_arguments import action_arguments_sha256
@@ -279,6 +279,46 @@ class OwnerConsentProtocolTests(unittest.TestCase):
         )
         result = self.verify(b"{}", challenge=long_challenge)
         self.assertEqual(result.reason, "INVALID_CHALLENGE")
+
+    def test_epoch_milliseconds_outside_signed_long_are_rejected_for_v1_and_v2(self):
+        for version, digest in ((1, None), (2, "a" * 64)):
+            with self.subTest(version=version):
+                valid = replace(
+                    self.challenge, version=version, arguments_sha256=digest,
+                )
+                for issued, expires in (
+                    (MAX_EPOCH_MS + 1, MAX_EPOCH_MS + 2),
+                    (MAX_EPOCH_MS - 1, MAX_EPOCH_MS + 1),
+                    (-1, 1),
+                ):
+                    with self.subTest(issued=issued, expires=expires):
+                        invalid = replace(
+                            valid, issued_at_epoch_ms=issued,
+                            expires_at_epoch_ms=expires,
+                        )
+                        self.assertEqual(
+                            self.verify(b"{}", challenge=invalid).reason,
+                            "INVALID_CHALLENGE",
+                        )
+                        with self.assertRaises(ValueError):
+                            canonical_payload(invalid)
+
+    def test_signed_long_maximum_expiry_is_accepted_for_v1_and_v2(self):
+        for version, digest in ((1, None), (2, "a" * 64)):
+            with self.subTest(version=version):
+                challenge = replace(
+                    self.challenge, version=version, arguments_sha256=digest,
+                    nonce=self.challenge.nonce if version == 1 else "f" * 32,
+                    issued_at_epoch_ms=MAX_EPOCH_MS - MAX_CAPABILITY_TTL_MS,
+                    expires_at_epoch_ms=MAX_EPOCH_MS,
+                )
+                result = self.verify(
+                    self.envelope(challenge),
+                    challenge=challenge,
+                    now_epoch_ms=challenge.issued_at_epoch_ms + 1_000,
+                )
+                self.assertTrue(result.admitted)
+                self.assertEqual(result.reason, "ADMITTED_NO_EXECUTION")
 
     def test_wrong_signing_key_is_rejected(self):
         other = ec.generate_private_key(ec.SECP256R1())
