@@ -34,8 +34,8 @@ class AgentPlanPreviewSourceTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, activity + policy)
         self.assertIn("AgentPolicy.classify", policy)
-        self.assertIn("deviceActionsExecuted: Boolean = false", policy)
-        self.assertIn("authorized: Boolean = false", policy)
+        self.assertIn("val deviceActionsExecuted: Boolean get() = false", policy)
+        self.assertIn("val authorized: Boolean get() = false", policy)
         self.assertIn("onStop()", activity)
         self.assertIn("Preview only.", activity)
 

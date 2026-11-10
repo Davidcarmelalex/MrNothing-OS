@@ -9,10 +9,12 @@ package tech.mrnothing.os
 internal data class AgentPlanPreviewDecision(
     val action: String,
     val risk: ActionRisk,
-    val description: String,
-    val authorized: Boolean = false,
-    val deviceActionsExecuted: Boolean = false
-)
+    val description: String
+) {
+    // These invariants cannot be overridden through a constructor or copy().
+    val authorized: Boolean get() = false
+    val deviceActionsExecuted: Boolean get() = false
+}
 
 internal object AgentPlanPreview {
     fun inspect(action: String): AgentPlanPreviewDecision {
