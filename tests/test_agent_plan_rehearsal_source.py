@@ -16,6 +16,13 @@ class RehearsalSourceGate(unittest.TestCase):
         self.assertIn('val authorized: Boolean get() = false', source)
         self.assertIn('val deviceActionsExecuted: Boolean get() = false', source)
 
+    def test_begin_expires_stale_active_plan_before_replacement(self):
+        source = (SOURCE / 'AgentPlanRehearsal.kt').read_text()
+        begin = source.split('fun begin(sampleActions: List<String>): RehearsalSnapshot {', 1)[1]
+        begin = begin.split('fun acknowledgeSampleReview()', 1)[0]
+        self.assertLess(begin.index('if (expireIfNeeded()) return snapshotWithoutClock()'),
+                        begin.index('if (phase in setOf('))
+
     def test_launcher_clears_rehearsal_on_stop(self):
         source = (SOURCE / 'AgentPlanPreviewActivity.kt').read_text()
         self.assertIn('rehearsal.cancel()', source)

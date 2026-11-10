@@ -67,6 +67,39 @@ class AgentPlanRehearsalTest {
         assertEquals(RehearsalPhase.TIMED_OUT, rehearsal.snapshot().phase)
     }
 
+    @Test fun staleActiveBeginRequiresSeparateRestartAndClearsPriorPlan() {
+        var now = 100L
+        val rehearsal = AgentPlanRehearsal { now }
+        rehearsal.begin(listOf("get_battery", "open_app"))
+        now += 30_001L
+        val expired = rehearsal.begin(listOf("send_message"))
+        assertEquals(RehearsalPhase.TIMED_OUT, expired.phase)
+        assertNull(expired.displayedStep)
+        assertEquals(0, expired.totalSteps)
+        assertEquals(0, expired.reviewedSteps)
+        assertEquals(RehearsalPhase.TIMED_OUT, rehearsal.previewNext().phase)
+        val restarted = rehearsal.begin(listOf("get_battery"))
+        assertEquals(RehearsalPhase.READY, restarted.phase)
+        assertEquals(1, restarted.totalSteps)
+    }
+
+    @Test fun clockFailureDuringActiveBeginCannotKeepStalePlan() {
+        var clockFails = false
+        val rehearsal = AgentPlanRehearsal {
+            if (clockFails) throw IllegalStateException("clock unavailable")
+            100L
+        }
+        rehearsal.begin(listOf("get_battery", "open_app"))
+        clockFails = true
+        val expired = rehearsal.begin(listOf("send_message"))
+        assertEquals(RehearsalPhase.TIMED_OUT, expired.phase)
+        assertNull(expired.displayedStep)
+        assertEquals(0, expired.totalSteps)
+        assertFalse(expired.authorized)
+        clockFails = false
+        assertEquals(RehearsalPhase.READY, rehearsal.begin(listOf("get_battery")).phase)
+    }
+
     @Test fun clockExceptionAndNegativeTimeRefuse() {
         val bad = AgentPlanRehearsal { throw IllegalStateException("clock") }
         assertEquals(RehearsalPhase.REFUSED, bad.begin(listOf("get_battery")).phase)

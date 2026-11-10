@@ -20,6 +20,11 @@ class NoOpSupervisorSourceGate(unittest.TestCase):
         self.assertIn("val authorized: Boolean get() = false", source)
         self.assertIn("val deviceActionsExecuted: Boolean get() = false", source)
 
+    def test_completed_plan_is_terminal_even_if_snapshot_contains_step(self):
+        source = (SOURCE / "AgentNoOpSupervisor.kt").read_text()
+        self.assertIn("RehearsalPhase.COMPLETE, RehearsalPhase.CANCELLED", source)
+        self.assertIn("NoOpSupervisorVerdict.BLOCKED_TERMINAL_REHEARSAL", source)
+
     def test_owner_visible_activity_uses_deny_only_gate(self):
         activity = (SOURCE / "AgentPlanPreviewActivity.kt").read_text()
         self.assertIn("AgentNoOpSupervisor.inspect(snapshot)", activity)

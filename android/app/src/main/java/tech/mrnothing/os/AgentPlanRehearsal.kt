@@ -34,8 +34,11 @@ internal class AgentPlanRehearsal(private val elapsedRealtimeMillis: () -> Long)
 
     /** Refuses to replace an active rehearsal; caller input is snapshotted. */
     fun begin(sampleActions: List<String>): RehearsalSnapshot {
+        // A stale active plan must expire before any replacement decision. A
+        // second deliberate Begin is required to start again after timeout.
+        if (expireIfNeeded()) return snapshotWithoutClock()
         if (phase in setOf(RehearsalPhase.REVIEW_REQUIRED, RehearsalPhase.READY,
-                           RehearsalPhase.PREVIEWING)) return snapshot()
+                           RehearsalPhase.PREVIEWING)) return snapshotWithoutClock()
         val now = readClock() ?: return refuse("Monotonic clock unavailable.")
         val candidate = AgentPlanPreviewPlan.inspect(sampleActions)
         if (candidate.risk == ActionRisk.DENY || candidate.steps.isEmpty()) {
