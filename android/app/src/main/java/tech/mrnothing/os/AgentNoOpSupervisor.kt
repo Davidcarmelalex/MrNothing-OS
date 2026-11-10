@@ -26,15 +26,16 @@ internal data class NoOpSupervisorDecision(
 internal object AgentNoOpSupervisor {
     fun inspect(snapshot: RehearsalSnapshot): NoOpSupervisorDecision {
         if (snapshot.phase in setOf(
-                RehearsalPhase.CANCELLED, RehearsalPhase.TIMED_OUT, RehearsalPhase.REFUSED
+                RehearsalPhase.COMPLETE, RehearsalPhase.CANCELLED,
+                RehearsalPhase.TIMED_OUT, RehearsalPhase.REFUSED
             )
         ) {
             return NoOpSupervisorDecision(
                 NoOpSupervisorVerdict.BLOCKED_TERMINAL_REHEARSAL,
-                "Cancelled, expired or refused rehearsal; nothing may execute."
+                "Completed, cancelled, expired or refused rehearsal; nothing may execute."
             )
         }
-        if (snapshot.phase !in setOf(RehearsalPhase.PREVIEWING, RehearsalPhase.COMPLETE) ||
+        if (snapshot.phase != RehearsalPhase.PREVIEWING ||
             snapshot.displayedStep == null
         ) {
             return NoOpSupervisorDecision(

@@ -7,7 +7,7 @@ import org.junit.Test
 class AgentNoOpSupervisorTest {
     @Test fun lowRiskSampleIsNeverAuthorized() {
         val rehearsal = AgentPlanRehearsal { 100L }
-        rehearsal.begin(listOf("get_battery"))
+        rehearsal.begin(listOf("get_battery", "open_app"))
         val decision = AgentNoOpSupervisor.inspect(rehearsal.previewNext())
         assertEquals(NoOpSupervisorVerdict.BLOCKED_NO_VERIFIED_SESSION, decision.verdict)
         assertFalse(decision.authorized)
@@ -16,7 +16,7 @@ class AgentNoOpSupervisorTest {
 
     @Test fun sensitiveSampleAcknowledgementIsNotOwnerConsent() {
         val rehearsal = AgentPlanRehearsal { 100L }
-        rehearsal.begin(listOf("send_message"))
+        rehearsal.begin(listOf("send_message", "get_battery"))
         rehearsal.acknowledgeSampleReview()
         val decision = AgentNoOpSupervisor.inspect(rehearsal.previewNext())
         assertEquals(NoOpSupervisorVerdict.BLOCKED_NO_VERIFIED_SESSION, decision.verdict)
@@ -51,9 +51,21 @@ class AgentNoOpSupervisorTest {
             RehearsalPhase.COMPLETE, "open_app", 1, 1, "caller supplied"
         )
         val decision = AgentNoOpSupervisor.inspect(forged)
-        assertEquals(NoOpSupervisorVerdict.BLOCKED_NO_VERIFIED_SESSION, decision.verdict)
+        assertEquals(NoOpSupervisorVerdict.BLOCKED_TERMINAL_REHEARSAL, decision.verdict)
         assertFalse(decision.copy(verdict = NoOpSupervisorVerdict.BLOCKED_NO_ACTIVE_STEP).authorized)
         assertFalse(decision.copy(explanation = "allowed").deviceActionsExecuted)
+    }
+
+    @Test fun completedRealPlanIsTerminalEvenWithDisplayedStep() {
+        val rehearsal = AgentPlanRehearsal { 100L }
+        rehearsal.begin(listOf("get_battery"))
+        val completed = rehearsal.previewNext()
+        assertEquals(RehearsalPhase.COMPLETE, completed.phase)
+        assertEquals("get_battery", completed.displayedStep)
+        val decision = AgentNoOpSupervisor.inspect(completed)
+        assertEquals(NoOpSupervisorVerdict.BLOCKED_TERMINAL_REHEARSAL, decision.verdict)
+        assertFalse(decision.authorized)
+        assertFalse(decision.deviceActionsExecuted)
     }
 
     @Test fun unsupportedForgedStepIsBlocked() {
