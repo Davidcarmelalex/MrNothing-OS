@@ -55,11 +55,13 @@ class AgentPlanPreviewActivity : Activity() {
     }
 
     private fun showRehearsal(snapshot: RehearsalSnapshot) {
+        val admission = AgentNoOpSupervisor.inspect(snapshot)
         status.text = "Offline sample rehearsal (no AI inference):\n" +
             "State: ${snapshot.phase}\n" +
             "Step: ${snapshot.displayedStep ?: "None"}\n" +
             "Previewed: ${snapshot.reviewedSteps}/${snapshot.totalSteps}\n" +
             "${snapshot.explanation}\n" +
+            "Supervisor gate: ${admission.verdict}\n${admission.explanation}\n" +
             "Authorized: No · Device actions executed: No · No consent granted."
     }
 
