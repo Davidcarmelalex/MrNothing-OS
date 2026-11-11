@@ -11,6 +11,11 @@ import xml.etree.ElementTree as ET
 BOUNDS = re.compile(r"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$")
 PACKAGE = "tech.mrnothing.os"
 CHOOSER_LABEL = "Choose Mr. Nothing as Home"
+# Exact platform package IDs; substring matching alone can accept spoofed overlays.
+PERMISSION_CONTROLLER_PACKAGES = frozenset({
+    "com.android.permissioncontroller",
+    "com.google.android.permissioncontroller",
+})
 
 
 def tap_coordinates(path: Path, label: str = CHOOSER_LABEL) -> tuple[int, int]:
@@ -33,8 +38,14 @@ def tap_coordinates(path: Path, label: str = CHOOSER_LABEL) -> tuple[int, int]:
 def verify_consent_prompt(path: Path) -> None:
     root = ET.parse(path).getroot()
     nodes = list(root.iter("node"))
-    if not any("permissioncontroller" in n.attrib.get("package", "").lower() for n in nodes):
+    packages = {n.attrib.get("package", "") for n in nodes}
+    if not packages.intersection(PERMISSION_CONTROLLER_PACKAGES):
         raise ValueError("Android permission controller is not foreground")
+    # A role dialog must be a single, trusted controller window. Reject mixed
+    # launcher/overlay hierarchies rather than accepting a target label from
+    # another package and misclassifying the snapshot as system consent.
+    if len(packages) != 1 or not packages.issubset(PERMISSION_CONTROLLER_PACKAGES):
+        raise ValueError("Unexpected package in Android permission controller prompt")
     if not any(
         "Mr. Nothing" in n.attrib.get("text", "") or
         "Mr. Nothing" in n.attrib.get("content-desc", "")

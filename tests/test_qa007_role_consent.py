@@ -69,6 +69,47 @@ class Qa007ConsentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not identified"):
             classify_consent_screen(p)
 
+    def test_state_accepts_aosp_permission_controller_package(self):
+        p = self.xml(hierarchy('<node package="com.android.permissioncontroller" text="Set Mr. Nothing OS as default home?" />'))
+        self.assertEqual(classify_consent_screen(p), "prompt")
+
+    def test_state_rejects_permission_controller_package_spoof(self):
+        p = self.xml(hierarchy('<node package="com.google.android.permissioncontroller.evil" text="Set Mr. Nothing OS as default home?" />'))
+        with self.assertRaisesRegex(ValueError, "not foreground"):
+            classify_consent_screen(p)
+
+    def test_state_rejects_mixed_controller_and_unknown_overlay(self):
+        p = self.xml(hierarchy(
+            '<node package="com.google.android.permissioncontroller" text="Set Mr. Nothing OS as default home?" />',
+            '<node package="com.android.systemui" text="Overlay" />',
+        ))
+        with self.assertRaisesRegex(ValueError, "Unexpected package"):
+            classify_consent_screen(p)
+
+    def test_state_rejects_target_label_from_launcher_behind_controller(self):
+        p = self.xml(hierarchy(
+            '<node package="com.google.android.permissioncontroller" text="Unrelated role" />',
+            '<node package="tech.mrnothing.os" text="Mr. Nothing OS" />',
+        ))
+        with self.assertRaisesRegex(ValueError, "Unexpected package"):
+            classify_consent_screen(p)
+
+    def test_state_rejects_mixed_trusted_controller_packages(self):
+        p = self.xml(hierarchy(
+            '<node package="com.google.android.permissioncontroller" text="Set Mr. Nothing OS as default home?" />',
+            '<node package="com.android.permissioncontroller" text="Mr. Nothing OS" />',
+        ))
+        with self.assertRaisesRegex(ValueError, "Unexpected package"):
+            classify_consent_screen(p)
+
+    def test_direct_prompt_verifier_rejects_overlay(self):
+        p = self.xml(hierarchy(
+            '<node package="com.google.android.permissioncontroller" text="Set Mr. Nothing OS as default home?" />',
+            '<node package="com.example.overlay" text="OK" />',
+        ))
+        with self.assertRaisesRegex(ValueError, "Unexpected package"):
+            verify_consent_prompt(p)
+
     def test_dismissal_keeps_role(self):
         verify_no_implicit_grant("com.google.android.apps.nexuslauncher\n", "com.google.android.apps.nexuslauncher\n")
 
