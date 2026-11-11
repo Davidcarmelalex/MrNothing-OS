@@ -20,6 +20,7 @@ android {
         testInstrumentationRunnerArguments["class"] = listOf(
             "tech.mrnothing.os.AccessibilityDisclosureActivityTest",
             "tech.mrnothing.os.MemoryVaultManifestBoundaryTest",
+            "tech.mrnothing.os.AgentPlanPreviewActivityTest",
             "tech.mrnothing.os.AndroidAtomicAuthorityRecordPersistenceTest",
             "tech.mrnothing.os.AndroidAuthorityTrustCryptoFailureModeTest",
             "tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest",
