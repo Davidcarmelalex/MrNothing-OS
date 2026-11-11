@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from contextlib import closing
 import stat
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -170,7 +171,8 @@ class AdmissionTests(unittest.TestCase):
         ledger = DurableReplayLedger(path)
         self.assertTrue(self.check(ledger=ledger).admitted)
         os.unlink(path)
-        with sqlite3.connect(path):
+        # sqlite3.Connection.__exit__ commits/rolls back but does not close.
+        with closing(sqlite3.connect(path)):
             pass
         self.assertEqual(self.check(self.command(command_id="id-2"), ledger=ledger).reason,
                          "LEDGER_UNAVAILABLE")
