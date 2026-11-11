@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import stat
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 import unittest
@@ -68,6 +69,64 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(TrackedConnection.opened, 3)
         self.assertEqual(TrackedConnection.closed, TrackedConnection.opened)
 
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file mode")
+    def test_replay_file_is_private_under_permissive_umask(self):
+        old = os.umask(0o022)
+        try:
+            ledger = DurableReplayLedger(os.path.join(self.temp.name, "private.sqlite"))
+        finally:
+            os.umask(old)
+        self.assertEqual(stat.S_IMODE(os.stat(ledger.path).st_mode), 0o600)
+        self.assertTrue(ledger.reserve("pixel", "nonce", 100))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file mode")
+    def test_existing_world_readable_replay_file_rejected(self):
+        path = os.path.join(self.temp.name, "exposed.sqlite")
+        with open(path, "wb") as file:
+            file.write(b"")
+        os.chmod(path, 0o644)
+        with self.assertRaisesRegex(ValueError, "owner-only"):
+            DurableReplayLedger(path)
+
+    def test_symlink_replay_file_rejected(self):
+        path = os.path.join(self.temp.name, "target.sqlite")
+        with open(path, "wb"):
+            pass
+        link = os.path.join(self.temp.name, "link.sqlite")
+        try:
+            os.symlink(path, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable")
+        with self.assertRaisesRegex(ValueError, "non-symlink"):
+            DurableReplayLedger(link)
+
+    def test_replaced_replay_file_fails_closed(self):
+        path = os.path.join(self.temp.name, "replace.sqlite")
+        ledger = DurableReplayLedger(path)
+        self.assertTrue(self.check(ledger=ledger).admitted)
+        os.unlink(path)
+        with sqlite3.connect(path):
+            pass
+        self.assertEqual(self.check(self.command(command_id="id-2"), ledger=ledger).reason,
+                         "LEDGER_UNAVAILABLE")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file mode")
+    def test_replay_file_permission_downgrade_fails_closed(self):
+        ledger = DurableReplayLedger(os.path.join(self.temp.name, "downgrade.sqlite"))
+        os.chmod(ledger.path, 0o644)
+        self.assertEqual(self.check(ledger=ledger).reason, "LEDGER_UNAVAILABLE")
+
+    def test_memory_only_replay_ledger_rejected(self):
+        with self.assertRaisesRegex(ValueError, "durable"):
+            DurableReplayLedger(":memory:")
+
+    def test_non_integer_ledger_limits_rejected(self):
+        for ttl, capacity in [(True, 10), (60, False), (1.5, 10)]:
+            with self.subTest(ttl=ttl, capacity=capacity):
+                with self.assertRaises(ValueError):
+                    DurableReplayLedger(os.path.join(self.temp.name, "bad.sqlite"),
+                                        ttl_seconds=ttl, max_entries=capacity)
 
     def test_replay_survives_restart(self):
         self.assertTrue(self.check().admitted)
