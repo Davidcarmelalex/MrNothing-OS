@@ -466,6 +466,22 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn('.joinToString(",")', gradle)
 
 
+    def test_split_instrumentation_evidence_gate_is_required_before_smoke(self):
+        gate = self.workflow.index("QA-STACK-011: require complete split instrumentation evidence")
+        self.assertLess(self.workflow.index("SEC-020B4D: Activity destruction"), gate)
+        self.assertLess(self.workflow.index("SEC-023B1A-QA: require executed"), gate)
+        self.assertLess(gate, self.workflow.index("Verify launcher runtime and recovery route"))
+        step = self.workflow[gate:self.workflow.index("Verify launcher runtime and recovery route", gate)]
+        for token in (
+            "scripts/qa_stack011_instrumentation_evidence.py",
+            '"$QA005_OUTPUT/uncredentialed-instrumentation"',
+            "android/app/build/outputs/androidTest-results/connected/debug",
+            '"$QA005_OUTPUT/split-instrumentation-summary.json"',
+        ):
+            self.assertIn(token, step)
+        self.assertIn("'scripts/qa_stack011_*'", self.workflow)
+        self.assertIn("'tests/test_qa_stack011_*'", self.workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
