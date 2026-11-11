@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 import unittest
+from unittest.mock import patch
 from dataclasses import replace
 
 from core.command_admission import DurableReplayLedger, admit_signed_command
@@ -40,6 +41,33 @@ class AdmissionTests(unittest.TestCase):
     def test_replay_blocked(self):
         self.assertTrue(self.check().admitted)
         self.assertFalse(self.check().admitted)
+
+    def test_replay_ledger_closes_every_connection(self):
+        class TrackedConnection(sqlite3.Connection):
+            opened = 0
+            closed = 0
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                type(self).opened += 1
+
+            def close(self):
+                type(self).closed += 1
+                super().close()
+
+        def tracked_connect(ledger):
+            return sqlite3.connect(
+                ledger.path, timeout=5, isolation_level=None,
+                factory=TrackedConnection,
+            )
+
+        with patch.object(DurableReplayLedger, "_connect", tracked_connect):
+            ledger = DurableReplayLedger(os.path.join(self.temp.name, "tracked.sqlite"))
+            self.assertTrue(ledger.reserve("pixel-1", "nonce-1", 100))
+            self.assertFalse(ledger.reserve("pixel-1", "nonce-1", 100))
+        self.assertEqual(TrackedConnection.opened, 3)
+        self.assertEqual(TrackedConnection.closed, TrackedConnection.opened)
+
 
     def test_replay_survives_restart(self):
         self.assertTrue(self.check().admitted)

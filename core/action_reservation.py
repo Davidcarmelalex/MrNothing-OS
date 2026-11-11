@@ -220,11 +220,15 @@ class DurableActionReservationLedger:
             self.path, timeout=self._busy_timeout_ms / 1000,
             isolation_level=None,
         )
-        db.row_factory = sqlite3.Row
-        db.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-        db.execute("PRAGMA foreign_keys=ON")
-        db.execute("PRAGMA synchronous=FULL")
-        return db
+        try:
+            db.row_factory = sqlite3.Row
+            db.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("PRAGMA synchronous=FULL")
+            return db
+        except Exception:
+            db.close()
+            raise
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
