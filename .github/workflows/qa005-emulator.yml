@@ -27,6 +27,8 @@ on:
       - 'scripts/qa020b2_*'
       - 'tests/test_qa020b2_*'
       - 'scripts/qa0203_*'
+      - 'scripts/qa_ux008_*'
+      - 'tests/test_qa_ux008_*'
       - 'tests/test_qa0203_*'
       - 'android/app/src/debug/**'
   workflow_dispatch:
@@ -40,7 +42,7 @@ concurrency:
 jobs:
   emulator-smoke:
     # Main-target PRs retain their existing gate; development-target PRs run only for this audited candidate.
-    if: github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
+    if: github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-ux008-agent-rehearsal-emulator-20261111') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -238,6 +240,10 @@ jobs:
         env:
           QA020B3_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa020b3
         run: bash scripts/qa0203_credential_prompt_smoke.sh
+      - name: "QA-UX-008: offline agent rehearsal and 200% accessible UI"
+        env:
+          QAUX008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa-ux008
+        run: bash scripts/qa_ux008_agent_plan_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
