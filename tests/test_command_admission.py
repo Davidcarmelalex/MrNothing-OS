@@ -140,8 +140,68 @@ class AdmissionTests(unittest.TestCase):
         fake_stat = SimpleNamespace(
             st_mode=stat.S_IFDIR | 0o1777, st_uid=os.geteuid() + 1000,
         )
-        with patch("core.command_admission.os.stat", return_value=fake_stat):
+        with patch("core.command_admission.os.lstat", return_value=fake_stat):
             self.assertFalse(ledger._parent_is_safe())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_symlinked_parent_rejected_even_when_target_private(self):
+        real = os.path.join(self.temp.name, "real")
+        os.mkdir(real, 0o700)
+        alias = os.path.join(self.temp.name, "alias")
+        os.symlink(real, alias)
+        with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+            DurableReplayLedger(os.path.join(alias, "ledger.sqlite"))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_symlinked_grandparent_rejected(self):
+        real = os.path.join(self.temp.name, "real")
+        os.makedirs(os.path.join(real, "private"), mode=0o700)
+        alias = os.path.join(self.temp.name, "alias")
+        os.symlink(real, alias)
+        with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+            DurableReplayLedger(os.path.join(alias, "private", "ledger.sqlite"))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_world_writable_nonsticky_grandparent_rejected(self):
+        ancestor = os.path.join(self.temp.name, "unsafe")
+        private = os.path.join(ancestor, "private")
+        os.makedirs(private, mode=0o700)
+        os.chmod(ancestor, 0o777)
+        try:
+            with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+                DurableReplayLedger(os.path.join(private, "ledger.sqlite"))
+        finally:
+            os.chmod(ancestor, 0o700)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_ancestor_permission_relaxation_fails_closed(self):
+        ancestor = os.path.join(self.temp.name, "safe")
+        private = os.path.join(ancestor, "private")
+        os.makedirs(private, mode=0o700)
+        ledger = DurableReplayLedger(os.path.join(private, "ledger.sqlite"))
+        self.assertTrue(self.check(ledger=ledger).admitted)
+        os.chmod(ancestor, 0o777)
+        try:
+            self.assertEqual(
+                self.check(self.command(command_id="id-2"), ledger=ledger).reason,
+                "LEDGER_UNAVAILABLE",
+            )
+        finally:
+            os.chmod(ancestor, 0o700)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_retargeted_parent_symlink_fails_closed_without_inode_change(self):
+        parent = os.path.join(self.temp.name, "private")
+        os.mkdir(parent, 0o700)
+        ledger = DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+        self.assertTrue(self.check(ledger=ledger).admitted)
+        moved = os.path.join(self.temp.name, "private-old")
+        os.rename(parent, moved)
+        os.symlink(moved, parent)
+        self.assertEqual(
+            self.check(self.command(command_id="id-2"), ledger=ledger).reason,
+            "LEDGER_UNAVAILABLE",
+        )
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
     def test_sticky_world_writable_parent_is_supported(self):
