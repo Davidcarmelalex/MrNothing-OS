@@ -11,6 +11,11 @@ import xml.etree.ElementTree as ET
 BOUNDS = re.compile(r"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$")
 PACKAGE = "tech.mrnothing.os"
 CHOOSER_LABEL = "Choose Mr. Nothing as Home"
+# Exact platform package IDs; substring matching alone can accept spoofed overlays.
+PERMISSION_CONTROLLER_PACKAGES = frozenset({
+    "com.android.permissioncontroller",
+    "com.google.android.permissioncontroller",
+})
 
 
 def tap_coordinates(path: Path, label: str = CHOOSER_LABEL) -> tuple[int, int]:
@@ -33,8 +38,14 @@ def tap_coordinates(path: Path, label: str = CHOOSER_LABEL) -> tuple[int, int]:
 def verify_consent_prompt(path: Path) -> None:
     root = ET.parse(path).getroot()
     nodes = list(root.iter("node"))
-    if not any("permissioncontroller" in n.attrib.get("package", "").lower() for n in nodes):
+    packages = {n.attrib.get("package", "") for n in nodes}
+    if not packages.intersection(PERMISSION_CONTROLLER_PACKAGES):
         raise ValueError("Android permission controller is not foreground")
+    # A role dialog must be a single, trusted controller window. Reject mixed
+    # launcher/overlay hierarchies rather than accepting a target label from
+    # another package and misclassifying the snapshot as system consent.
+    if len(packages) != 1 or not packages.issubset(PERMISSION_CONTROLLER_PACKAGES):
+        raise ValueError("Unexpected package in Android permission controller prompt")
     if not any(
         "Mr. Nothing" in n.attrib.get("text", "") or
         "Mr. Nothing" in n.attrib.get("content-desc", "")
@@ -42,6 +53,22 @@ def verify_consent_prompt(path: Path) -> None:
     ):
         raise ValueError("Mr. Nothing is not identified in the consent prompt")
 
+
+
+def classify_consent_screen(path: Path) -> str:
+    """Classify only a valid Android role prompt or the unchanged launcher.
+
+    An unknown window or a malformed system dialog must fail closed: the
+    harness may retry a lost tap, but must never tap through an overlay.
+    """
+    nodes = list(ET.parse(path).getroot().iter("node"))
+    if any("permissioncontroller" in n.attrib.get("package", "").lower() for n in nodes):
+        verify_consent_prompt(path)
+        return "prompt"
+    if not nodes or any(n.attrib.get("package") != PACKAGE for n in nodes):
+        raise ValueError("Unexpected foreground window during HOME consent")
+    tap_coordinates(path)
+    return "launcher"
 
 def verify_no_implicit_grant(before: str, after: str) -> None:
     def normalize(raw: str) -> list[str]:
@@ -58,8 +85,10 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[1] == "prompt":
         verify_consent_prompt(Path(sys.argv[2]))
         print("QA-007: permission-controller prompt is visible")
+    elif len(sys.argv) == 3 and sys.argv[1] == "state":
+        print(classify_consent_screen(Path(sys.argv[2])))
     elif len(sys.argv) == 4 and sys.argv[1] == "unchanged":
         verify_no_implicit_grant(Path(sys.argv[2]).read_text(), Path(sys.argv[3]).read_text())
         print("QA-007: HOME role unchanged after dismissing consent")
     else:
-        raise SystemExit("usage: qa007_role_consent.py tap|prompt XML or unchanged BEFORE AFTER")
+        raise SystemExit("usage: qa007_role_consent.py tap|prompt|state XML or unchanged BEFORE AFTER")

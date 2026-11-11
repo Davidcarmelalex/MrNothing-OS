@@ -9,7 +9,8 @@ import subprocess
 import sys
 import time
 import unittest
-from contextlib import contextmanager
+from unittest.mock import Mock, patch
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -60,7 +61,10 @@ class CommitBoundaryConnection:
         if statement.strip().upper() == "COMMIT":
             if mode == "after":
                 self._connection.execute(statement, *parameters)
-            Path(marker_path).write_text("ready", encoding="ascii")
+            marker = Path(marker_path)
+            staged = marker.with_name(marker.name + ".tmp")
+            staged.write_text("ready", encoding="ascii")
+            staged.replace(marker)
             while True:
                 time.sleep(1)
         return self._connection.execute(statement, *parameters)
@@ -74,6 +78,14 @@ registry.apply_signed_enrollment(
     now_epoch_ms=int(now_text),
 )
 """
+
+
+def _commit_boundary_marker_ready(marker: Path) -> bool:
+    """A created but not-yet-written marker is not a completed signal."""
+    try:
+        return marker.read_text(encoding="ascii") == "ready"
+    except FileNotFoundError:
+        return False
 
 
 class CommitAcknowledgementLossConnection:
@@ -645,6 +657,14 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(EnrollmentRegistryError):
             self.registry.lookup_active_device("pixel-1")
 
+    def test_failed_connection_setup_closes_handle_and_denies(self):
+        handle = Mock()
+        handle.execute.side_effect = sqlite3.DatabaseError("injected PRAGMA failure")
+        with patch("core.owner_enrollment_registry.sqlite3.connect", return_value=handle):
+            with self.assertRaises(EnrollmentRegistryError):
+                self.registry._connect()
+        handle.close.assert_called_once()
+
     def test_corrupt_database_fails_closed_without_reset(self):
         self.path.write_bytes(b"corrupt")
         with self.assertRaises(EnrollmentRegistryError):
@@ -737,6 +757,16 @@ class RegistryTests(unittest.TestCase):
         self.assertFalse(revoke_results[0].active)
 
 
+    def test_commit_marker_readiness_rejects_early_file_visibility(self):
+        marker = Path(self.temp.name) / "early-commit.marker"
+        self.assertFalse(_commit_boundary_marker_ready(marker))
+        marker.touch()
+        self.assertFalse(_commit_boundary_marker_ready(marker))
+        marker.write_text("rea", encoding="ascii")
+        self.assertFalse(_commit_boundary_marker_ready(marker))
+        marker.write_text("ready", encoding="ascii")
+        self.assertTrue(_commit_boundary_marker_ready(marker))
+
     def _kill_enrollment_process_at_commit(self, envelope, *, mode):
         marker = Path(self.temp.name) / f"enrollment-{mode}-commit.marker"
         command = [
@@ -761,7 +791,7 @@ class RegistryTests(unittest.TestCase):
         )
         try:
             deadline = time.monotonic() + 15.0
-            while not marker.is_file():
+            while not _commit_boundary_marker_ready(marker):
                 if process.poll() is not None:
                     stdout, stderr = process.communicate(timeout=5)
                     self.fail(
@@ -778,7 +808,7 @@ class RegistryTests(unittest.TestCase):
                     )
                 time.sleep(0.01)
 
-            self.assertEqual(marker.read_text(encoding="ascii"), "ready")
+            self.assertTrue(_commit_boundary_marker_ready(marker))
             process.kill()
             process.communicate(timeout=5)
             self.assertNotEqual(process.returncode, 0)
@@ -1149,7 +1179,7 @@ class RegistryTests(unittest.TestCase):
     def test_reconcile_unknown_outcome_rejects_current_row_history_mismatch(self):
         envelope = self.statement(enrollment_id="current-row-mismatch")
         outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute(
                 "UPDATE owner_device SET transport_certificate_sha256=? WHERE device_id=?",
                 ("0" * 64, "pixel-1"),

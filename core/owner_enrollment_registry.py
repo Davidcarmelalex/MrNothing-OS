@@ -509,6 +509,7 @@ class SQLiteOwnerEnrollmentRegistry:
     def _connect(self) -> sqlite3.Connection:
         self._check_file()
         uri = self.path.as_uri() + "?mode=rw"
+        db = None
         try:
             db = sqlite3.connect(
                 uri, uri=True, timeout=self.timeout_seconds, isolation_level=None
@@ -518,6 +519,8 @@ class SQLiteOwnerEnrollmentRegistry:
             db.execute("PRAGMA synchronous=FULL")
             return db
         except sqlite3.Error as exc:
+            if db is not None:
+                db.close()
             raise EnrollmentRegistryError("cannot open enrollment database") from exc
 
     @staticmethod

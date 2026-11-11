@@ -4,10 +4,13 @@ This is a prototype admission gate, NOT a deployed remote-control endpoint.
 The caller must authenticate the transport and select a unique key for the
 authenticated device. No command is executed by this module.
 """
+from contextlib import closing
 from dataclasses import dataclass
 import hmac
 import math
+import os
 import sqlite3
+import stat
 import string
 from pathlib import Path
 
@@ -77,12 +80,18 @@ class DurableReplayLedger:
     """
 
     def __init__(self, path: str | Path, *, ttl_seconds: int = 60, max_entries: int = 10000):
-        if ttl_seconds < 1 or max_entries < 1:
+        if (type(ttl_seconds) is not int or ttl_seconds < 1
+                or type(max_entries) is not int or max_entries < 1):
             raise ValueError("invalid ledger limits")
-        self.path = str(path)
+        raw_path = os.fspath(path)
+        if (type(raw_path) is not str or not raw_path.strip()
+                or raw_path == ":memory:" or raw_path.startswith("file:")):
+            raise ValueError("replay ledger requires a durable filesystem path")
+        self.path = str(Path(raw_path).absolute())
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
-        with self._connect() as db:
+        self._file_identity = self._prepare_file()
+        with closing(self._connect()) as db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS seen ("
                 "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
@@ -90,12 +99,77 @@ class DurableReplayLedger:
             )
             db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
 
+    def _parent_is_safe(self) -> bool:
+        """Reject directories where other users can replace the ledger path."""
+        if os.name != "posix":
+            return True
+        try:
+            info = os.stat(os.path.dirname(self.path))
+        except OSError:
+            return False
+        writable_by_others = bool(info.st_mode & 0o022)
+        sticky_protected = bool(info.st_mode & stat.S_ISVTX)
+        trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
+        return (stat.S_ISDIR(info.st_mode)
+                and (not writable_by_others
+                     or (sticky_protected and trusted_directory_owner)))
+
+    def _prepare_file(self) -> tuple[int, int]:
+        """Create a private ledger before SQLite opens it; reject unsafe files."""
+        if not self._parent_is_safe():
+            raise ValueError("replay ledger parent directory is unsafe")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(self.path, flags, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            os.close(fd)
+        try:
+            info = os.stat(self.path, follow_symlinks=False)
+        except OSError as error:
+            raise ValueError("replay ledger file unavailable") from error
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("replay ledger must be a regular non-symlink file")
+        if os.name == "posix" and (
+            stat.S_IMODE(info.st_mode) & 0o077
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+        ):
+            raise ValueError("replay ledger file must be owner-only and unlinked elsewhere")
+        return (info.st_dev, info.st_ino)
+
+    def _verify_file(self) -> None:
+        """Deny reuse if the file is deleted, replaced, or made accessible to others."""
+        try:
+            info = os.stat(self.path, follow_symlinks=False)
+        except OSError as error:
+            raise sqlite3.OperationalError("replay ledger file unavailable") from error
+        if (not stat.S_ISREG(info.st_mode)
+                or (info.st_dev, info.st_ino) != self._file_identity
+                or not self._parent_is_safe()
+                or (os.name == "posix" and (
+                    stat.S_IMODE(info.st_mode) & 0o077
+                    or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1
+                ))):
+            raise sqlite3.OperationalError("replay ledger file identity or permissions changed")
+
     def _connect(self):
-        return sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        self._verify_file()
+        db = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        try:
+            self._verify_file()
+            return db
+        except Exception:
+            db.close()
+            raise
 
     def reserve(self, device_id: str, command_id: str, now: int) -> bool:
         """Reserve once atomically; database failures propagate to fail closed."""
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
                 db.execute("DELETE FROM seen WHERE seen_at < ?", (now - self.ttl_seconds,))
