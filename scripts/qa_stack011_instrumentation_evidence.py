@@ -93,9 +93,11 @@ def _read_suite(directory: Path, allowed: frozenset[str], phase: str) -> dict:
                 while parent is not None and parent.tag != "testsuite":
                     parent = parents.get(parent)
                 raw_class = parent.get("name") if parent is not None else None
-            if not raw_class or (("." in raw_class) and not raw_class.startswith(PACKAGE)):
+            # Require an exact fully qualified instrumentation package. A bare
+            # allowlisted class name must not satisfy an evidence provenance gate.
+            if not raw_class or not raw_class.startswith(PACKAGE):
                 raise EvidenceError(f"{phase}: missing or unexpected testcase package")
-            cls = raw_class.removeprefix(PACKAGE)
+            cls = raw_class[len(PACKAGE):]
             method = case.get("name")
             if cls not in allowed or not method:
                 raise EvidenceError(f"{phase}: unexpected class or missing method: {cls}")

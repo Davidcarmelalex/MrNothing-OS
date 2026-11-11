@@ -53,6 +53,34 @@ class SplitInstrumentationEvidenceTests(unittest.TestCase):
         with self.assertRaises(EvidenceError):
             verify_reports(self.unlocked, self.credentialed)
 
+    def test_rejects_unqualified_testcase_classname(self):
+        p = self.unlocked / "TEST-AgentPlanPreviewActivityTest.xml"
+        tree = ET.parse(p)
+        for case in tree.getroot().iter("testcase"):
+            case.set("classname", "AgentPlanPreviewActivityTest")
+        tree.write(p)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.unlocked, self.credentialed)
+
+    def test_rejects_foreign_testcase_package(self):
+        p = self.unlocked / "TEST-AgentPlanPreviewActivityTest.xml"
+        tree = ET.parse(p)
+        for case in tree.getroot().iter("testcase"):
+            case.set("classname", "org.example.AgentPlanPreviewActivityTest")
+        tree.write(p)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.unlocked, self.credentialed)
+
+    def test_rejects_unqualified_fallback_suite_name(self):
+        p = self.unlocked / "TEST-AgentPlanPreviewActivityTest.xml"
+        tree = ET.parse(p)
+        tree.getroot().set("name", "AgentPlanPreviewActivityTest")
+        for case in tree.getroot().iter("testcase"):
+            case.attrib.pop("classname", None)
+        tree.write(p)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.unlocked, self.credentialed)
+
     def test_rejects_cross_suite_class_contamination(self):
         self.populate(self.credentialed, UNLOCKED_CLASSES, 37)
         with self.assertRaises(EvidenceError):
