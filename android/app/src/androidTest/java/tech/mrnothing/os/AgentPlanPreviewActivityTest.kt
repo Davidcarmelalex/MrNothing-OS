@@ -126,6 +126,47 @@ class AgentPlanPreviewActivityTest : InstrumentationTestCase() {
         }
     }
 
+    fun testSwitchingPreviewModesInvalidatesAcknowledgedRehearsal() {
+        var main: MainActivity? = null
+        var preview: AgentPlanPreviewActivity? = null
+        try {
+            val pair = launch()
+            main = pair.first
+            preview = pair.second
+            val screen = pair.second
+
+            click(screen, "Start offline sample rehearsal")
+            click(screen, "Acknowledge simulation instructions")
+            click(screen, "Preview next sample step")
+            assertStatus(screen, "State: PREVIEWING", "Previewed: 1/3")
+
+            click(screen, "Preview battery request")
+            assertTrue(texts(screen.window.decorView).any {
+                it.contains("Preview only.") && it.contains("Authorized: No")
+            })
+            click(screen, "Preview next sample step")
+            assertStatus(screen, "State: CANCELLED", "Previewed: 0/0",
+                "Supervisor gate: BLOCKED_TERMINAL_REHEARSAL")
+
+            click(screen, "Start offline sample rehearsal")
+            assertStatus(screen, "State: REVIEW_REQUIRED", "Previewed: 0/3")
+            click(screen, "Acknowledge simulation instructions")
+            click(screen, "Preview next sample step")
+            assertStatus(screen, "State: PREVIEWING", "Previewed: 1/3")
+
+            click(screen, "Preview multi-step plan")
+            assertTrue(texts(screen.window.decorView).any {
+                it.contains("Fixed sample plan (no AI inference):") &&
+                    it.contains("Authorized: No")
+            })
+            click(screen, "Preview next sample step")
+            assertStatus(screen, "State: CANCELLED", "Previewed: 0/0",
+                "Supervisor gate: BLOCKED_TERMINAL_REHEARSAL")
+        } finally {
+            finish(main, preview)
+        }
+    }
+
     fun testOnStopClearsActiveRehearsalWithoutGrant() {
         var main: MainActivity? = null
         var preview: AgentPlanPreviewActivity? = null

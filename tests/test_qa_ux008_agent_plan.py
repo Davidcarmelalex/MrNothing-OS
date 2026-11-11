@@ -69,6 +69,16 @@ class AgentPlanUiParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             helper.focused_button(hierarchy(node(focused="true", **{"content-desc": ""})))
 
+    def test_switching_preview_modes_cancels_hidden_rehearsal_cursor(self):
+        activity = (ROOT / "android/app/src/main/java/tech/mrnothing/os/AgentPlanPreviewActivity.kt").read_text()
+        instrumentation = (ROOT / "android/app/src/androidTest/java/tech/mrnothing/os/AgentPlanPreviewActivityTest.kt").read_text()
+        for function, next_function in (("private fun preview(action: String)", "private fun previewPlan()"),
+                                        ("private fun previewPlan()", "private fun showRehearsal(")):
+            section = activity.split(function, 1)[1].split(next_function, 1)[0]
+            self.assertIn("rehearsal.cancel()", section)
+        self.assertIn("testSwitchingPreviewModesInvalidatesAcknowledgedRehearsal", instrumentation)
+        self.assertIn("Supervisor gate: BLOCKED_TERMINAL_REHEARSAL", instrumentation)
+
     def test_instrumentation_is_registered_and_scope_is_exact(self):
         gradle = (ROOT / "android/app/build.gradle.kts").read_text()
         kotlin = (ROOT / "android/app/src/androidTest/java/tech/mrnothing/os/AgentPlanPreviewActivityTest.kt").read_text()
