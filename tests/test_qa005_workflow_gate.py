@@ -404,7 +404,7 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertTrue(discovered, "no InstrumentationTestCase classes were discovered")
         self.assertEqual(sorted(discovered), sorted(configured))
         self.assertEqual(len(configured), len(set(configured)))
-        self.assertEqual(5, len(configured))
+        self.assertEqual(6, len(configured))
         self.assertIn('.joinToString(",")', gradle)
 
 
