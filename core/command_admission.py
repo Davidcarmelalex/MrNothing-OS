@@ -103,16 +103,27 @@ class DurableReplayLedger:
         """Reject directories where other users can replace the ledger path."""
         if os.name != "posix":
             return True
-        try:
-            info = os.stat(os.path.dirname(self.path))
-        except OSError:
-            return False
-        writable_by_others = bool(info.st_mode & 0o022)
-        sticky_protected = bool(info.st_mode & stat.S_ISVTX)
-        trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
-        return (stat.S_ISDIR(info.st_mode)
-                and (not writable_by_others
-                     or (sticky_protected and trusted_directory_owner)))
+        # Check every ancestor, not only the immediate parent: a writable
+        # grandparent can replace an otherwise private ledger directory.
+        # lstat deliberately rejects symlink components, which could be
+        # retargeted without changing the database inode.
+        directory = os.path.dirname(self.path)
+        while True:
+            try:
+                info = os.lstat(directory)
+            except OSError:
+                return False
+            writable_by_others = bool(info.st_mode & 0o022)
+            sticky_protected = bool(info.st_mode & stat.S_ISVTX)
+            trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
+            if (not stat.S_ISDIR(info.st_mode)
+                    or not trusted_directory_owner
+                    or (writable_by_others and not sticky_protected)):
+                return False
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                return True
+            directory = parent
 
     def _prepare_file(self) -> tuple[int, int]:
         """Create a private ledger before SQLite opens it; reject unsafe files."""
