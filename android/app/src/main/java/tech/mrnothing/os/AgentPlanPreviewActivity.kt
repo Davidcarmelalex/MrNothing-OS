@@ -36,6 +36,9 @@ class AgentPlanPreviewActivity : Activity() {
     }
 
     private fun preview(action: String) {
+        // Switching preview modes must invalidate any acknowledged rehearsal.
+        // A subsequent "next step" must never resume a hidden sample cursor.
+        rehearsal.cancel()
         val decision = AgentPlanPreview.inspect(action)
         status.text = "Sample: ${decision.action}\nRisk: ${decision.risk}\n" +
             "${decision.description}\n" +
@@ -43,6 +46,8 @@ class AgentPlanPreviewActivity : Activity() {
     }
 
     private fun previewPlan() {
+        // Fixed-plan inspection is independent of an active supervised rehearsal.
+        rehearsal.cancel()
         val plan = AgentPlanPreviewPlan.inspect(
             listOf("get_battery", "open_app", "send_message")
         )
