@@ -89,6 +89,70 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "owner-only"):
             DurableReplayLedger(path)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX file ownership")
+    def test_hardlinked_replay_file_rejected_at_initialization(self):
+        path = os.path.join(self.temp.name, "linked.sqlite")
+        with open(path, "wb"):
+            pass
+        os.chmod(path, 0o600)
+        os.link(path, os.path.join(self.temp.name, "alias.sqlite"))
+        with self.assertRaisesRegex(ValueError, "unlinked elsewhere"):
+            DurableReplayLedger(path)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file ownership")
+    def test_new_hardlink_causes_fail_closed_admission(self):
+        ledger = DurableReplayLedger(os.path.join(self.temp.name, "hardlink.sqlite"))
+        self.assertTrue(self.check(ledger=ledger).admitted)
+        alias = os.path.join(self.temp.name, "alias.sqlite")
+        os.link(ledger.path, alias)
+        self.assertEqual(
+            self.check(self.command(command_id="id-2"), ledger=ledger).reason,
+            "LEDGER_UNAVAILABLE",
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_world_writable_nonsticky_parent_rejected(self):
+        parent = os.path.join(self.temp.name, "unsafe")
+        os.mkdir(parent, 0o700)
+        os.chmod(parent, 0o777)
+        try:
+            with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+                DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+        finally:
+            os.chmod(parent, 0o700)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_parent_permission_downgrade_fails_closed(self):
+        parent = os.path.join(self.temp.name, "downgraded")
+        os.mkdir(parent, 0o700)
+        ledger = DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+        os.chmod(parent, 0o777)
+        try:
+            self.assertEqual(self.check(ledger=ledger).reason, "LEDGER_UNAVAILABLE")
+        finally:
+            os.chmod(parent, 0o700)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_untrusted_sticky_directory_owner_is_rejected(self):
+        from types import SimpleNamespace
+        ledger = DurableReplayLedger(os.path.join(self.temp.name, "trusted.sqlite"))
+        fake_stat = SimpleNamespace(
+            st_mode=stat.S_IFDIR | 0o1777, st_uid=os.geteuid() + 1000,
+        )
+        with patch("core.command_admission.os.stat", return_value=fake_stat):
+            self.assertFalse(ledger._parent_is_safe())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_sticky_world_writable_parent_is_supported(self):
+        parent = os.path.join(self.temp.name, "sticky")
+        os.mkdir(parent, 0o700)
+        os.chmod(parent, 0o1777)
+        try:
+            ledger = DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+            self.assertTrue(ledger.reserve("pixel", "nonce", 100))
+        finally:
+            os.chmod(parent, 0o700)
+
     def test_symlink_replay_file_rejected(self):
         path = os.path.join(self.temp.name, "target.sqlite")
         with open(path, "wb"):

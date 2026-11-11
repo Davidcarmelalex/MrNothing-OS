@@ -99,8 +99,25 @@ class DurableReplayLedger:
             )
             db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
 
+    def _parent_is_safe(self) -> bool:
+        """Reject directories where other users can replace the ledger path."""
+        if os.name != "posix":
+            return True
+        try:
+            info = os.stat(os.path.dirname(self.path))
+        except OSError:
+            return False
+        writable_by_others = bool(info.st_mode & 0o022)
+        sticky_protected = bool(info.st_mode & stat.S_ISVTX)
+        trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
+        return (stat.S_ISDIR(info.st_mode)
+                and (not writable_by_others
+                     or (sticky_protected and trusted_directory_owner)))
+
     def _prepare_file(self) -> tuple[int, int]:
         """Create a private ledger before SQLite opens it; reject unsafe files."""
+        if not self._parent_is_safe():
+            raise ValueError("replay ledger parent directory is unsafe")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
@@ -117,9 +134,11 @@ class DurableReplayLedger:
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("replay ledger must be a regular non-symlink file")
         if os.name == "posix" and (
-            stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid != os.geteuid()
+            stat.S_IMODE(info.st_mode) & 0o077
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
         ):
-            raise ValueError("replay ledger file must be owner-only")
+            raise ValueError("replay ledger file must be owner-only and unlinked elsewhere")
         return (info.st_dev, info.st_ino)
 
     def _verify_file(self) -> None:
@@ -130,8 +149,11 @@ class DurableReplayLedger:
             raise sqlite3.OperationalError("replay ledger file unavailable") from error
         if (not stat.S_ISREG(info.st_mode)
                 or (info.st_dev, info.st_ino) != self._file_identity
+                or not self._parent_is_safe()
                 or (os.name == "posix" and (
-                    stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid != os.geteuid()
+                    stat.S_IMODE(info.st_mode) & 0o077
+                    or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1
                 ))):
             raise sqlite3.OperationalError("replay ledger file identity or permissions changed")
 
