@@ -43,6 +43,22 @@ def verify_consent_prompt(path: Path) -> None:
         raise ValueError("Mr. Nothing is not identified in the consent prompt")
 
 
+
+def classify_consent_screen(path: Path) -> str:
+    """Classify only a valid Android role prompt or the unchanged launcher.
+
+    An unknown window or a malformed system dialog must fail closed: the
+    harness may retry a lost tap, but must never tap through an overlay.
+    """
+    nodes = list(ET.parse(path).getroot().iter("node"))
+    if any("permissioncontroller" in n.attrib.get("package", "").lower() for n in nodes):
+        verify_consent_prompt(path)
+        return "prompt"
+    if not nodes or any(n.attrib.get("package") != PACKAGE for n in nodes):
+        raise ValueError("Unexpected foreground window during HOME consent")
+    tap_coordinates(path)
+    return "launcher"
+
 def verify_no_implicit_grant(before: str, after: str) -> None:
     def normalize(raw: str) -> list[str]:
         return sorted(line.strip() for line in raw.splitlines() if line.strip())
@@ -58,8 +74,10 @@ if __name__ == "__main__":
     elif len(sys.argv) == 3 and sys.argv[1] == "prompt":
         verify_consent_prompt(Path(sys.argv[2]))
         print("QA-007: permission-controller prompt is visible")
+    elif len(sys.argv) == 3 and sys.argv[1] == "state":
+        print(classify_consent_screen(Path(sys.argv[2])))
     elif len(sys.argv) == 4 and sys.argv[1] == "unchanged":
         verify_no_implicit_grant(Path(sys.argv[2]).read_text(), Path(sys.argv[3]).read_text())
         print("QA-007: HOME role unchanged after dismissing consent")
     else:
-        raise SystemExit("usage: qa007_role_consent.py tap|prompt XML or unchanged BEFORE AFTER")
+        raise SystemExit("usage: qa007_role_consent.py tap|prompt|state XML or unchanged BEFORE AFTER")

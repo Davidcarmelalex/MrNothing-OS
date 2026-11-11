@@ -21,12 +21,30 @@ grep -q 'Status: ok' "$QA007_OUTPUT/activity-start.txt"
 sleep 2
 adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa007-before.xml >/dev/null
 adb -s "$ANDROID_SERIAL" pull /sdcard/qa007-before.xml "$QA007_OUTPUT/before.xml" >/dev/null
-read -r x y < <(python3 scripts/qa007_role_consent.py tap "$QA007_OUTPUT/before.xml")
-adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
-sleep 3
-adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa007-prompt.xml >/dev/null
-adb -s "$ANDROID_SERIAL" pull /sdcard/qa007-prompt.xml "$QA007_OUTPUT/prompt.xml" >/dev/null
-python3 scripts/qa007_role_consent.py prompt "$QA007_OUTPUT/prompt.xml"
+# A CI run showed an unchanged launcher after one synthetic tap. Permit one
+# bounded retry only when the foreground is still the expected launcher and
+# HOME ownership has not changed. Unknown/system windows fail closed.
+snapshot="$QA007_OUTPUT/before.xml"
+for attempt in 1 2; do
+  read -r x y < <(python3 scripts/qa007_role_consent.py tap "$snapshot")
+  adb -s "$ANDROID_SERIAL" shell input tap "$x" "$y"
+  sleep 3
+  snapshot="$QA007_OUTPUT/prompt-attempt-$attempt.xml"
+  adb -s "$ANDROID_SERIAL" shell uiautomator dump /sdcard/qa007-prompt.xml >/dev/null
+  adb -s "$ANDROID_SERIAL" pull /sdcard/qa007-prompt.xml "$snapshot" >/dev/null
+  state="$(python3 scripts/qa007_role_consent.py state "$snapshot")"
+  if [[ "$state" == prompt ]]; then
+    python3 scripts/qa007_role_consent.py prompt "$snapshot"
+    break
+  fi
+  if [[ "$state" != launcher || "$attempt" -eq 2 ]]; then
+    echo "QA-007: HOME consent prompt absent after bounded tap attempts" >&2
+    exit 1
+  fi
+  adb -s "$ANDROID_SERIAL" shell cmd role get-role-holders android.app.role.HOME > "$QA007_OUTPUT/role-before-retry.txt"
+  python3 scripts/qa007_role_consent.py unchanged "$QA007_OUTPUT/role-before.txt" "$QA007_OUTPUT/role-before-retry.txt"
+  echo "QA-007: unchanged launcher after first tap; retrying once" >&2
+done
 
 # Negative-consent path: dismiss without approving, then require original HOME role.
 adb -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_BACK
