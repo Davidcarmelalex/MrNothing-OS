@@ -128,6 +128,20 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow.index("locksettings set-pin"),
         )
 
+    def test_emulator_stay_awake_is_scoped_and_restored_without_unlock(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        for token in ("ORIGINAL_STAY_ON", "svc power stayon true",
+                      "settings delete global stay_on_while_plugged_in",
+                      'settings put global stay_on_while_plugged_in "$ORIGINAL_STAY_ON"',
+                      "trap cleanup EXIT INT TERM", "uid=2000(shell)"):
+            self.assertIn(token, boundary)
+        self.assertLess(boundary.index("svc power stayon true"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertIn("power-state-after-instrumentation.txt", self.workflow)
+        self.assertNotIn("adb root", boundary)
+        self.assertNotIn("input swipe", boundary)
+
     def test_disposable_emulator_is_secure_and_awake_before_ui_instrumentation(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
