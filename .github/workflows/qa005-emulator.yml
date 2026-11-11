@@ -125,6 +125,19 @@ jobs:
           done
           echo "Emulator boot timed out" >&2
           exit 1
+      - name: "QA-STACK-009: uncredentialed instrumentation before synthetic PIN"
+        working-directory: android
+        run: |
+          set -euo pipefail
+          # Keep launcher, accessibility and MemoryVault tests outside the
+          # credential-protected lifecycle scenario. Never unlock Keyguard
+          # or grant permissions to make these tests pass.
+          UNLOCKED_CLASSES="tech.mrnothing.os.AccessibilityDisclosureActivityTest,tech.mrnothing.os.MemoryVaultManifestBoundaryTest,tech.mrnothing.os.AgentPlanPreviewActivityTest,tech.mrnothing.os.AndroidAtomicAuthorityRecordPersistenceTest,tech.mrnothing.os.AndroidAuthorityTrustCryptoFailureModeTest,tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest,tech.mrnothing.os.MemoryVaultKeySpecContractTest"
+          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=$UNLOCKED_CLASSES"
+          # The next connected test invocation replaces Gradle's XML output.
+          # Preserve this first suite for the installed-manifest evidence gate.
+          mkdir -p "$QA005_OUTPUT/uncredentialed-instrumentation"
+          cp -a app/build/outputs/androidTest-results/connected/debug/. "$QA005_OUTPUT/uncredentialed-instrumentation/"
       - name: "SEC-020B4D: Activity destruction before/after trust commit claim"
         working-directory: android
         run: |
@@ -211,13 +224,13 @@ jobs:
           timeout 10s adb -s "$ANDROID_SERIAL" shell dumpsys window policy \
             | tr -d '\r' > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt" || true
           echo "Display is interactive; instrumentation will verify the synthetic credential and use exact visible SystemUI PIN controls when Keyguard is locked"
-          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+          timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest"
       - name: "SEC-023B1A-QA: require executed installed-manifest instrumentation"
         working-directory: android
         run: |
           set -euo pipefail
           python3 ../scripts/qa023b1a_instrumentation_evidence.py \
-            app/build/outputs/androidTest-results/connected/debug \
+            "$QA005_OUTPUT/uncredentialed-instrumentation" \
             --summary "$QA005_OUTPUT/memory-vault-instrumentation-summary.json"
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
