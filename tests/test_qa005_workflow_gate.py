@@ -39,6 +39,16 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow,
         )
 
+    def test_manual_exact_head_ux006_is_repo_and_branch_bound(self):
+        # Only an explicit manual run on this one scoped branch may enter the
+        # expensive emulator; never broaden automatic PR execution.
+        self.assertIn("workflow_dispatch:", self.workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", self.workflow)
+        self.assertIn("github.ref == 'refs/heads/feat/ux-agent006-rehearsal-mode-isolation-20261111'", self.workflow)
+        self.assertIn("github.repository == 'Davidcarmelalex/MrNothing-OS'", self.workflow)
+        self.assertIn("github.base_ref == 'feat/phase1-agentic-phone'", self.workflow)
+        self.assertNotIn("  push:", self.workflow)
+
     def test_single_pr_trigger_prevents_duplicate_push_emulators(self):
         self.assertIn("pull_request:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
