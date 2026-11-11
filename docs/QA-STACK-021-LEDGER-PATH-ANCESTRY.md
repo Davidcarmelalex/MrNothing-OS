@@ -16,19 +16,21 @@ nonsticky grandparent could also replace an otherwise private parent.
 
 On POSIX, verify each directory component from the ledger parent through the
 filesystem root using os.lstat, rejecting symlinks, non-directories and
-group/other-writable nonsticky ancestors. Root/current-user-owned sticky
+group/other-writable nonsticky ancestors and directories owned by
+identities other than the process owner or root. Root/current-user-owned sticky
 directories remain supported. Run the gate during initialization and both
 sides of SQLite connection establishment, as before.
 
-Five additional regression cases cover symlinked parents/grandparents, unsafe
-grandparents, permission relaxation and same-inode parent alias replacement.
+Seven additional regression cases cover symlinked parents/grandparents, unsafe
+grandparents, untrusted directory owners, permission relaxation and
+same-inode parent alias replacement.
 The original sticky-directory compatibility test remains intact.
 
 ## Acceptance and limitations
 
-- Local preflight: 1,175 Python tests passed; launcher accessibility/recovery
+- Local preflight: 1,177 Python tests passed; launcher accessibility/recovery
   source gate passed; no Android runtime or hardware test in this task.
-- Focused command-admission tests: 44 passed.
+- Focused command-admission tests: 46 passed.
 - No independent human security or accessibility approval.
 - Directory checks are pathname-based and cannot guarantee immunity to
   concurrent same-user or privileged TOCTOU attacks; secure directory-fd

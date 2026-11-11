@@ -117,8 +117,8 @@ class DurableReplayLedger:
             sticky_protected = bool(info.st_mode & stat.S_ISVTX)
             trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
             if (not stat.S_ISDIR(info.st_mode)
-                    or (writable_by_others
-                        and not (sticky_protected and trusted_directory_owner))):
+                    or not trusted_directory_owner
+                    or (writable_by_others and not sticky_protected)):
                 return False
             parent = os.path.dirname(directory)
             if parent == directory:

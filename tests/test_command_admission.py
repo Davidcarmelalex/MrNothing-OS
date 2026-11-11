@@ -144,6 +144,36 @@ class AdmissionTests(unittest.TestCase):
             self.assertFalse(ledger._parent_is_safe())
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_untrusted_private_parent_owner_rejected(self):
+        from types import SimpleNamespace
+        ledger = DurableReplayLedger(os.path.join(self.temp.name, "trusted.sqlite"))
+        fake_stat = SimpleNamespace(
+            st_mode=stat.S_IFDIR | 0o700, st_uid=os.geteuid() + 1000,
+        )
+        with patch("core.command_admission.os.lstat", return_value=fake_stat):
+            self.assertFalse(ledger._parent_is_safe())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
+    def test_untrusted_private_ancestor_owner_rejected(self):
+        from types import SimpleNamespace
+        ancestor = os.path.join(self.temp.name, "ancestor")
+        private = os.path.join(ancestor, "private")
+        os.makedirs(private, mode=0o700)
+        real_lstat = os.lstat
+
+        def altered_lstat(path):
+            info = real_lstat(path)
+            if path == ancestor:
+                return SimpleNamespace(
+                    st_mode=info.st_mode, st_uid=os.geteuid() + 1000,
+                )
+            return info
+
+        with patch("core.command_admission.os.lstat", side_effect=altered_lstat):
+            with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+                DurableReplayLedger(os.path.join(private, "ledger.sqlite"))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory security")
     def test_symlinked_parent_rejected_even_when_target_private(self):
         real = os.path.join(self.temp.name, "real")
         os.mkdir(real, 0o700)
