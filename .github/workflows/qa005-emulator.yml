@@ -2,7 +2,7 @@ name: QA-005 Android emulator smoke
 # Run once per PR rather than duplicating expensive emulators on push + PR.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/phase1-agentic-phone]
     paths:
       - 'android/**'
       - 'scripts/qa005_emulator_smoke.sh'
@@ -39,6 +39,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   emulator-smoke:
+    # Main-target PRs retain their existing gate; development-target PRs run only for this audited candidate.
+    if: github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -49,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
