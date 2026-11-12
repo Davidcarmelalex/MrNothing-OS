@@ -94,12 +94,28 @@ class DurableReplayLedger:
         self.max_entries = max_entries
         self._file_identity = self._prepare_file()
         with closing(self._connect()) as db:
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS seen ("
-                "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
-                "PRIMARY KEY (device_id, command_id))"
-            )
-            db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS seen ("
+                    "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
+                    "PRIMARY KEY (device_id, command_id))"
+                )
+                db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
+                # The high-water mark survives TTL pruning and process restarts.
+                # On legacy ledgers, seed from the latest still-retained nonce.
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS ledger_clock ("
+                    "id INTEGER PRIMARY KEY CHECK (id=1), max_now INTEGER NOT NULL)"
+                )
+                db.execute(
+                    "INSERT OR IGNORE INTO ledger_clock (id,max_now) "
+                    "SELECT 1, MAX(COALESCE((SELECT MAX(seen_at) FROM seen),0),0)"
+                )
+                db.execute("COMMIT")
+            except Exception:
+                db.execute("ROLLBACK")
+                raise
 
     def _parent_is_safe(self) -> bool:
         """Reject directories where other users can replace the ledger path."""
@@ -187,6 +203,16 @@ class DurableReplayLedger:
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                row = db.execute(
+                    "SELECT max_now FROM ledger_clock WHERE id=1"
+                ).fetchone()
+                if row is None or type(row[0]) is not int:
+                    raise sqlite3.DatabaseError("replay ledger clock watermark unavailable")
+                if now < row[0]:
+                    raise sqlite3.DataError("replay ledger clock rollback")
+                # Clock and nonce reservation commit together. Rejected requests
+                # roll back both, preserving the last accepted time.
+                db.execute("UPDATE ledger_clock SET max_now=? WHERE id=1", (now,))
                 db.execute("DELETE FROM seen WHERE seen_at < ?", (now - self.ttl_seconds,))
                 if db.execute("SELECT 1 FROM seen WHERE device_id=? AND command_id=?",
                               (device_id, command_id)).fetchone():

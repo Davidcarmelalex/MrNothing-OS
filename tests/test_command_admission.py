@@ -288,6 +288,54 @@ class AdmissionTests(unittest.TestCase):
         self.assertTrue(self.check().admitted)
         self.assertFalse(self.check(ledger=DurableReplayLedger(self.path)).admitted)
 
+    def test_rollback_rejected_before_pruning_or_nonce_reservation(self):
+        self.assertTrue(self.ledger.reserve("pixel", "nonce-1000", 1000))
+        with self.assertRaisesRegex(sqlite3.DataError, "clock rollback"):
+            self.ledger.reserve("pixel", "nonce-rollback", 999)
+        # A rejected rollback must not consume a nonce or remove a row.
+        self.assertTrue(self.ledger.reserve("pixel", "nonce-rollback", 1000))
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 2)
+
+    def test_clock_watermark_survives_ttl_pruning_and_restart(self):
+        self.assertTrue(self.ledger.reserve("pixel", "old", 100))
+        self.assertTrue(self.ledger.reserve("pixel", "new", 1000))
+        reopened = DurableReplayLedger(self.path)
+        with self.assertRaisesRegex(sqlite3.DataError, "clock rollback"):
+            reopened.reserve("pixel", "rollback", 900)
+        self.assertTrue(reopened.reserve("pixel", "after-restart", 1001))
+
+    def test_signed_command_denied_after_clock_rollback(self):
+        self.assertTrue(self.check().admitted)
+        rolled_back = self.command(issued_at=999, command_id="new-rollback")
+        self.assertEqual(self.check(rolled_back, now=999).reason, "LEDGER_UNAVAILABLE")
+        self.assertEqual(
+            self.check(rolled_back, now=1001).reason,
+            "ADMITTED_NO_EXECUTION",
+        )
+
+    def test_legacy_ledger_migrates_existing_seen_timestamp(self):
+        path = os.path.join(self.temp.name, "legacy.sqlite")
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("CREATE TABLE seen (device_id TEXT NOT NULL, "
+                       "command_id TEXT NOT NULL, seen_at INTEGER NOT NULL, "
+                       "PRIMARY KEY (device_id, command_id))")
+            db.execute("INSERT INTO seen VALUES ('pixel', 'legacy', 1000)")
+            db.commit()
+        os.chmod(path, 0o600)
+        ledger = DurableReplayLedger(path)
+        with self.assertRaisesRegex(sqlite3.DataError, "clock rollback"):
+            ledger.reserve("pixel", "new", 999)
+        self.assertFalse(ledger.reserve("pixel", "legacy", 1000))
+        self.assertTrue(ledger.reserve("pixel", "new", 1001))
+
+    def test_missing_clock_watermark_fails_closed(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DELETE FROM ledger_clock")
+            db.commit()
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.ledger.reserve("pixel", "new", 1001)
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 
