@@ -28,7 +28,13 @@ class AccessibilityDisclosureSourceTests(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].get(ANDROID + "exported"), "false")
         self.assertFalse(matches[0].findall("intent-filter"))
-        self.assertFalse(app.findall("service"))
+        # The only other Service is the deliberately disabled, non-exported
+        # MemoryVault reservation. No AccessibilityService is registered.
+        services = app.findall("service")
+        self.assertEqual([s.get(ANDROID + "name") for s in services], [".MemoryVaultService"])
+        self.assertEqual(services[0].get(ANDROID + "enabled"), "false")
+        self.assertEqual(services[0].get(ANDROID + "exported"), "false")
+        self.assertFalse(services[0].findall("intent-filter"))
 
     def test_no_accessibility_or_projection_permission_is_added(self):
         for forbidden in (

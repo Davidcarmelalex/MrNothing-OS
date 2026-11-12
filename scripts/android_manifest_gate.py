@@ -49,6 +49,7 @@ def inspect_manifest(root: ET.Element) -> list[str]:
         seen_permissions.add(name)
 
     found_home = False
+    vault_service_count = 0
     for component_type in ("activity", "activity-alias", "service", "receiver", "provider"):
         for component in app.findall(component_type):
             name = component.get(ANDROID + "name", "")
@@ -64,8 +65,21 @@ def inspect_manifest(root: ET.Element) -> list[str]:
                         found_home = True
             elif exported != "false":
                 problems.append("non-Home component must explicitly be non-exported: " + name)
+            if component_type == "service" and name == ".MemoryVaultService":
+                vault_service_count += 1
+                if component.get(ANDROID + "enabled") != "false":
+                    problems.append("MemoryVaultService must remain disabled")
+                if component.findall("intent-filter"):
+                    problems.append("MemoryVaultService must have no intent filters")
+                for forbidden in ("process", "permission", "foregroundServiceType", "isolatedProcess"):
+                    if component.get(ANDROID + forbidden) is not None:
+                        problems.append("MemoryVaultService forbidden attribute: " + forbidden)
+                if component.get(ANDROID + "directBootAware") == "true":
+                    problems.append("MemoryVaultService cannot be direct-boot aware")
             if not name:
                 problems.append("component missing android:name")
+    if vault_service_count > 1:
+        problems.append("MemoryVaultService must not be duplicated")
     if not found_home:
         problems.append("explicit MAIN/HOME/DEFAULT intent filter required")
     return problems

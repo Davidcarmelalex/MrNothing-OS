@@ -2071,3 +2071,31 @@ Security + AI/agents own the schema and nonintegration boundary; CI/QA owns repe
 ## SEC-023B0 — Dormant Android MemoryVault admission preflight (2026-11-09)
 
 Scoped branch from `f42af837` adds a pure-JVM trusted-snapshot policy and single-use, 30-second process-local owner-intent registry. Sixteen synthetic JUnit tests cover UID/signature/profile binding, owner foreground/unlock/consent, absent cryptographic authentication, cancellation, expiry, rollback, replay and concurrency. See [SEC-023B0 evidence](SEC-023B0-MEMORY-VAULT-ADMISSION-BOUNDARY.md). This is NOT a native vault service, CryptoObject verification, encrypted persistence, IPC or hardware proof. SEC-023/SEC-023A are still draft PRs; upstream shared SKILL.md is absent/unverified. No milestone is independently complete. Next: independently review SEC-023A/B0 and SEC-021/022, then build a non-exported Keystore-backed native service with negative IPC tests, preserving explicit consent and fail-closed persistence.
+
+## SEC-023B1A — Dormant non-exported Android MemoryVault component (2026-11-09)
+
+A bounded prerequisite to SEC-023B1: register a disabled/non-exported Android Service with no Binder or storage behavior, and enforce the dormant manifest boundary using offline mutation tests. No authentication, encryption, IPC, persistence, hardware validation or integration is claimed. The service MUST remain disabled until independent review and negative Android instrumentation gates. SEC-023/023A/023B0 are still separate unmerged draft PRs. Next: SEC-023B1B per-use Keystore CryptoObject proof and identity-bound native IPC, then key invalidation/negative instrumentation; no memory persistence before approval. All M1–M8 acceptance statuses unchanged.
+
+
+## SEC-023B1A-QA — installed-manifest instrumentation prerequisite (2026-11-09)
+
+Test-only follow-up on the scoped SEC-023B1A draft: inspect Android PackageManager's merged service declaration and compile the explicit instrumentation allowlist in hosted Phase 1 CI. Actual instrumentation execution, independent security review, SEC-023B1B Keystore authentication, identity-bound IPC and all M1–M8 acceptance gates remain pending. Upstream shared SKILL.md remains absent/unverified; no production feature is enabled.
+
+## QA-023B1A-XML — fail-closed installed-manifest execution evidence (2026-11-09)
+
+PR #16's existing instrumentation class was compiled in Phase 1 CI and the
+disposable-emulator workflow completed successfully on ae1590f. However, a
+successful Gradle task alone is not an explicit assertion that both
+MemoryVaultManifestBoundaryTest methods executed. This bounded QA gate parses
+the connected AndroidTest JUnit XML and rejects missing, skipped, failed,
+duplicate, malformed, or unexpected target-class results. The workflow now
+requires both exact method names and writes a machine-readable summary into
+the existing emulator evidence artifact. Synthetic XML fixtures verify the
+gate offline; **real execution of the new gate is pending exact-head hosted
+emulator CI**. No Android service/permission, encryption, memory persistence,
+or agent behavior changes. The upstream shared SKILL.md remains unverified.
+
+M1/M2/M6 IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
+M7/M8 BLOCKED. Independent security review and physical Pixel acceptance remain
+pending. Next: inspect exact-head QA-005 XML summary, then independently review
+SEC-023A/B0/B1A before SEC-023B1B Keystore integration.
