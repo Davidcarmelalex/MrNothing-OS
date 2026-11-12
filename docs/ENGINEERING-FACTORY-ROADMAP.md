@@ -2099,3 +2099,23 @@ M1/M2/M6 IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7/M8 BLOCKED. Independent security review and physical Pixel acceptance remain
 pending. Next: inspect exact-head QA-005 XML summary, then independently review
 SEC-023A/B0/B1A before SEC-023B1B Keystore integration.
+
+## 2026-11-09 — SEC-023B1B0 read-only MemoryVault key policy (scoped proposal)
+
+Audited `feat/phase1-agentic-phone` at `f42af837bcb8eed478cadbc472b7571441449a7a`. The local `PROJECT-ADAPTER.md` exists, but upstream `SKILL.md` is absent/unverified. Related SEC-023 through SEC-023B1A PRs #13–#16 remain separate, unmerged draft branches. This proposal adds only a read-only AndroidKeyStore KeyInfo preflight for a distinct future AES-GCM alias, strict pure-JVM StrongBox/credential/per-use key metadata policy, and negative tests. It does not create or use a key, authenticate the owner, enable a service, expose IPC, persist data, change permissions, or integrate agents. Exact-head hosted Android tests and independent security review are mandatory before acceptance. M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone complete.
+
+## 2026-11-13 — SEC-023B1B0 integration reconciliation (PR #17 onto PR #16)
+
+PR #17's original read-only KeyInfo inspection and tests are preserved, and the
+previously separate SEC-023/023A/023B0/023B1A stack is now included through
+PR #16 ancestry in this draft candidate. The prior source-only assertion that
+MemoryVaultService must be absent was replaced with a stricter composition
+assertion: exactly one disabled, non-exported service with no intent filters,
+and no reference to the KeyInfo preflight from the launcher, consent signer or
+service. The source manifest gate independently enforces the disabled/private
+service boundary. No key is generated or used; no vault is enabled; no owner
+authentication, IPC, persistence, or Android permission is activated. The
+preflight remains non-authorizing. Local Python/manifest evidence is not a
+substitute for exact-head hosted Kotlin/JUnit, emulator, physical Pixel 9 Pro,
+or independent human security acceptance. Upstream shared SKILL.md remains
+absent/unverified. No M1–M8 milestone is independently complete.
