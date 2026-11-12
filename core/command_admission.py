@@ -96,6 +96,7 @@ class DurableReplayLedger:
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                self._verify_no_triggers(db)
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS seen ("
                     "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
@@ -134,6 +135,19 @@ class DurableReplayLedger:
             except Exception:
                 db.execute("ROLLBACK")
                 raise
+
+    @staticmethod
+    def _verify_no_triggers(db: sqlite3.Connection) -> None:
+        """Refuse unreviewed schema hooks that can erase replay reservations.
+
+        This dedicated ledger has no application-defined triggers. Check under
+        the write transaction so another SQLite writer cannot install a trigger
+        between the schema check and the reservation.
+        """
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1"
+        ).fetchone() is not None:
+            raise sqlite3.DatabaseError("replay ledger unexpected trigger")
 
     def _parent_is_safe(self) -> bool:
         """Reject directories where other users can replace the ledger path."""
@@ -228,6 +242,7 @@ class DurableReplayLedger:
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                self._verify_no_triggers(db)
                 row = db.execute(
                     "SELECT max_now FROM ledger_clock WHERE id=1"
                 ).fetchone()
