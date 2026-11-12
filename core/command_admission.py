@@ -28,6 +28,7 @@ MAX_CANONICAL_PAYLOAD_BYTES = 8192
 MAX_JSON_DEPTH = 32
 MAX_JSON_NODES = 4096
 MAX_JSON_TEXT_CHARS = 16384
+MAX_SQLITE_INTEGER = (1 << 63) - 1
 
 
 def _is_strict_json_value(value: object) -> bool:
@@ -81,7 +82,8 @@ class DurableReplayLedger:
 
     def __init__(self, path: str | Path, *, ttl_seconds: int = 60, max_entries: int = 10000):
         if (type(ttl_seconds) is not int or ttl_seconds < 1
-                or type(max_entries) is not int or max_entries < 1):
+                or type(max_entries) is not int or max_entries < 1
+                or ttl_seconds > MAX_SQLITE_INTEGER):
             raise ValueError("invalid ledger limits")
         raw_path = os.fspath(path)
         if (type(raw_path) is not str or not raw_path.strip()
@@ -180,6 +182,8 @@ class DurableReplayLedger:
 
     def reserve(self, device_id: str, command_id: str, now: int) -> bool:
         """Reserve once atomically; database failures propagate to fail closed."""
+        if type(now) is not int or not 0 <= now <= MAX_SQLITE_INTEGER:
+            raise sqlite3.DataError("replay ledger timestamp outside SQLite INTEGER range")
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
@@ -228,7 +232,9 @@ def admit_signed_command(
         return AdmissionResult(False, "INVALID_COMMAND")
     if not isinstance(command.command_id, str) or not (1 <= len(command.command_id) <= 128):
         return AdmissionResult(False, "INVALID_COMMAND_ID")
-    if type(command.issued_at) is not int or type(now) is not int:
+    if (type(command.issued_at) is not int or type(now) is not int
+            or not 0 <= command.issued_at <= MAX_SQLITE_INTEGER
+            or not 0 <= now <= MAX_SQLITE_INTEGER):
         return AdmissionResult(False, "INVALID_TIMESTAMP")
     if type(command.action) is not str or not (1 <= len(command.action) <= 128):
         return AdmissionResult(False, "INVALID_PAYLOAD")
