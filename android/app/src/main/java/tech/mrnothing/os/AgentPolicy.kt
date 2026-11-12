@@ -1,23 +1,24 @@
 package tech.mrnothing.os
 
-enum class Verdict { ALLOW, APPROVAL_REQUIRED, DENY }
-data class AgentAction(val name: String, val authenticated: Boolean, val contactApproved: Boolean = false)
+/**
+ * Classifies action risk only. This policy does not authenticate a caller,
+ * establish owner consent, check Android permissions, or authorize execution.
+ */
+enum class ActionRisk { LOW_RISK, OWNER_APPROVAL_REQUIRED, DENY }
+
+data class AgentAction(val name: String)
 
 object AgentPolicy {
     private val lowRisk = setOf("open_app", "get_battery")
-    // SEC-014: never infer screen/UI consent from a command or authentication.
-    // A trusted owner-session consent and Android permission gate is required
-    // before any future executor may support these actions.
     private val screenActions = setOf("read_screen", "navigate", "scroll")
     private val communications = setOf("place_call", "send_message")
     private val sensitive = setOf("purchase", "transfer_money", "delete_data", "change_security")
 
-    fun decide(action: AgentAction): Verdict = when {
-        !action.authenticated -> Verdict.DENY
-        action.name in lowRisk -> Verdict.ALLOW
-        action.name in screenActions -> Verdict.APPROVAL_REQUIRED
-        action.name in communications -> if (action.contactApproved) Verdict.ALLOW else Verdict.APPROVAL_REQUIRED
-        action.name in sensitive -> Verdict.APPROVAL_REQUIRED
-        else -> Verdict.DENY
+    fun classify(action: AgentAction): ActionRisk = when {
+        action.name in lowRisk -> ActionRisk.LOW_RISK
+        action.name in screenActions -> ActionRisk.OWNER_APPROVAL_REQUIRED
+        action.name in communications -> ActionRisk.OWNER_APPROVAL_REQUIRED
+        action.name in sensitive -> ActionRisk.OWNER_APPROVAL_REQUIRED
+        else -> ActionRisk.DENY
     }
 }
