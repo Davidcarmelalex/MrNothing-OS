@@ -300,6 +300,33 @@ class AdmissionTests(unittest.TestCase):
     def test_unknown_action(self):
         self.assertFalse(self.check(self.command(action="root_shell")).admitted)
 
+    def test_out_of_range_sqlite_timestamps_fail_closed_without_exception(self):
+        # A signed, fresh command at 2**63 previously reached sqlite3.bind
+        # and raised an uncaught OverflowError instead of denying admission.
+        for timestamp in (-1, 1 << 63, 1 << 100):
+            with self.subTest(timestamp=timestamp):
+                cmd = self.command(issued_at=timestamp, command_id=f"id-{timestamp}")
+                self.assertEqual(
+                    self.check(cmd, now=timestamp).reason, "INVALID_TIMESTAMP"
+                )
+        # A rejected timestamp must not reserve a nonce.
+        self.assertTrue(self.check().admitted)
+
+    def test_direct_replay_reservation_rejects_invalid_sqlite_time(self):
+        for timestamp in (-1, True, 1 << 63, 1 << 100):
+            with self.subTest(timestamp=timestamp):
+                with self.assertRaises(sqlite3.DataError):
+                    self.ledger.reserve("pixel", "nonce", timestamp)
+        self.assertTrue(self.ledger.reserve("pixel", "nonce", 100))
+        self.assertFalse(self.ledger.reserve("pixel", "nonce", 100))
+
+    def test_ledger_ttl_cannot_overflow_sqlite_bound_parameter(self):
+        with self.assertRaises(ValueError):
+            DurableReplayLedger(
+                os.path.join(self.temp.name, "oversized-ttl.sqlite"),
+                ttl_seconds=1 << 63,
+            )
+
     def test_expired(self):
         self.assertEqual(self.check(now=2000).reason, "EXPIRED_OR_FUTURE")
 
