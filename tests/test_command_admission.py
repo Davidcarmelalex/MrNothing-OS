@@ -366,6 +366,38 @@ class AdmissionTests(unittest.TestCase):
                 with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
                     DurableReplayLedger(path)
 
+    def test_live_ledger_refuses_lowered_clock_below_retained_nonce(self):
+        self.assertTrue(self.ledger.reserve("pixel", "original", 1000))
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("UPDATE ledger_clock SET max_now=1 WHERE id=1")
+            db.commit()
+        # The already-open ledger must fail closed without requiring restart.
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
+            self.ledger.reserve("pixel", "new", 900)
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 1)
+
+    def test_live_ledger_refuses_invalid_clock_types_and_negative_values(self):
+        for invalid in (-1, "corrupt"):
+            with self.subTest(invalid=invalid):
+                path = os.path.join(self.temp.name, f"live-invalid-{invalid}.sqlite")
+                ledger = DurableReplayLedger(path)
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute("UPDATE ledger_clock SET max_now=? WHERE id=1", (invalid,))
+                    db.commit()
+                with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
+                    ledger.reserve("pixel", "new", 100)
+
+    def test_live_signed_admission_denies_clock_corruption(self):
+        self.assertTrue(self.check().admitted)
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("UPDATE ledger_clock SET max_now=1 WHERE id=1")
+            db.commit()
+        self.assertEqual(
+            self.check(self.command(command_id="after-tamper"), now=1001).reason,
+            "LEDGER_UNAVAILABLE",
+        )
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 

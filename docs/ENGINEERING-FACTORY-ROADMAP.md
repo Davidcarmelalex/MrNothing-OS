@@ -2067,3 +2067,6 @@ Scoped PR #21 follow-up; no change to the authorized development branch. Read-on
 ## QA-STACK-028 — Replay watermark restart integrity (2026-11-12)
 
 A scoped draft change hardens the offline replay-ledger initializer against silently recreating a deleted watermark row or accepting a watermark older than retained nonces. Three regressions verify restart refusal and invalid watermark state. See [QA-STACK-028 evidence](QA-STACK-028-LEDGER-WATERMARK-INTEGRITY.md). This is a prototype-only security correction; independent human review, exact-head hosted CI, Pixel hardware, signed release, and OTA acceptance remain separate gates. **No M1–M8 milestone is independently accepted.**
+
+## QA-STACK-029 — runtime replay clock consistency (2026-11-12)
+An already initialized ledger could accept reservations after another SQLite writer lowered its clock. QA-STACK-029 checks bounded clock type/value and retained-nonce consistency inside every write transaction, failing closed on corruption. Three new regression tests cover the live ledger and signed admission. Hosted CI, independent human approval, hardware, signed releases, and production readiness remain separate gates. Upstream SKILL.md remains unverified.
