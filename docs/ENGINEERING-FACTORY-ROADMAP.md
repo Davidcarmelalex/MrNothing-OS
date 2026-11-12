@@ -2052,6 +2052,10 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
 
+## SEC-DOC-006U — PaperClip threat-model accuracy (2026-11-09)
+
+The threat register and data-retention table still described plaintext JSON conversation persistence after AGENT-006L disabled it. This scoped documentation correction reconciles TM-15 and section 8 with current RAM-only session opt-in, no plaintext saves, preserved/unloaded legacy files, bounded history and non-erasure limitations. The historical AGENT-006H inventory is explicitly labeled as an earlier snapshot. A source/documentation regression checks these claims against the actual PaperClip API without enabling persistent storage. No production behavior, Android permissions or executor integration changed. Independent security review remains PENDING. M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED, M8 BLOCKED; none independently COMPLETE.
+
 ## SEC-023 — encrypted memory architecture design gate (2026-11-09)
 
 Audited authorized base `f42af837bcb8eed478cadbc472b7571441449a7a` (402-entry complete tree, no repository SKILL.md, local PROJECT-ADAPTER.md present). The upstream shared factory package remains unverified and is not claimed installed. Draft PRs #10, #11 and #12 have completed successful exact-head Phase 1 workflows; independent review is still pending. No production memory persistence is enabled.
