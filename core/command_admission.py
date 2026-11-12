@@ -224,8 +224,16 @@ class DurableReplayLedger:
                 row = db.execute(
                     "SELECT max_now FROM ledger_clock WHERE id=1"
                 ).fetchone()
-                if row is None or type(row[0]) is not int:
-                    raise sqlite3.DatabaseError("replay ledger clock watermark unavailable")
+                # Revalidate in the write transaction on every admission.
+                # Another writer could corrupt the clock after initialization.
+                latest_nonce = db.execute(
+                    "SELECT COALESCE(MAX(seen_at),0) FROM seen"
+                ).fetchone()[0]
+                if (row is None or type(row[0]) is not int
+                        or not 0 <= row[0] <= MAX_SQLITE_INTEGER
+                        or type(latest_nonce) is not int
+                        or not 0 <= latest_nonce <= row[0]):
+                    raise sqlite3.DatabaseError("replay ledger clock watermark inconsistent")
                 if now < row[0]:
                     raise sqlite3.DataError("replay ledger clock rollback")
                 # Clock and nonce reservation commit together. Rejected requests
