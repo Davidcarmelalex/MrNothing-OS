@@ -123,6 +123,34 @@ class AdmissionTests(unittest.TestCase):
             os.chmod(parent, 0o700)
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_world_readable_immediate_parent_rejected_for_sqlite_sidecars(self):
+        parent = os.path.join(self.temp.name, "readable")
+        os.mkdir(parent, 0o700)
+        for mode in (0o755, 0o750, 0o711, 0o770):
+            with self.subTest(mode=oct(mode)):
+                os.chmod(parent, mode)
+                with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+                    DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_private_child_under_sticky_ancestor_supported(self):
+        ancestor = os.path.join(self.temp.name, "sticky-ancestor")
+        private = os.path.join(ancestor, "private")
+        os.mkdir(ancestor, 0o700)
+        os.chmod(ancestor, 0o1777)
+        os.mkdir(private, 0o700)
+        ledger = DurableReplayLedger(os.path.join(private, "ledger.sqlite"))
+        self.assertTrue(ledger.reserve("pixel", "nonce", 100))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
+    def test_readable_parent_after_open_denies_admission(self):
+        parent = os.path.join(self.temp.name, "readable-later")
+        os.mkdir(parent, 0o700)
+        ledger = DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
+        os.chmod(parent, 0o755)
+        self.assertEqual(self.check(ledger=ledger).reason, "LEDGER_UNAVAILABLE")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
     def test_parent_permission_downgrade_fails_closed(self):
         parent = os.path.join(self.temp.name, "downgraded")
         os.mkdir(parent, 0o700)
@@ -234,13 +262,15 @@ class AdmissionTests(unittest.TestCase):
         )
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory permissions")
-    def test_sticky_world_writable_parent_is_supported(self):
+    def test_sticky_world_writable_immediate_parent_rejected(self):
+        # Sticky protects the database inode, not SQLite -journal/-wal/-shm
+        # sidecar names that another directory writer could pre-create.
         parent = os.path.join(self.temp.name, "sticky")
         os.mkdir(parent, 0o700)
         os.chmod(parent, 0o1777)
         try:
-            ledger = DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
-            self.assertTrue(ledger.reserve("pixel", "nonce", 100))
+            with self.assertRaisesRegex(ValueError, "parent directory is unsafe"):
+                DurableReplayLedger(os.path.join(parent, "ledger.sqlite"))
         finally:
             os.chmod(parent, 0o700)
 
