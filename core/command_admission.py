@@ -121,6 +121,7 @@ class DurableReplayLedger:
                         "INSERT INTO ledger_clock (id,max_now) "
                         "SELECT 1, MAX(COALESCE((SELECT MAX(seen_at) FROM seen),0),0)"
                     )
+                self._verify_clock_schema(db)
                 row = db.execute(
                     "SELECT max_now FROM ledger_clock WHERE id=1"
                 ).fetchone()
@@ -171,6 +172,31 @@ class DurableReplayLedger:
                   for row in columns]
         if table != ("table",) or actual != expected:
             raise sqlite3.DatabaseError("replay ledger seen schema inconsistent")
+
+    @staticmethod
+    def _verify_clock_schema(db: sqlite3.Connection) -> None:
+        """Require a single, structurally valid high-water-mark record.
+
+        Check under the writer transaction at initialization and reservation;
+        a second SQLite writer must not downgrade the key or add clock rows
+        between verification and the signed command's nonce reservation.
+        """
+        table = db.execute(
+            "SELECT type FROM sqlite_master WHERE name='ledger_clock'"
+        ).fetchone()
+        columns = db.execute("PRAGMA table_info(ledger_clock)").fetchall()
+        expected = [
+            ("id", "INTEGER", 0, None, 1),
+            ("max_now", "INTEGER", 1, None, 0),
+        ]
+        actual = [(row[1], row[2].upper(), row[3], row[4], row[5])
+                  for row in columns]
+        rows = db.execute("SELECT id FROM ledger_clock LIMIT 2").fetchall()
+        # Preserve the existing missing-row error path ("watermark inconsistent").
+        # Additional or non-canonical rows are schema corruption.
+        if (table != ("table",) or actual != expected
+                or len(rows) > 1 or (rows and rows[0] != (1,))):
+            raise sqlite3.DatabaseError("replay ledger clock schema inconsistent")
 
     def _parent_is_safe(self) -> bool:
         """Reject directories where other users can replace the ledger path."""
@@ -267,6 +293,7 @@ class DurableReplayLedger:
             try:
                 self._verify_no_triggers(db)
                 self._verify_seen_schema(db)
+                self._verify_clock_schema(db)
                 row = db.execute(
                     "SELECT max_now FROM ledger_clock WHERE id=1"
                 ).fetchone()
