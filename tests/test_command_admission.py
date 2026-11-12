@@ -463,6 +463,41 @@ class AdmissionTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute("SELECT max_now FROM ledger_clock").fetchone()[0], 0)
 
+    def test_replaced_seen_schema_cannot_erase_replay_history(self):
+        # A tampered schema must not silently reset previously accepted nonces.
+        self.assertEqual(self.check().reason, "ADMITTED_NO_EXECUTION")
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE seen")
+            db.execute(
+                "CREATE TABLE seen (device_id TEXT NOT NULL, "
+                "command_id TEXT NOT NULL, seen_at INTEGER NOT NULL)"
+            )
+            db.commit()
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 0)
+
+    def test_reopened_ledger_rejects_seen_without_primary_key(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE seen")
+            db.execute(
+                "CREATE TABLE seen (device_id TEXT NOT NULL, "
+                "command_id TEXT NOT NULL, seen_at INTEGER NOT NULL)"
+            )
+            db.commit()
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "schema"):
+            DurableReplayLedger(self.path)
+
+    def test_live_ledger_rejects_seen_column_integrity_downgrade(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE seen")
+            db.execute(
+                "CREATE TABLE seen (device_id TEXT, "
+                "command_id TEXT, seen_at TEXT)"
+            )
+            db.commit()
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 

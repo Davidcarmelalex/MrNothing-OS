@@ -103,6 +103,7 @@ class DurableReplayLedger:
                     "PRIMARY KEY (device_id, command_id))"
                 )
                 db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
+                self._verify_seen_schema(db)
                 # The high-water mark survives TTL pruning and process restarts.
                 # On legacy ledgers, seed from the latest still-retained nonce.
                 clock_table_exists = db.execute(
@@ -148,6 +149,28 @@ class DurableReplayLedger:
             "SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1"
         ).fetchone() is not None:
             raise sqlite3.DatabaseError("replay ledger unexpected trigger")
+
+    @staticmethod
+    def _verify_seen_schema(db: sqlite3.Connection) -> None:
+        """Refuse altered replay-key columns or a missing composite primary key.
+
+        This intentionally accepts the original legacy table layout, not
+        arbitrary user-defined schemas. It cannot detect deletion of rows
+        from an otherwise intact database by a same-user adversary.
+        """
+        table = db.execute(
+            "SELECT type FROM sqlite_master WHERE name='seen'"
+        ).fetchone()
+        columns = db.execute("PRAGMA table_info(seen)").fetchall()
+        expected = [
+            ("device_id", "TEXT", 1, None, 1),
+            ("command_id", "TEXT", 1, None, 2),
+            ("seen_at", "INTEGER", 1, None, 0),
+        ]
+        actual = [(row[1], row[2].upper(), row[3], row[4], row[5])
+                  for row in columns]
+        if table != ("table",) or actual != expected:
+            raise sqlite3.DatabaseError("replay ledger seen schema inconsistent")
 
     def _parent_is_safe(self) -> bool:
         """Reject directories where other users can replace the ledger path."""
@@ -243,6 +266,7 @@ class DurableReplayLedger:
             db.execute("BEGIN IMMEDIATE")
             try:
                 self._verify_no_triggers(db)
+                self._verify_seen_schema(db)
                 row = db.execute(
                     "SELECT max_now FROM ledger_clock WHERE id=1"
                 ).fetchone()
