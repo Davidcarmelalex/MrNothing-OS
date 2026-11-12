@@ -1,7 +1,8 @@
 """Source-manifest security gate for the experimental MrNothing launcher.
 
 This inspects the checked-in manifest, not the Gradle-merged manifest.
-It deliberately fails closed if new exported components or permissions appear.
+Only the reviewed BiometricPrompt permission is allowlisted; all other new
+permissions still require an explicit policy review.
 """
 from pathlib import Path
 import sys
@@ -11,6 +12,7 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 HOME = "android.intent.category.HOME"
 DEFAULT = "android.intent.category.DEFAULT"
 MAIN = "android.intent.action.MAIN"
+ALLOWED_PERMISSIONS = frozenset({"android.permission.USE_BIOMETRIC"})
 
 
 def inspect_manifest(root: ET.Element) -> list[str]:
@@ -30,8 +32,22 @@ def inspect_manifest(root: ET.Element) -> list[str]:
     for attribute in ("debuggable", "testOnly", "requestLegacyExternalStorage"):
         if app.get(ANDROID + attribute) == "true":
             problems.append(attribute + " must not be true")
-    if root.findall("uses-permission") or root.findall("uses-permission-sdk-23"):
-        problems.append("new Android permissions require explicit policy review")
+
+    seen_permissions: set[str] = set()
+    permission_nodes = (
+        root.findall("uses-permission") +
+        root.findall("uses-permission-sdk-23")
+    )
+    for permission in permission_nodes:
+        name = permission.get(ANDROID + "name")
+        if not name:
+            problems.append("permission missing android:name")
+        elif name not in ALLOWED_PERMISSIONS:
+            problems.append("unreviewed Android permission: " + name)
+        elif name in seen_permissions:
+            problems.append("duplicate Android permission: " + name)
+        seen_permissions.add(name)
+
     found_home = False
     for component_type in ("activity", "activity-alias", "service", "receiver", "provider"):
         for component in app.findall(component_type):

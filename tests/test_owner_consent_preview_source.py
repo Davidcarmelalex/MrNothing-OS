@@ -28,8 +28,13 @@ class OwnerConsentPreviewTests(unittest.TestCase):
                           "MediaProjectionManager", "AccessibilityService"):
             self.assertNotIn(forbidden, content)
 
-    def test_no_executor_or_permission_changes(self):
-        self.assertNotIn("<uses-permission", MANIFEST.read_text())
+    def test_no_executor_and_only_reviewed_biometric_permission(self):
+        root = ET.parse(MANIFEST).getroot()
+        permissions = [
+            node.get(A + "name") for node in root.findall("uses-permission")
+        ]
+        self.assertEqual(permissions, ["android.permission.USE_BIOMETRIC"])
+        self.assertFalse(root.findall("uses-permission-sdk-23"))
         router = (SRC / "CommandRouter.kt").read_text()
         self.assertNotIn("OwnerConsentPreviewActivity", router)
         self.assertNotIn("ConsentPreviewState", router)
