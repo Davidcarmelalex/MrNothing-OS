@@ -35,6 +35,7 @@ MAX_TTL = 300_000
 
 _ENROLLMENT_COMMIT_CRASH_SUBPROCESS = r"""
 import base64
+import os
 import sys
 import time
 from pathlib import Path
@@ -60,7 +61,11 @@ class CommitBoundaryConnection:
         if statement.strip().upper() == "COMMIT":
             if mode == "after":
                 self._connection.execute(statement, *parameters)
-            Path(marker_path).write_text("ready", encoding="ascii")
+            # os.replace publishes the complete marker atomically; polling
+            # the final path cannot observe a newly created empty file.
+            staged_marker = marker_path + ".partial"
+            Path(staged_marker).write_text("ready", encoding="ascii")
+            os.replace(staged_marker, marker_path)
             while True:
                 time.sleep(1)
         return self._connection.execute(statement, *parameters)
@@ -779,6 +784,7 @@ class RegistryTests(unittest.TestCase):
                 time.sleep(0.01)
 
             self.assertEqual(marker.read_text(encoding="ascii"), "ready")
+            self.assertFalse(Path(str(marker) + ".partial").exists())
             process.kill()
             process.communicate(timeout=5)
             self.assertNotEqual(process.returncode, 0)

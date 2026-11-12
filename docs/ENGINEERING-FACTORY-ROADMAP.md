@@ -2103,3 +2103,13 @@ local adapter. Independent security acceptance remains PENDING. M1/M2/M6
 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED.
 No milestone complete. Next: review SEC-021/SEC-022, then owner-authenticated
 encrypted-memory design and hardware/StrongBox acceptance gates.
+
+## QA-006T — SQLite crash-marker publication (2026-11-09)
+
+The independent fresh-clone AGENT-006S verification observed a test-only
+empty marker race in the signed revocation process-death harness. QA-006T
+atomically publishes before/after-COMMIT synchronization markers using
+same-directory staging files and `os.replace` in both enrollment and action
+reservation tests. No production behavior changed. Repeat test, hosted CI,
+and independent review evidence are required before acceptance. Milestone
+states M1–M8 remain unchanged; none is independently complete.
