@@ -2052,6 +2052,26 @@ deployment was involved. Upstream SKILL.md remains absent/unverified.
 M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED,
 M7 BLOCKED, M8 BLOCKED. No milestone is independently COMPLETE.
 
+## SEC-DOC-006U — PaperClip threat-model accuracy (2026-11-09)
+
+The threat register and data-retention table still described plaintext JSON conversation persistence after AGENT-006L disabled it. This scoped documentation correction reconciles TM-15 and section 8 with current RAM-only session opt-in, no plaintext saves, preserved/unloaded legacy files, bounded history and non-erasure limitations. The historical AGENT-006H inventory is explicitly labeled as an earlier snapshot. A source/documentation regression checks these claims against the actual PaperClip API without enabling persistent storage. No production behavior, Android permissions or executor integration changed. Independent security review remains PENDING. M1/M2/M6 remain IN PROGRESS, M3 PARTIAL, M4 NOT STARTED, M5 NOT ACCEPTED, M7 BLOCKED, M8 BLOCKED; none independently COMPLETE.
+
+## SEC-023 — encrypted memory architecture design gate (2026-11-09)
+
+Audited authorized base `f42af837bcb8eed478cadbc472b7571441449a7a` (402-entry complete tree, no repository SKILL.md, local PROJECT-ADAPTER.md present). The upstream shared factory package remains unverified and is not claimed installed. Draft PRs #10, #11 and #12 have completed successful exact-head Phase 1 workflows; independent review is still pending. No production memory persistence is enabled.
+
+SEC-023 proposes a non-exported Android MemoryVault with per-use cryptographic owner authentication, Keystore-backed AEAD, strict identity-bound IPC, bounded versioned records, consent/revocation, authenticated export, explicit delete, rollback caveats and physical Pixel 9 Pro acceptance gates. See `docs/SEC-023-OWNER-AUTHENTICATED-ENCRYPTED-MEMORY-DESIGN.md`. **Design only, not implementation or approval.** `save_memory()` remains fail closed; legacy plaintext files are untouched. M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8 blocked. Independent supervisor signoff pending. Next: SEC-023A schema and offline negative fixtures, then Android owner-authenticated implementation only after review.
+
+## SEC-023A — Canonical envelope preflight (scoped review, 2026-11-09)
+
+Baseline `feat/phase1-agentic-phone` at `f42af837bcb8eed478cadbc472b7571441449a7a`. Draft SEC-023 design is in PR #13 and remains unmerged. This bounded task adds `core/memory_vault_schema.py`, synthetic-only schema/AAD negative tests and `docs/SEC-023A-CANONICAL-ENVELOPE-PREFLIGHT.md`. It does **not** enable memory persistence, authenticate ciphertext, connect an Android executor or claim hardware-backed encryption. `PROJECT-ADAPTER.md` is the local project-specific adapter; upstream `SKILL.md` remains absent/unverified.
+
+Security + AI/agents own the schema and nonintegration boundary; CI/QA owns repeatable negative fixtures; Android, UX/accessibility and hardware/release own later SEC-023B/C/F gates. Independent supervisor must review canonical bytes, trusted identity provenance, nonce ledger scope and future AEAD integration before accepting this gate. M1/M2/M6 IN PROGRESS; M3 PARTIAL; M4 NOT STARTED; M5 NOT ACCEPTED; M7/M8 BLOCKED. No milestone independently complete.
+
+## SEC-023B0 — Dormant Android MemoryVault admission preflight (2026-11-09)
+
+Scoped branch from `f42af837` adds a pure-JVM trusted-snapshot policy and single-use, 30-second process-local owner-intent registry. Sixteen synthetic JUnit tests cover UID/signature/profile binding, owner foreground/unlock/consent, absent cryptographic authentication, cancellation, expiry, rollback, replay and concurrency. See [SEC-023B0 evidence](SEC-023B0-MEMORY-VAULT-ADMISSION-BOUNDARY.md). This is NOT a native vault service, CryptoObject verification, encrypted persistence, IPC or hardware proof. SEC-023/SEC-023A are still draft PRs; upstream shared SKILL.md is absent/unverified. No milestone is independently complete. Next: independently review SEC-023A/B0 and SEC-021/022, then build a non-exported Keystore-backed native service with negative IPC tests, preserving explicit consent and fail-closed persistence.
+
 ## SEC-023B1A — Dormant non-exported Android MemoryVault component (2026-11-09)
 
 A bounded prerequisite to SEC-023B1: register a disabled/non-exported Android Service with no Binder or storage behavior, and enforce the dormant manifest boundary using offline mutation tests. No authentication, encryption, IPC, persistence, hardware validation or integration is claimed. The service MUST remain disabled until independent review and negative Android instrumentation gates. SEC-023/023A/023B0 are still separate unmerged draft PRs. Next: SEC-023B1B per-use Keystore CryptoObject proof and identity-bound native IPC, then key invalidation/negative instrumentation; no memory persistence before approval. All M1–M8 acceptance statuses unchanged.
