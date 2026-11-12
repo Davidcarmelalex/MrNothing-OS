@@ -336,6 +336,36 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(sqlite3.DatabaseError):
             self.ledger.reserve("pixel", "new", 1001)
 
+    def test_deleted_watermark_stays_unavailable_after_restart(self):
+        self.assertTrue(self.ledger.reserve("pixel", "original", 1000))
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DELETE FROM ledger_clock")
+            db.commit()
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
+            DurableReplayLedger(self.path)
+        # Reopening must not have silently restored a missing security record.
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ledger_clock").fetchone()[0], 0)
+
+    def test_watermark_below_retained_nonce_fails_on_restart(self):
+        self.assertTrue(self.ledger.reserve("pixel", "original", 1000))
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("UPDATE ledger_clock SET max_now=1 WHERE id=1")
+            db.commit()
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
+            DurableReplayLedger(self.path)
+
+    def test_negative_or_text_watermark_fails_on_restart(self):
+        for invalid in (-1, "corrupt"):
+            with self.subTest(invalid=invalid):
+                path = os.path.join(self.temp.name, f"corrupt-{invalid}.sqlite")
+                DurableReplayLedger(path)
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute("UPDATE ledger_clock SET max_now=? WHERE id=1", (invalid,))
+                    db.commit()
+                with self.assertRaisesRegex(sqlite3.DatabaseError, "watermark inconsistent"):
+                    DurableReplayLedger(path)
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 

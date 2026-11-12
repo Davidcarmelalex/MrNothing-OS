@@ -2063,3 +2063,7 @@ Added one-shot callback object/cipher identity and credential-type gating on the
 ## SEC-023B1B2D1 — dormant StrongBox authenticated-Cipher probe (2026-11-10)
 
 Scoped PR #21 follow-up; no change to the authorized development branch. Read-only AndroidKeyStore alias acquisition, strict preflight, one-shot CryptoObject callback binding, post-callback second preflight, canonical consent-digest AAD, empty-synthetic-input GCM doFinal and discarded tag. No key generation, permission change, UI, persistence, agent execution or physical-device action. New JVM policy and Python source tests do not prove hardware behavior. Independent security approval, physical Pixel credential-only CryptoObject compatibility, isolation, key invalidation, spoken TalkBack and signed releases remain mandatory. Upstream shared SKILL.md unverified. M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8 blocked; no milestone complete.
+
+## QA-STACK-028 — Replay watermark restart integrity (2026-11-12)
+
+A scoped draft change hardens the offline replay-ledger initializer against silently recreating a deleted watermark row or accepting a watermark older than retained nonces. Three regressions verify restart refusal and invalid watermark state. See [QA-STACK-028 evidence](QA-STACK-028-LEDGER-WATERMARK-INTEGRITY.md). This is a prototype-only security correction; independent human review, exact-head hosted CI, Pixel hardware, signed release, and OTA acceptance remain separate gates. **No M1–M8 milestone is independently accepted.**

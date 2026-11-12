@@ -104,14 +104,32 @@ class DurableReplayLedger:
                 db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
                 # The high-water mark survives TTL pruning and process restarts.
                 # On legacy ledgers, seed from the latest still-retained nonce.
+                clock_table_exists = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='ledger_clock'"
+                ).fetchone() is not None
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS ledger_clock ("
                     "id INTEGER PRIMARY KEY CHECK (id=1), max_now INTEGER NOT NULL)"
                 )
-                db.execute(
-                    "INSERT OR IGNORE INTO ledger_clock (id,max_now) "
-                    "SELECT 1, MAX(COALESCE((SELECT MAX(seen_at) FROM seen),0),0)"
-                )
+                if not clock_table_exists:
+                    # Only a genuinely legacy database may initialize the
+                    # watermark. Never repair a deleted row on restart.
+                    db.execute(
+                        "INSERT INTO ledger_clock (id,max_now) "
+                        "SELECT 1, MAX(COALESCE((SELECT MAX(seen_at) FROM seen),0),0)"
+                    )
+                row = db.execute(
+                    "SELECT max_now FROM ledger_clock WHERE id=1"
+                ).fetchone()
+                latest_nonce = db.execute(
+                    "SELECT COALESCE(MAX(seen_at),0) FROM seen"
+                ).fetchone()[0]
+                if (row is None or type(row[0]) is not int
+                        or not 0 <= row[0] <= MAX_SQLITE_INTEGER
+                        or type(latest_nonce) is not int
+                        or not 0 <= latest_nonce <= row[0]):
+                    raise sqlite3.DatabaseError("replay ledger clock watermark inconsistent")
                 db.execute("COMMIT")
             except Exception:
                 db.execute("ROLLBACK")
