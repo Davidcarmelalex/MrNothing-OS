@@ -498,6 +498,41 @@ class AdmissionTests(unittest.TestCase):
             db.commit()
         self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
 
+    def test_live_clock_table_without_primary_key_fails_closed(self):
+        self.assertTrue(self.ledger.reserve("pixel", "first", 1000))
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE ledger_clock")
+            db.execute("CREATE TABLE ledger_clock (id INTEGER, max_now INTEGER NOT NULL)")
+            db.execute("INSERT INTO ledger_clock VALUES (1, 1000)")
+            db.commit()
+        self.assertEqual(
+            self.check(self.command(command_id="after-clock-schema"), now=1001).reason,
+            "LEDGER_UNAVAILABLE",
+        )
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 1)
+
+    def test_reopened_ledger_rejects_clock_without_primary_key(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE ledger_clock")
+            db.execute("CREATE TABLE ledger_clock (id INTEGER, max_now INTEGER NOT NULL)")
+            db.execute("INSERT INTO ledger_clock VALUES (1, 0)")
+            db.commit()
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "clock schema"):
+            DurableReplayLedger(self.path)
+
+    def test_live_clock_table_with_unexpected_row_fails_closed(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE ledger_clock")
+            db.execute(
+                "CREATE TABLE ledger_clock (id INTEGER PRIMARY KEY, max_now INTEGER NOT NULL)"
+            )
+            db.executemany(
+                "INSERT INTO ledger_clock VALUES (?, ?)", [(1, 0), (2, 0)]
+            )
+            db.commit()
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 
