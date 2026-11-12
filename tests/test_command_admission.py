@@ -428,6 +428,41 @@ class AdmissionTests(unittest.TestCase):
             "LEDGER_UNAVAILABLE",
         )
 
+    def test_replay_trigger_erasing_nonce_fails_closed(self):
+        # A writable SQLite schema must not make an admitted nonce disappear.
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "CREATE TRIGGER erase_nonce AFTER INSERT ON seen BEGIN "
+                "DELETE FROM seen WHERE device_id=NEW.device_id "
+                "AND command_id=NEW.command_id; END"
+            )
+            db.commit()
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 0)
+
+    def test_reopened_ledger_rejects_unexpected_trigger(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "CREATE TRIGGER erase_nonce AFTER INSERT ON seen BEGIN "
+                "DELETE FROM seen WHERE command_id=NEW.command_id; END"
+            )
+            db.commit()
+        with self.assertRaisesRegex(sqlite3.DatabaseError, "unexpected trigger"):
+            DurableReplayLedger(self.path)
+
+    def test_clock_update_trigger_cannot_silently_reset_watermark(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "CREATE TRIGGER reset_clock AFTER UPDATE ON ledger_clock BEGIN "
+                "UPDATE ledger_clock SET max_now=0 WHERE id=1; END"
+            )
+            db.commit()
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT max_now FROM ledger_clock").fetchone()[0], 0)
+
     def test_untrusted_transport(self):
         self.assertEqual(self.check(transport_authenticated=False).reason, "UNAUTHENTICATED")
 

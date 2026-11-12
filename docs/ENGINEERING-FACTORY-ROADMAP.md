@@ -2070,3 +2070,7 @@ A scoped draft change hardens the offline replay-ledger initializer against sile
 
 ## QA-STACK-029 — runtime replay clock consistency (2026-11-12)
 An already initialized ledger could accept reservations after another SQLite writer lowered its clock. QA-STACK-029 checks bounded clock type/value and retained-nonce consistency inside every write transaction, failing closed on corruption. Three new regression tests cover the live ledger and signed admission. Hosted CI, independent human approval, hardware, signed releases, and production readiness remain separate gates. Upstream SKILL.md remains unverified.
+
+## QA-STACK-031 — SQLite replay schema-trigger hardening (2026-11-12)
+
+A reproducible host-side bypass was identified: a persistent `AFTER INSERT` trigger could delete each nonce and allow the same signed command ID to be admitted twice. The bounded change refuses persisted SQLite triggers under the write transaction on initialization and reservation, including a clock-reset trigger case. See `docs/QA-STACK-031-LEDGER-TRIGGER-INTEGRITY.md`. This does not protect against same-UID direct DB tampering, filesystem races or cross-host replay. Hosted exact-head CI and independent human security/accessibility review are required; **M1–M8 remain 0/8 independently accepted**. No Pixel hardware, signed release or OTA claim.
