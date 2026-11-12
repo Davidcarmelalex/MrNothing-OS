@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN"/>
@@ -7,7 +8,9 @@
         </intent>
     </queries>
     <application android:label="Mr. Nothing OS" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false">
+        <activity android:name=".OwnerAuthorityTrustActivity" android:exported="false"/>
         <activity android:name=".OwnerConsentPreviewActivity" android:exported="false"/>
+        <activity android:name=".AccessibilityDisclosureActivity" android:exported="false"/>
         <activity android:name=".OwnerKeyEnrollmentActivity" android:exported="false"/>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

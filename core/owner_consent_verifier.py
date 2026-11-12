@@ -16,6 +16,7 @@ import time
 
 SCREEN_ACTIONS = frozenset({"read_screen", "navigate", "scroll"})
 MAX_TTL_NS = 30_000_000_000
+MAX_REVOKED_SESSIONS = 1024
 
 
 @dataclass(frozen=True)
@@ -56,18 +57,24 @@ class ConsentVerifier:
     """In-memory, fail-closed capability consumption; never executes actions.
 
     A new random epoch rejects all prior-process capabilities after restart.
-    Caller-supplied context is assumed to originate from a trusted host, not
-    the LLM. The production Android trust boundary is NOT implemented here.
+    Used nonces and revoked sessions are bounded. If the revocation registry
+    fills, the verifier denies all capabilities for this epoch rather than
+    silently dropping a revocation. Caller-supplied context is assumed to
+    originate from a trusted host, not the LLM. The production Android trust
+    boundary is NOT implemented here.
     """
 
     def __init__(self, *, device_id: str, owner_id: str,
                  owner_ui_verification_key: bytes, clock=None,
-                 max_uses: int = 1024):
+                 max_uses: int = 1024,
+                 max_revoked_sessions: int = MAX_REVOKED_SESSIONS):
         if not _identifier(device_id) or not _identifier(owner_id):
             raise ValueError("invalid trusted device/owner identity")
         if type(owner_ui_verification_key) is not bytes or len(owner_ui_verification_key) < 32:
             raise ValueError("trusted UI key must be at least 32 bytes")
-        if type(max_uses) is not int or not 1 <= max_uses <= 100_000:
+        if (type(max_uses) is not int or not 1 <= max_uses <= 100_000 or
+            type(max_revoked_sessions) is not int or
+            not 1 <= max_revoked_sessions <= 100_000):
             raise ValueError("invalid capacity")
         self.device_id = device_id
         self.owner_id = owner_id
@@ -77,14 +84,24 @@ class ConsentVerifier:
         self._used: set[tuple[str, str]] = set()
         self._revoked: set[str] = set()
         self._max_uses = max_uses
+        self._max_revoked_sessions = max_revoked_sessions
+        # If a new revocation cannot be recorded, deny every capability in
+        # this epoch rather than silently leaving that session authorized.
+        self._revocation_overflow = False
         self._lock = threading.Lock()
 
-    def revoke_session(self, session_id: str) -> None:
-        """Fail-closed revocation; cannot be reversed within this epoch."""
+    def revoke_session(self, session_id: str) -> bool:
+        """Record revocation; False means capacity triggered epoch-wide denial."""
         if not _identifier(session_id):
             raise ValueError("invalid session")
         with self._lock:
+            if session_id in self._revoked:
+                return True
+            if len(self._revoked) >= self._max_revoked_sessions:
+                self._revocation_overflow = True
+                return False
             self._revoked.add(session_id)
+            return True
 
     def verify_and_consume(self, cap: ConsentCapability, *,
                            session_id: str, action: str) -> bool:
@@ -115,8 +132,8 @@ class ConsentVerifier:
             return False
         with self._lock:
             marker = (cap.session_id, cap.nonce)
-            if (cap.session_id in self._revoked or marker in self._used or
-                len(self._used) >= self._max_uses):
+            if (self._revocation_overflow or cap.session_id in self._revoked or
+                marker in self._used or len(self._used) >= self._max_uses):
                 return False
             # Re-check time inside the critical section to prevent late grants.
             now = self._clock()

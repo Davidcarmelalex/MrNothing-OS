@@ -26,27 +26,35 @@ internal data class ScreenPreflightSignals(
 )
 
 internal object ScreenActionPreflight {
-    private const val OWN_SERVICE =
-        "tech.mrnothing.os.OwnerScreenControlAccessibilityService"
+    private const val OWN_SERVICE = AccessibilityServiceContract.COMPONENT_CLASS_NAME
 
     fun evaluate(action: String, signals: ScreenPreflightSignals): ScreenPreflightResult {
+        // These signals are common to every action. Sensitive platform
+        // prerequisites are checked only by the action that actually needs them.
         if (!signals.trustedOwnerSession ||
             !signals.safeUnlockedDevice ||
             !signals.consentIndicatorVisible ||
             signals.restrictedSurface ||
             signals.emergencyStopEngaged ||
-            signals.sessionRevoked ||
-            !signals.ownAccessibilityServiceEnabled
+            signals.sessionRevoked
         ) return ScreenPreflightResult.BLOCKED
 
         return when (action) {
-            // Conservative requirement: screen reading needs an independently
-            // authorized active MediaProjection session as well as an enabled
-            // app-owned accessibility service. No such session exists today.
+            // Screen capture uses the separately user-approved projection
+            // session; it does not require an AccessibilityService.
             "read_screen" -> if (signals.activeProjectionSession) {
                 ScreenPreflightResult.PRECONDITIONS_PRESENT
             } else ScreenPreflightResult.BLOCKED
-            "navigate", "scroll" -> ScreenPreflightResult.PRECONDITIONS_PRESENT
+
+            // App launch is performed through an exact, exported launch target
+            // check in ActionPermissionGate, not through accessibility control.
+            "navigate" -> ScreenPreflightResult.PRECONDITIONS_PRESENT
+
+            // Scroll is the only current action that uses our AccessibilityService.
+            "scroll" -> if (signals.ownAccessibilityServiceEnabled) {
+                ScreenPreflightResult.PRECONDITIONS_PRESENT
+            } else ScreenPreflightResult.BLOCKED
+
             else -> ScreenPreflightResult.BLOCKED
         }
     }
@@ -58,16 +66,16 @@ internal object ScreenActionPreflight {
      */
     fun isOwnAccessibilityServiceEnabled(context: Context): Boolean {
         return try {
-        val manager = context.getSystemService(AccessibilityManager::class.java)
-            ?: return false
-        manager.getEnabledAccessibilityServiceList(
-            AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-        ).any { service ->
-            val info = service.resolveInfo?.serviceInfo
-            info != null &&
-                info.packageName == context.packageName &&
-                info.name == OWN_SERVICE
-        }
+            val manager = context.getSystemService(AccessibilityManager::class.java)
+                ?: return false
+            manager.getEnabledAccessibilityServiceList(
+                AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+            ).any { service ->
+                val info = service.resolveInfo?.serviceInfo
+                info != null &&
+                    info.packageName == context.packageName &&
+                    info.name == OWN_SERVICE
+            }
         } catch (_: SecurityException) {
             false
         } catch (_: RuntimeException) {

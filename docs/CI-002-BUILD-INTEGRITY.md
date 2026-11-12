@@ -17,3 +17,24 @@ This task hardens the existing experimental Android CI without claiming a releas
 
 ## Residual risks
 GitHub Actions currently use major-version action tags, not immutable commit SHAs; Android SDK components are version-selected but not independently checksum-pinned; Maven plugin/dependency checksums are not locked. The debug keystore is not suitable for production releases. These remain release blockers.
+
+
+## Cross-run reproducibility finding — 2026-11-05
+
+For SEC-019B commit `02ac61a00f2f49f4ca0c9ff779ad8fa5fbf14e7a`, push and PR GitHub Actions runs both built the same source revision and each produced byte-identical repeat debug APKs within its own runner. However, the APK hashes differed between runners:
+
+- Push run 42004622475: `94cc1d20431c95689b4c4bd459d3f09c226472cdd01f1a9add14262e3d19a1f7`.
+- PR run 42004630428: `5b9e3d16c3f6fd5bc005afca12e92c46e74bddead840ff535dc9aecd0b39b9ae`.
+
+The app module has no explicit signing configuration, so the default per-run debug keystore is a plausible cause; this has not been experimentally isolated. The result does **not** prove source/build nondeterminism, but it does prove that cross-run APK byte identity has not been established. Do not claim cross-host reproducibility or release readiness.
+
+Next: build a deterministic unsigned artifact or controlled non-production CI signing profile, compare normalized contents across independent runners, record all toolchain inputs, and generate an SBOM. Do not commit or create production signing keys.
+
+
+## CI-003 implementation — 2026-11-05
+
+Added an independent-runner unsigned Android release build gate. It deliberately uses the unsigned AGP release output rather than the per-run debug signing identity. Two isolated ubuntu-24.04 matrix jobs use Temurin 17.0.13+11, checksum-verified Gradle 8.9, AGP 8.7.3, Kotlin 2.0.21, Android platform 35 and build-tools 35.0.0. A third job compares whole APK bytes and normalized ZIP entry contents, verifies matching source/toolchain/provenance, and compares deterministic SPDX-2.3 runtime SBOMs.
+
+The SBOM covers resolved releaseRuntimeClasspath artifacts only; build plugins, Gradle internals and SDK packages are explicitly outside its scope and are recorded as toolchain provenance. No production signing key is used. All artifacts remain unsigned and release_ready=false.
+
+Exact-head CI-003 acceptance passed on source commit 43e0e0f5f86718fd1c3265364c71bed8547b8a7c. Push run 42014136696 and PR run 42014145465 both completed the two independent builders and third-job verifier successfully. The unsigned APK SHA-256 was identical across runners: 4a79cd0be8e6001bae9246eb2b4e6b45ebdaaece79a068bde95ab64d0ba7a4b9 (2,118,361 bytes; 13 entries). Normalized entry digest, runtime inventory, SPDX-2.3 SBOM, source commit and toolchain inputs also matched. This is an unsigned CI artifact result only; release_ready=false and provenance_signed=false.

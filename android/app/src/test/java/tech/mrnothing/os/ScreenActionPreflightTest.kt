@@ -19,18 +19,23 @@ class ScreenActionPreflightTest {
         sessionRevoked = false
     )
 
-    @Test fun requiresAllPrerequisitesForScreenRead() {
+    @Test fun requiresCommonSafetySignalsForScreenRead() {
         assertEquals(ready, ScreenActionPreflight.evaluate("read_screen", safe()))
     }
 
-    @Test fun screenReadRequiresProjection() {
+    @Test fun screenReadRequiresProjectionButNotAccessibilityService() {
+        val withoutAccessibility = safe().copy(ownAccessibilityServiceEnabled = false)
+        assertEquals(ready, ScreenActionPreflight.evaluate("read_screen", withoutAccessibility))
         assertEquals(blocked, ScreenActionPreflight.evaluate(
-            "read_screen", safe().copy(activeProjectionSession = false)))
+            "read_screen", withoutAccessibility.copy(activeProjectionSession = false)))
     }
 
-    @Test fun navigationRequiresOwnEnabledAccessibilityService() {
-        assertEquals(blocked, ScreenActionPreflight.evaluate(
-            "navigate", safe().copy(ownAccessibilityServiceEnabled = false)))
+    @Test fun navigationDoesNotRequireAccessibilityServiceOrProjection() {
+        val withoutSensitiveSessions = safe().copy(
+            ownAccessibilityServiceEnabled = false,
+            activeProjectionSession = false
+        )
+        assertEquals(ready, ScreenActionPreflight.evaluate("navigate", withoutSensitiveSessions))
     }
 
     @Test fun scrollRequiresOwnEnabledAccessibilityService() {
@@ -38,16 +43,10 @@ class ScreenActionPreflightTest {
             "scroll", safe().copy(ownAccessibilityServiceEnabled = false)))
     }
 
-    @Test fun navigationDoesNotTreatProjectionAsAccessibilityPermission() {
-        assertEquals(ready, ScreenActionPreflight.evaluate(
-            "navigate", safe().copy(activeProjectionSession = false)))
-    }
-
     @Test fun everyUnsafeCommonSignalBlocksAllScreenActions() {
         val unsafe = listOf(
             safe().copy(trustedOwnerSession = false),
             safe().copy(safeUnlockedDevice = false),
-            safe().copy(ownAccessibilityServiceEnabled = false),
             safe().copy(consentIndicatorVisible = false),
             safe().copy(restrictedSurface = true),
             safe().copy(emergencyStopEngaged = true),
