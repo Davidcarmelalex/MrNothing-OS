@@ -323,10 +323,18 @@ class DurableReplayLedger:
                     return False
                 db.execute("INSERT INTO seen(device_id,command_id,seen_at) VALUES(?,?,?)",
                            (device_id, command_id, now))
+                # Detect canonical-path substitution after connection setup and
+                # before acknowledging the write. SQLite may keep a valid open
+                # handle even after a same-UID writer replaces the pathname.
+                self._verify_file()
                 db.execute("COMMIT")
+                # A replacement during COMMIT must not produce a successful
+                # admission result for a detached, non-canonical database.
+                self._verify_file()
                 return True
             except Exception:
-                db.execute("ROLLBACK")
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
                 raise
 
 

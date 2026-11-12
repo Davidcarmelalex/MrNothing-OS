@@ -303,6 +303,55 @@ class AdmissionTests(unittest.TestCase):
         os.chmod(ledger.path, 0o644)
         self.assertEqual(self.check(ledger=ledger).reason, "LEDGER_UNAVAILABLE")
 
+    @unittest.skipUnless(os.name == "posix", "POSIX inode identity")
+    def test_ledger_swap_after_commit_refuses_admission(self):
+        # A same-UID writer can restore an old database snapshot after the
+        # reservation commits. The caller must not report success if the
+        # canonical pathname no longer points to the verified inode.
+        import shutil
+        saved = os.path.join(self.temp.name, "snapshot-after.sqlite")
+        shutil.copyfile(self.path, saved)
+        os.chmod(saved, 0o600)
+        real_connect = sqlite3.connect
+
+        class SwapAfterCommit(sqlite3.Connection):
+            def execute(self, statement, parameters=()):
+                result = super().execute(statement, parameters)
+                if statement == "COMMIT":
+                    os.replace(saved, self_path)
+                return result
+
+        self_path = self.path
+        def connect(*args, **kwargs):
+            return real_connect(*args, factory=SwapAfterCommit, **kwargs)
+
+        with patch("core.command_admission.sqlite3.connect", side_effect=connect):
+            self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+        # The original instance also rejects the replacement on reuse.
+        self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX inode identity")
+    def test_ledger_swap_during_transaction_refuses_admission(self):
+        import shutil
+        saved = os.path.join(self.temp.name, "snapshot-before.sqlite")
+        shutil.copyfile(self.path, saved)
+        os.chmod(saved, 0o600)
+        real_connect = sqlite3.connect
+        self_path = self.path
+
+        class SwapDuringInsert(sqlite3.Connection):
+            def execute(self, statement, parameters=()):
+                result = super().execute(statement, parameters)
+                if statement.startswith("INSERT INTO seen("):
+                    os.replace(saved, self_path)
+                return result
+
+        def connect(*args, **kwargs):
+            return real_connect(*args, factory=SwapDuringInsert, **kwargs)
+
+        with patch("core.command_admission.sqlite3.connect", side_effect=connect):
+            self.assertEqual(self.check().reason, "LEDGER_UNAVAILABLE")
+
     def test_memory_only_replay_ledger_rejected(self):
         with self.assertRaisesRegex(ValueError, "durable"):
             DurableReplayLedger(":memory:")

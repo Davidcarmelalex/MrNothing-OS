@@ -2074,3 +2074,7 @@ An already initialized ledger could accept reservations after another SQLite wri
 ## QA-STACK-031 — SQLite replay schema-trigger hardening (2026-11-12)
 
 A reproducible host-side bypass was identified: a persistent `AFTER INSERT` trigger could delete each nonce and allow the same signed command ID to be admitted twice. The bounded change refuses persisted SQLite triggers under the write transaction on initialization and reservation, including a clock-reset trigger case. See `docs/QA-STACK-031-LEDGER-TRIGGER-INTEGRITY.md`. This does not protect against same-UID direct DB tampering, filesystem races or cross-host replay. Hosted exact-head CI and independent human security/accessibility review are required; **M1–M8 remain 0/8 independently accepted**. No Pixel hardware, signed release or OTA claim.
+
+## QA-STACK-034 — Replay ledger canonical-path acknowledgement (2026-11-12)
+
+A bounded host-side replay-ledger change adds inode/permissions/parent checks before and after SQLite `COMMIT`, refusing admission if the canonical path was replaced during the transaction or commit. Two new POSIX negative tests reproduced the prior acceptance gap and passed after mitigation; full local Python suite: 1,213/1,213. See `docs/QA-STACK-034-LEDGER-PATH-ACK-GATE.md`. This is **not** a same-UID tamper-proof design; independent security review, exact-head hosted CI and an isolated execution identity/integrity anchor remain required. No milestone is accepted.
