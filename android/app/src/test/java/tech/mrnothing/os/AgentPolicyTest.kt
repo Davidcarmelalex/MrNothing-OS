@@ -4,37 +4,39 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AgentPolicyTest {
-    @Test fun unauthenticatedIsDenied() {
-        assertEquals(Verdict.DENY, AgentPolicy.decide(AgentAction("open_app", false)))
+    @Test fun lowRiskActionsAreClassifiedButNotAuthorizedForExecution() {
+        assertEquals(ActionRisk.LOW_RISK, AgentPolicy.classify(AgentAction("open_app")))
+        assertEquals(ActionRisk.LOW_RISK, AgentPolicy.classify(AgentAction("get_battery")))
     }
+
     @Test fun unknownActionIsDenied() {
-        assertEquals(Verdict.DENY, AgentPolicy.decide(AgentAction("root_shell", true)))
+        assertEquals(ActionRisk.DENY, AgentPolicy.classify(AgentAction("root_shell")))
     }
-    @Test fun safeReadIsAllowed() {
-        assertEquals(Verdict.ALLOW, AgentPolicy.decide(AgentAction("get_battery", true)))
-    }
-    @Test fun unknownRecipientNeedsApproval() {
-        assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction("place_call", true)))
-    }
-    @Test fun allowlistedRecipientIsAllowed() {
-        assertEquals(Verdict.ALLOW, AgentPolicy.decide(AgentAction("place_call", true, true)))
-    }
-    @Test fun screenActionsRequireApprovalEvenWhenAuthenticated() {
+
+    @Test fun screenActionsAlwaysRequireOwnerApproval() {
         for (action in listOf("read_screen", "navigate", "scroll")) {
-            assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction(action, true)))
+            assertEquals(
+                ActionRisk.OWNER_APPROVAL_REQUIRED,
+                AgentPolicy.classify(AgentAction(action))
+            )
         }
     }
-    @Test fun screenActionsDenyUnauthenticated() {
-        for (action in listOf("read_screen", "navigate", "scroll")) {
-            assertEquals(Verdict.DENY, AgentPolicy.decide(AgentAction(action, false)))
+
+    @Test fun communicationsAlwaysRequireOwnerApprovalUntilTrustedContactPolicyExists() {
+        for (action in listOf("place_call", "send_message")) {
+            assertEquals(
+                ActionRisk.OWNER_APPROVAL_REQUIRED,
+                AgentPolicy.classify(AgentAction(action))
+            )
         }
     }
-    @Test fun contactApprovalDoesNotGrantScreenAccess() {
-        for (action in listOf("read_screen", "navigate", "scroll")) {
-            assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction(action, true, true)))
+
+    @Test fun sensitiveActionsRequireOwnerApproval() {
+        for (action in listOf("purchase", "transfer_money", "delete_data", "change_security")) {
+            assertEquals(
+                ActionRisk.OWNER_APPROVAL_REQUIRED,
+                AgentPolicy.classify(AgentAction(action))
+            )
         }
-    }
-    @Test fun paymentNeedsApproval() {
-        assertEquals(Verdict.APPROVAL_REQUIRED, AgentPolicy.decide(AgentAction("transfer_money", true)))
     }
 }

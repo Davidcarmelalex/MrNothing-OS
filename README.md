@@ -117,7 +117,7 @@ It transforms your phone from a passive consumer device into an active intellige
 | Agent | Function | Status | Language | Version |
 |-------|----------|--------|----------|---------|
 | **HERMES** | Executive orchestrator — routes commands, manages session state | ✅ **Core** | Python | v0.9 |
-| **OPENCLAW** | Security reconnaissance — network scanning, threat detection, permission auditing | 🚧 **Building** | Python | v0.5 |
+| **OPENCLAW** | Opt-in private-IPv4 diagnostics — exact allowlist, per-target confirmation, argv-only tools | 🚧 **Building** | Python | v1.1 |
 | **PAPERCLIP** | Task automation — scheduling, reminders, file ops, clipboard | 🚧 **Building** | Python | v0.4 |
 | **SHIELD** | Mobile security audit — spyware detection, hidden app scanner, forensic reports | 🔥 **Active** | Python | v1.0 |
 | **MSEAL** | P2P encrypted communications — secure messaging | 📋 Planned | Python + Kotlin | — |
