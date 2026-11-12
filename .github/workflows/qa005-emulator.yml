@@ -44,7 +44,7 @@ concurrency:
 jobs:
   emulator-smoke:
     # Main-target PRs retain their existing gate; development-target PRs run only for this audited candidate.
-    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/ux-agent006-rehearsal-mode-isolation-20261111' && github.repository == 'Davidcarmelalex/MrNothing-OS') || github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-ux008-agent-rehearsal-emulator-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-combined-20261111') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/ux-agent006-rehearsal-mode-isolation-20261111' && github.repository == 'Davidcarmelalex/MrNothing-OS') || github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-ux008-agent-rehearsal-emulator-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-combined-20261111') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/qa-stack024-ci003-qa005-head-20261112' && github.repository == 'Davidcarmelalex/MrNothing-OS')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
