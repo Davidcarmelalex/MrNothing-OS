@@ -8,7 +8,7 @@ import java.security.KeyStore
 import javax.crypto.Cipher
 
 /**
- * SEC-023B1B2D1: dormant, one-shot read-only-key AES-GCM probe.
+ * SEC-023B1B2D1/D3: dormant, one-shot read-only-key AES-GCM probe.
  * Never generates, imports, replaces or deletes keys. The only plaintext is
  * empty synthetic input, and the resulting tag is discarded. No persistence.
  * The result is NOT authorization; Pixel hardware and credential-only
@@ -35,6 +35,7 @@ internal object MemoryVaultCipherProbePolicy {
 
 internal class MemoryVaultAuthenticatedCipherProbe {
     private val callbackGate = MemoryVaultCryptoObjectCallbackGate()
+    private val cancellationFence = MemoryVaultCompletionCancellationFence()
     private var attempted = false
     private var pendingCipher: Cipher? = null
     private var pendingDigest: String? = null
@@ -80,42 +81,58 @@ internal class MemoryVaultAuthenticatedCipherProbe {
         }
     }
 
-    /** One-shot, no authorization and no retained ciphertext. */
-    @Synchronized
+    /**
+     * One-shot probe, not authorization. Only the pending-state transfer holds
+     * the monitor; revoke() can therefore execute while doFinal() is blocked.
+     * If revocation linearizes before finish(), the result is always BLOCKED.
+     */
     fun complete(
         consentDigest: String,
         result: BiometricPrompt.AuthenticationResult?
     ): MemoryVaultCipherProbeOutcome {
-        val cipher = pendingCipher
-        val armedDigest = pendingDigest
-        pendingCipher = null
-        pendingDigest = null
+        val (cipher, armedDigest) = synchronized(this) {
+            val currentCipher = pendingCipher
+            val currentDigest = pendingDigest
+            pendingCipher = null
+            pendingDigest = null
+            currentCipher to currentDigest
+        }
         if (cipher == null || armedDigest != consentDigest) {
             callbackGate.revoke()
             return MemoryVaultCipherProbeOutcome.BLOCKED
         }
-        val callback = callbackGate.consume(consentDigest, result)
-        if (callback != MemoryVaultCryptoCallbackProgress.AWAITING_AUTHENTICATED_CIPHER_OPERATION) {
+        if (!cancellationFence.begin()) {
+            callbackGate.revoke()
             return MemoryVaultCipherProbeOutcome.BLOCKED
         }
-        val readiness = MemoryVaultKeystorePreflight.inspectExisting()
-        if (readiness != MemoryVaultKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH) {
-            return MemoryVaultCipherProbeOutcome.BLOCKED
-        }
+
         var aad: ByteArray? = null
         var tag: ByteArray? = null
         return try {
-            aad = ByteArray(32) { index ->
-                consentDigest.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+            val callback = callbackGate.consume(consentDigest, result)
+            if (callback != MemoryVaultCryptoCallbackProgress.AWAITING_AUTHENTICATED_CIPHER_OPERATION) {
+                MemoryVaultCipherProbeOutcome.BLOCKED
+            } else {
+                val readiness = MemoryVaultKeystorePreflight.inspectExisting()
+                if (readiness != MemoryVaultKeyReadiness.EXISTING_KEY_REQUIRES_OWNER_AUTH) {
+                    MemoryVaultCipherProbeOutcome.BLOCKED
+                } else {
+                    aad = ByteArray(32) { index ->
+                        consentDigest.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+                    }
+                    cipher.updateAAD(aad)
+                    tag = cipher.doFinal(ByteArray(0))
+                    val classified = MemoryVaultCipherProbePolicy.evaluate(callback, readiness, tag.size)
+                    if (cancellationFence.finish()) classified
+                    else MemoryVaultCipherProbeOutcome.BLOCKED
+                }
             }
-            cipher.updateAAD(aad)
-            tag = cipher.doFinal(ByteArray(0))
-            MemoryVaultCipherProbePolicy.evaluate(callback, readiness, tag.size)
         } catch (_: GeneralSecurityException) {
             MemoryVaultCipherProbeOutcome.BLOCKED
         } catch (_: RuntimeException) {
             MemoryVaultCipherProbeOutcome.BLOCKED
         } finally {
+            cancellationFence.revoke()
             aad?.fill(0)
             tag?.fill(0)
         }
@@ -126,6 +143,7 @@ internal class MemoryVaultAuthenticatedCipherProbe {
         attempted = true
         pendingCipher = null
         pendingDigest = null
+        cancellationFence.revoke()
         callbackGate.revoke()
     }
 }
