@@ -56,7 +56,7 @@ jobs:
           unzip -q "$HOME/.gradle/distributions/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
       - name: Build, unit test and compare repeat debug APK
         run: |
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:testDebugUnitTest :app:assembleDebug
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/first-build.apk"
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict clean :app:assembleDebug
           cmp "$RUNNER_TEMP/first-build.apk" app/build/outputs/apk/debug/app-debug.apk
