@@ -103,6 +103,15 @@ class OwnerConsentCanonicalizerTest {
         ))
     }
 
+    @Test fun acceptsSignedLongEpochBoundaryWithoutOverflow() {
+        val (fields, _) = v1Fixture()
+        val boundary = fields.copy(
+            issuedAtEpochMs = Long.MAX_VALUE - 30_000L,
+            expiresAtEpochMs = Long.MAX_VALUE
+        )
+        assertNotNull(OwnerConsentCanonicalizer.canonicalPayload(boundary))
+    }
+
     @Test fun acceptsMaximumLifetimeAndReturnsCanonicalPayload() {
         val (fields, _) = v1Fixture()
         val maximum = fields.copy(expiresAtEpochMs = fields.issuedAtEpochMs + 30_000L)

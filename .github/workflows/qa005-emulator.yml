@@ -2,7 +2,7 @@ name: QA-005 Android emulator smoke
 # Run once per PR rather than duplicating expensive emulators on push + PR.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/phase1-agentic-phone]
     paths:
       - 'android/**'
       - 'scripts/qa005_emulator_smoke.sh'
@@ -27,6 +27,8 @@ on:
       - 'scripts/qa020b2_*'
       - 'tests/test_qa020b2_*'
       - 'scripts/qa0203_*'
+      - 'scripts/qa_ux008_*'
+      - 'tests/test_qa_ux008_*'
       - 'tests/test_qa0203_*'
       - 'android/app/src/debug/**'
   workflow_dispatch:
@@ -39,6 +41,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   emulator-smoke:
+    # Main-target PRs retain their existing gate; development-target PRs run only for this audited candidate.
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/ux-agent006-rehearsal-mode-isolation-20261111' && github.repository == 'Davidcarmelalex/MrNothing-OS') || github.base_ref == 'main' || (github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-ux008-agent-rehearsal-emulator-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -49,6 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -126,6 +131,13 @@ jobs:
           set -euo pipefail
           TEST_PIN=2468
           PIN_CONFIGURED=0
+          # A prior instrumentation test can leave the disposable AVD asleep;
+          # keep its display interactive during the suite without unlocking it.
+          ORIGINAL_STAY_ON="$(adb -s "$ANDROID_SERIAL" shell settings get global stay_on_while_plugged_in | tr -d '\r')"
+          [[ "$ORIGINAL_STAY_ON" == null || "$ORIGINAL_STAY_ON" =~ ^[0-9]+$ ]] || {
+            echo "Unrecognized original emulator stay-awake setting" >&2
+            exit 1
+          }
           cleanup() {
             local rc=$?
             trap - EXIT INT TERM
@@ -146,9 +158,17 @@ jobs:
                 rc=1
               fi
             fi
+            if [[ "$ORIGINAL_STAY_ON" == null ]]; then
+              adb -s "$ANDROID_SERIAL" shell settings delete global stay_on_while_plugged_in || rc=1
+            else
+              adb -s "$ANDROID_SERIAL" shell settings put global stay_on_while_plugged_in "$ORIGINAL_STAY_ON" || rc=1
+            fi
             exit "$rc"
           }
           trap cleanup EXIT INT TERM
+          adb -s "$ANDROID_SERIAL" shell svc power stayon true
+          stay_on="$(adb -s "$ANDROID_SERIAL" shell settings get global stay_on_while_plugged_in | tr -d '\r')"
+          [[ "$stay_on" =~ ^[1-9][0-9]*$ ]] || { echo "Emulator stay-awake setting not enabled" >&2; exit 1; }
           shell_identity="$(adb -s "$ANDROID_SERIAL" shell id | tr -d '\r')"
           [[ "$shell_identity" == *"uid=2000(shell)"* ]] || {
             echo "Expected ordinary adb shell identity; refusing privileged execution" >&2
@@ -242,6 +262,10 @@ jobs:
         env:
           QA020B3_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa020b3
         run: bash scripts/qa0203_credential_prompt_smoke.sh
+      - name: "QA-UX-008: offline agent rehearsal and 200% accessible UI"
+        env:
+          QAUX008_OUTPUT: ${{ github.workspace }}/qa005-evidence/qa-ux008
+        run: bash scripts/qa_ux008_agent_plan_smoke.sh
       - name: Capture emulator diagnostics
         if: always()
         run: |
@@ -260,6 +284,7 @@ jobs:
           timeout 15s adb -s "$ANDROID_SERIAL" logcat -b all -d -t 2000 > "$QA005_OUTPUT/logcat-tail.txt" 2>&1 || true
           # Preserve process-start/exit events separately; lastanr can omit startup ANRs.
           timeout 15s adb -s "$ANDROID_SERIAL" logcat -b events -d -t 10000 > "$QA005_OUTPUT/events-tail.txt" 2>&1 || true
+          timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys power > "$QA005_OUTPUT/power-state-after-instrumentation.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os > "$QA005_OUTPUT/app-exit-info.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity exit-info tech.mrnothing.os.test > "$QA005_OUTPUT/test-exit-info.txt" 2>&1 || true
           timeout 15s adb -s "$ANDROID_SERIAL" shell dumpsys activity lastanr > "$QA005_OUTPUT/last-anr.txt" 2>&1 || true
