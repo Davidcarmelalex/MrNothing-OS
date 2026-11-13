@@ -2,7 +2,7 @@
 import pathlib
 import re
 import unittest
-import xml.etree.ElementTree as ET
+from xml.etree import ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "android/app/src/main/java/tech/mrnothing/os/MemoryVaultKeystorePreflight.kt"
@@ -36,23 +36,27 @@ class MemoryVaultKeystorePreflightSourceTest(unittest.TestCase):
         self.assertNotIn("info.isRandomizedEncryptionRequired", source)
         self.assertIn("KeyInfo does not", source)
 
-    def test_preflight_not_integrated_with_existing_service_or_launcher(self):
-        # The parent SEC-023B1A branch now declares a dormant private service.
-        # This read-only key preflight must not enable or connect that service.
-        ns = "{http://schemas.android.com/apk/res/android}"
-        root = ET.parse(MANIFEST).getroot()
-        services = [s for s in root.findall("application/service")
-                    if s.get(ns + "name") == ".MemoryVaultService"]
-        self.assertEqual(len(services), 1)
-        self.assertEqual(services[0].get(ns + "enabled"), "false")
-        self.assertEqual(services[0].get(ns + "exported"), "false")
-        self.assertEqual(services[0].findall("intent-filter"), [])
+    def test_preflight_remains_disconnected_from_disabled_service_and_launcher(self):
+        # The reconciled composite retains exactly one disabled private service.
+        # Assert the actual XML boundary rather than the former PR-local absence.
+        namespace = "{http://schemas.android.com/apk/res/android}"
+        application = ET.parse(MANIFEST).getroot().find("application")
+        self.assertIsNotNone(application)
+        services = [
+            node for node in application.findall("service")
+            if node.get(namespace + "name") in (
+                ".MemoryVaultService", "tech.mrnothing.os.MemoryVaultService")
+        ]
+        self.assertEqual(1, len(services))
+        self.assertEqual("false", services[0].get(namespace + "enabled"))
+        self.assertEqual("false", services[0].get(namespace + "exported"))
+        self.assertEqual([], services[0].findall("intent-filter"))
         for path in (
+            ROOT / "android/app/src/main/java/tech/mrnothing/os/MemoryVaultService.kt",
             ROOT / "android/app/src/main/java/tech/mrnothing/os/MainActivity.kt",
             ROOT / "android/app/src/main/java/tech/mrnothing/os/OwnerConsentSigner.kt",
-            ROOT / "android/app/src/main/java/tech/mrnothing/os/MemoryVaultService.kt",
         ):
-            self.assertNotIn('MemoryVaultKeystorePreflight', path.read_text(encoding="utf-8"))
+            self.assertNotIn("MemoryVaultKeystorePreflight", path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
