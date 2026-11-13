@@ -17,13 +17,19 @@ EXPECTED_METHODS = frozenset({
     "testInstalledVaultServiceIsDisabledAndPrivate",
     "testNoImplicitVaultIntentCanResolve",
 })
+UX_CLASS = "tech.mrnothing.os.AgentPlanPreviewActivityTest"
+UX_METHODS = frozenset({
+    "testSampleReviewProgressionTerminalDenialAndCancellation",
+    "testSwitchingPreviewModesInvalidatesAcknowledgedRehearsal",
+    "testOnStopClearsActiveRehearsalWithoutGrant",
+})
 
 
 class EvidenceError(ValueError):
     pass
 
 
-def verify_reports(directory: Path) -> dict:
+def verify_reports(directory: Path, *, require_ux_rehearsal: bool = False) -> dict:
     if not directory.is_dir():
         raise EvidenceError(f"instrumentation XML directory missing: {directory}")
     reports = sorted(directory.rglob("TEST-*.xml"))
@@ -31,6 +37,7 @@ def verify_reports(directory: Path) -> dict:
         raise EvidenceError(f"no Gradle TEST-*.xml reports in {directory}")
 
     observed: list[str] = []
+    observed_ux: list[str] = []
     all_cases = 0
     for report in reports:
         try:
@@ -80,6 +87,8 @@ def verify_reports(directory: Path) -> dict:
                     raise EvidenceError(f"failed/skipped instrumentation case {classname}.{method}")
                 if classname == EXPECTED_CLASS or classname == EXPECTED_CLASS.rsplit(".", 1)[-1]:
                     observed.append(method)
+                if classname == UX_CLASS or classname == UX_CLASS.rsplit(".", 1)[-1]:
+                    observed_ux.append(method)
             for child in node:
                 walk(child, suite)
 
@@ -92,7 +101,14 @@ def verify_reports(directory: Path) -> dict:
             f"MemoryVault instrumentation cases mismatch: observed={sorted(observed)!r}; "
             f"expected={sorted(EXPECTED_METHODS)!r}"
         )
-    return {
+    if require_ux_rehearsal and (
+        len(observed_ux) != len(UX_METHODS) or set(observed_ux) != UX_METHODS
+    ):
+        raise EvidenceError(
+            f"UX rehearsal instrumentation cases mismatch: "
+            f"observed={sorted(observed_ux)!r}; expected={sorted(UX_METHODS)!r}"
+        )
+    result = {
         "gate": "SEC-023B1A-QA",
         "result": "pass",
         "verified_class": EXPECTED_CLASS,
@@ -101,15 +117,21 @@ def verify_reports(directory: Path) -> dict:
         "report_files": len(reports),
         "scope": "disposable Android emulator only; not physical Pixel acceptance",
     }
+    if require_ux_rehearsal:
+        result["gate"] = "QA-STACK-008-UX-INSTRUMENTATION"
+        result["ux_verified_class"] = UX_CLASS
+        result["ux_verified_methods"] = sorted(observed_ux)
+    return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--summary", type=Path)
+    parser.add_argument("--require-ux-rehearsal", action="store_true")
     args = parser.parse_args()
     try:
-        result = verify_reports(args.directory)
+        result = verify_reports(args.directory, require_ux_rehearsal=args.require_ux_rehearsal)
     except EvidenceError as exc:
         print(f"SEC-023B1A-QA FAIL: {exc}", file=sys.stderr)
         return 1

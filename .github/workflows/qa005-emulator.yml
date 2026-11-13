@@ -219,6 +219,15 @@ jobs:
           python3 ../scripts/qa023b1a_instrumentation_evidence.py \
             app/build/outputs/androidTest-results/connected/debug \
             --summary "$QA005_OUTPUT/memory-vault-instrumentation-summary.json"
+      - name: "QA-STACK-008: require executed UX rehearsal instrumentation"
+        if: github.event_name == 'pull_request' && github.base_ref == 'feat/phase1-agentic-phone' && github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113' && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS'
+        working-directory: android
+        run: |
+          set -euo pipefail
+          python3 ../scripts/qa023b1a_instrumentation_evidence.py \
+            app/build/outputs/androidTest-results/connected/debug \
+            --require-ux-rehearsal \
+            --summary "$QA005_OUTPUT/ux-rehearsal-instrumentation-summary.json"
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"

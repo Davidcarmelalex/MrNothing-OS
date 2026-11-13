@@ -49,6 +49,18 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("github.base_ref == 'feat/phase1-agentic-phone'", self.workflow)
         self.assertNotIn("  push:", self.workflow)
 
+    def test_combined_stack_requires_executed_ux_rehearsal_methods(self):
+        start = self.workflow.index("QA-STACK-008: require executed UX rehearsal instrumentation")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        step = self.workflow[start:end]
+        self.assertIn("github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113'", step)
+        self.assertIn("github.base_ref == 'feat/phase1-agentic-phone'", step)
+        self.assertIn("github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS'", step)
+        self.assertIn("--require-ux-rehearsal", step)
+        self.assertIn("qa023b1a_instrumentation_evidence.py", step)
+        self.assertLess(self.workflow.index("SEC-023B1A-QA: require executed installed-manifest instrumentation"), start)
+        self.assertLess(start, end)
+
     def test_single_pr_trigger_prevents_duplicate_push_emulators(self):
         self.assertIn("pull_request:", self.workflow)
         self.assertNotIn("  push:", self.workflow)

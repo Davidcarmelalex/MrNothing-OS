@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from xml.sax.saxutils import escape
 
-from scripts.qa023b1a_instrumentation_evidence import EvidenceError, verify_reports
+from scripts.qa023b1a_instrumentation_evidence import EvidenceError, verify_reports, UX_CLASS, UX_METHODS
 
 
 CLASS = "tech.mrnothing.os.MemoryVaultManifestBoundaryTest"
@@ -34,6 +34,54 @@ class MemoryVaultInstrumentationEvidenceTests(unittest.TestCase):
         result = verify_reports(self.root)
         self.assertEqual(result["result"], "pass")
         self.assertEqual(result["verified_methods"], sorted((A, B)))
+
+    def test_ux_rehearsal_gate_accepts_all_three_executed_cases(self):
+        self.write(suite([case(A), case(B)] + [
+            case(method, classname=UX_CLASS) for method in sorted(UX_METHODS)
+        ]))
+        result = verify_reports(self.root, require_ux_rehearsal=True)
+        self.assertEqual(result["gate"], "QA-STACK-008-UX-INSTRUMENTATION")
+        self.assertEqual(result["ux_verified_methods"], sorted(UX_METHODS))
+        self.assertEqual(result["instrumentation_cases_in_reports"], 5)
+
+    def test_ux_rehearsal_gate_rejects_missing_method(self):
+        self.write(suite([case(A), case(B)] + [
+            case(method, classname=UX_CLASS) for method in sorted(UX_METHODS)[:-1]
+        ]))
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root, require_ux_rehearsal=True)
+
+    def test_ux_rehearsal_gate_rejects_duplicate_method(self):
+        ux = sorted(UX_METHODS)
+        self.write(suite([case(A), case(B)] + [
+            case(method, classname=UX_CLASS) for method in ux
+        ] + [case(ux[0], classname=UX_CLASS)]))
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root, require_ux_rehearsal=True)
+
+    def test_ux_rehearsal_gate_rejects_failed_or_skipped_method(self):
+        ux = sorted(UX_METHODS)
+        for outcome in ("<failure/>", "<skipped/>", "<error/>"):
+            with self.subTest(outcome=outcome):
+                self.write(suite([case(A), case(B)] + [
+                    case(method, classname=UX_CLASS,
+                         outcome=outcome if method == ux[0] else "")
+                    for method in ux
+                ]))
+                with self.assertRaises(EvidenceError):
+                    verify_reports(self.root, require_ux_rehearsal=True)
+
+    def test_ux_rehearsal_gate_rejects_unrelated_class_spoof(self):
+        self.write(suite([case(A), case(B)] + [
+            case(method, classname="other.AgentPlanPreviewActivityTest")
+            for method in sorted(UX_METHODS)
+        ]))
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root, require_ux_rehearsal=True)
+
+    def test_ux_gate_is_opt_in_for_other_pr_branches(self):
+        self.write(suite([case(A), case(B)]))
+        self.assertEqual(verify_reports(self.root)["result"], "pass")
 
     def test_rejects_missing_report_directory(self):
         with self.assertRaises(EvidenceError):
