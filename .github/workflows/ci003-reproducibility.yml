@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/phase1-agentic-phone]
   pull_request:
-    branches: [main, feat/phase1-agentic-phone]
+    branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone') || (github.event_name == 'pull_request' && github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
+    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone') || (github.event_name == 'pull_request' && github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS') || (github.event_name == 'pull_request' && github.base_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113' && github.head_ref == 'feat/ci003-runner-drift-diagnostics-20261113' && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -161,7 +161,7 @@ jobs:
           retention-days: 7
 
   verify-independent-runners:
-    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone') || (github.event_name == 'pull_request' && github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
+    if: github.ref == 'refs/heads/feat/phase1-agentic-phone' || (github.event_name == 'pull_request' && github.head_ref == 'feat/phase1-agentic-phone') || (github.event_name == 'pull_request' && github.base_ref == 'feat/phase1-agentic-phone' && (github.head_ref == 'feat/qa-stack007-exact-head-ci-20261111' || github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113') && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS') || (github.event_name == 'pull_request' && github.base_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113' && github.head_ref == 'feat/ci003-runner-drift-diagnostics-20261113' && github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10

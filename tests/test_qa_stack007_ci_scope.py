@@ -24,11 +24,12 @@ class ScopedWorkflowTests(unittest.TestCase):
         cls.qa = QA.read_text(encoding="utf-8")
 
     def test_both_workflows_preserve_main_gate_and_read_only_token(self):
-        for workflow in (self.ci, self.qa):
-            self.assertRegex(
-                workflow,
-                r"(?m)^  pull_request:\n    branches: \[main, feat/phase1-agentic-phone\]$",
-            )
+        expected_branches = (
+            (self.ci, "[main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]"),
+            (self.qa, "[main, feat/phase1-agentic-phone]"),
+        )
+        for workflow, branches in expected_branches:
+            self.assertIn(f"  pull_request:\n    branches: {branches}\n", workflow)
             self.assertIn("permissions:\n  contents: read", workflow)
 
     def test_reproducibility_is_opt_in_for_single_same_repo_pr(self):

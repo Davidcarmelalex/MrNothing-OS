@@ -617,6 +617,59 @@ def attach_provenance(inventory_path: Path, sbom_path: Path, provenance_path: Pa
     return link
 
 
+def describe_environment_drift(left: dict, right: dict, sample_limit: int = 12) -> dict:
+    """Report bounded, non-secret, actionable differences; never waive verification.
+
+    The two inventories must already have passed canonical SPDX/provenance validation.
+    Do not include arbitrary component metadata or environment variables in the report.
+    """
+    if not 1 <= sample_limit <= 20:
+        raise ValueError("invalid diagnostic sample limit")
+    runner_fields = sorted(
+        key for key in set(left["runner"]) | set(right["runner"])
+        if left["runner"].get(key) != right["runner"].get(key)
+    )
+    toolchain_fields = sorted(
+        key for key in set(left["toolchain"]) | set(right["toolchain"])
+        if left["toolchain"].get(key) != right["toolchain"].get(key)
+    )
+    left_components = {item["purl"]: item for item in left["components"]}
+    right_components = {item["purl"]: item for item in right["components"]}
+    only_left = [left_components[key] for key in sorted(left_components.keys() - right_components.keys())]
+    only_right = [right_components[key] for key in sorted(right_components.keys() - left_components.keys())]
+
+    def safe_sample(items: list[dict]) -> list[dict]:
+        # Package identities are captured from installed package managers. Keep
+        # reports bounded and omit arbitrary metadata, paths and credentials.
+        return [{
+            "kind": item["kind"][:64],
+            "name": item["name"][:120],
+            "version": item["version"][:120],
+            "architecture": str(item.get("architecture", ""))[:40],
+        } for item in items[:sample_limit]]
+
+    return {
+        "runner_changed_fields": runner_fields,
+        "runner_image_versions": [
+            str(inventory["runner"].get("image_version", ""))[:80]
+            for inventory in (left, right)
+        ],
+        "toolchain_changed_fields": toolchain_fields,
+        "component_counts_by_runner": [len(left_components), len(right_components)],
+        "only_runner_a_count": len(only_left),
+        "only_runner_b_count": len(only_right),
+        "only_runner_a_sample": safe_sample(only_left),
+        "only_runner_b_sample": safe_sample(only_right),
+        "samples_truncated": len(only_left) > sample_limit or len(only_right) > sample_limit,
+        "host_os_package_drift": any(
+            item["kind"] == "os-package" for item in only_left + only_right
+        ),
+        "non_os_component_drift": any(
+            item["kind"] != "os-package" for item in only_left + only_right
+        ),
+    }
+
+
 def verify_bundles(first: Path, second: Path, expected_commit: str, output: Path) -> dict:
     if not COMMIT_RE.fullmatch(expected_commit):
         raise ValueError("expected full lowercase commit SHA")
@@ -675,11 +728,22 @@ def verify_bundles(first: Path, second: Path, expected_commit: str, output: Path
         "inventory_sha256": [sha256_file(item["inventory_path"]) for item in bundles],
         "sbom_sha256": [sha256_file(item["sbom_path"]) for item in bundles],
         "scope": SCOPE,
+        "differences": describe_environment_drift(
+            bundles[0]["inventory"], bundles[1]["inventory"]
+        ),
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not result["build_environment_identical"]:
-        raise ValueError("independent runner build environments are not identical")
+        differences = result["differences"]
+        raise ValueError(
+            "independent runner build environments are not identical; "
+            f"runner fields={differences['runner_changed_fields']}; "
+            f"toolchain fields={differences['toolchain_changed_fields']}; "
+            f"component-only-A={differences['only_runner_a_count']}, "
+            f"component-only-B={differences['only_runner_b_count']}; "
+            "inspect build-environment-verification.json"
+        )
     return result
 
 
