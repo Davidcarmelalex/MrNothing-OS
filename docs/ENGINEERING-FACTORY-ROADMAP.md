@@ -2119,3 +2119,31 @@ preflight remains non-authorizing. Local Python/manifest evidence is not a
 substitute for exact-head hosted Kotlin/JUnit, emulator, physical Pixel 9 Pro,
 or independent human security acceptance. Upstream shared SKILL.md remains
 absent/unverified. No M1–M8 milestone is independently complete.
+
+## SEC-023B1B1 dormant MemoryVault provisioning policy (2026-11-09)
+
+Scoped independent proposal off feat/phase1-agentic-phone: strict preflight
+for future owner ceremony plus an **uninstalled** StrongBox AES-256/GCM
+KeyGenParameterSpec draft. No key creation, consent proof, CryptoObject, IPC,
+persistence, Android permission, runtime integration or hardware validation.
+See SEC-023B1B1-DORMANT-PROVISIONING.md. The upstream shared SKILL.md remains
+absent/unverified. M3/M6 are not complete; independent security review and
+Pixel 9 Pro compatibility remain blocking gates.
+
+## SEC-023B1B1-QA Android KeyGenParameterSpec contract (2026-11-09)
+
+Four metadata-only Android instrumentation tests inspect the framework-built
+SEC-023B1B1 key specification and deny absent consent, absent StrongBox and
+preexisting alias. See SEC-023B1B1-QA-KEYSPEC-CONTRACT.md. No key is generated,
+no owner is authenticated, and no memory is persisted. Emulator execution,
+independent security approval and Pixel 9 Pro hardware interoperability are
+separate mandatory gates. The upstream shared SKILL.md remains unverified.
+
+## SEC-023B1B1 integration reconciliation (2026-11-13)
+
+The SEC-023 through SEC-023B1B0 draft stack is included as ancestry of the
+SEC-023B1B1 dormant provisioning-policy proposal. Both sets of documentation,
+source gates and tests are retained. This is **not** authorization to provision
+keys, enable MemoryVault, persist memory or connect agent/device controls.
+Exact-head hosted Android/QA evidence and independent non-author security
+review remain mandatory; no milestone is independently accepted.
