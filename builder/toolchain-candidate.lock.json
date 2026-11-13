@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "platform": "linux/amd64",
+  "status": "UNAPPROVED_CANDIDATE",
+  "python_base": "docker.io/library/python@sha256:83f339c1be6340ae1096010fdccf6552ac932d8f410d45d206014916bdf37e48",
+  "jdk_base": "docker.io/library/eclipse-temurin@sha256:65e4eb734734a9ed4cd07ca5142c391c25ed482360f2570e138d2609d6ef9024",
+  "archives": {
+    "commandlinetools-linux-16111833_latest.zip": "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8",
+    "gradle-8.9-bin.zip": "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab"
+  }
+}

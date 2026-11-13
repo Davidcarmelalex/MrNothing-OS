@@ -1,0 +1,5 @@
+**
+!builder/
+!builder/inputs/
+!builder/inputs/commandlinetools-linux-16111833_latest.zip
+!builder/inputs/gradle-8.9-bin.zip
