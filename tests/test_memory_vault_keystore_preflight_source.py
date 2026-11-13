@@ -37,7 +37,7 @@ class MemoryVaultKeystorePreflightSourceTest(unittest.TestCase):
         self.assertIn("KeyInfo does not", source)
 
     def test_preflight_remains_disconnected_from_disabled_service_and_launcher(self):
-        # The composite candidate deliberately includes PR #16's dormant service.
+        # The reconciled composite retains exactly one disabled private service.
         # Assert the actual XML boundary rather than the former PR-local absence.
         namespace = "{http://schemas.android.com/apk/res/android}"
         application = ET.parse(MANIFEST).getroot().find("application")
