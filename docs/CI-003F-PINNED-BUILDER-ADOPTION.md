@@ -49,3 +49,18 @@ strict YAML subset; it does **not** establish general YAML equivalence or
 prove GitHub Actions runtime interpretation. A real pinned image, signed
 provenance, SBOM, dual-builder evidence and independent approval remain
 separate mandatory gates. No workflow was activated or security policy relaxed.
+
+## CI-003H — OCI reference grammar hardening (2026-11-14)
+
+The candidate-only validator now rejects malformed registry DNS labels, invalid
+registry ports (including zero, leading-zero ambiguity and values above 65535),
+empty or dot-only repository components, and leading/trailing repository
+separators. It retains valid explicit registry ports and Docker-style component
+separators. The tests include adversarial negative controls and positive
+compatibility cases. This is strictly offline syntax validation, not registry
+resolution, image-signature verification, SBOM inspection, image selection or
+builder adoption. The active CI-003 workflow remains unchanged and unpinned.
+
+The upstream shared `SKILL.md` is still absent and unverified; the local
+`PROJECT-ADAPTER.md` remains the project-specific engineering contract.
+Independent security/release acceptance and hardware testing remain pending.

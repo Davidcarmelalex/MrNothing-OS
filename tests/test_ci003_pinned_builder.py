@@ -23,6 +23,27 @@ class CandidatePinTests(unittest.TestCase):
             with self.subTest(candidate=candidate), self.assertRaises(ValueError):
                 pinned_image(candidate)
 
+    def test_invalid_registry_authority_and_repository_are_rejected(self):
+        bad = (
+            "ghcr..io/example/builder", "-ghcr.io/example/builder",
+            "ghcr.io:0/example/builder", "ghcr.io:65536/example/builder",
+            "ghcr.io:080/example/builder", "ghcr.io:/example/builder",
+            "ghcr.io/example/../builder", "ghcr.io/example/.hidden",
+            "ghcr.io/example/_hidden", "ghcr.io/example/builder-",
+            "ghcr.io/example//builder", "ghcr.io/example/builder:latest",
+        )
+        for reference in bad:
+            with self.subTest(reference=reference), self.assertRaises(ValueError):
+                pinned_image(reference + "@sha256:" + "1" * 64)
+
+    def test_valid_registry_port_and_component_separators(self):
+        for reference in ("ghcr.io:443/example/android-builder",
+                          "registry.example.org/namespace/a__b",
+                          "registry.example.org/namespace/a--b"):
+            with self.subTest(reference=reference):
+                value = reference + "@sha256:" + "1" * 64
+                self.assertEqual(pinned_image(value), value)
+
     def test_candidate_workflow_matches(self):
         self.assertEqual(workflow_image(WORKFLOW), IMAGE)
 
