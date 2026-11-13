@@ -41,26 +41,62 @@ def policy_image(path):
 
 
 def workflow_image(text):
-    job = None
-    build_count = 0
+    """Parse only a conservative literal jobs.build.container.image YAML subset.
+
+    This is intentionally not a general YAML parser or an attestation verifier.
+    Reject duplicate/ambiguous security-sensitive keys instead of guessing which
+    mapping entry GitHub Actions would ultimately evaluate.
+    """
+    if not isinstance(text, str) or len(text) > 65536:
+        raise ValueError("workflow must be bounded text")
+    jobs_count = build_count = container_count = 0
+    in_jobs = in_build = in_container = False
     images = []
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if re.fullmatch(r"  [a-zA-Z][a-zA-Z0-9_-]*:", line):
-            job = line.strip()[:-1]
-            if job == "build":
-                build_count += 1
-        if job != "build":
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
             continue
-        if line.startswith("    container:"):
-            if line != "    container:" or i + 1 >= len(lines):
-                raise ValueError("ambiguous container")
-            image_line = lines[i + 1]
-            if not re.fullmatch(r"      image: [^\s#]+", image_line):
-                raise ValueError("container requires a literal image")
-            images.append(image_line.split(": ", 1)[1])
-    if build_count != 1 or len(images) != 1:
-        raise ValueError("no unique pinned build container")
+        indent = line[:len(line) - len(line.lstrip(" \t"))]
+        if "\t" in indent:
+            raise ValueError("ambiguous YAML tab indentation")
+        if not line.startswith(" "):
+            in_build = in_container = False
+            if re.match(r"""^(?:jobs|["']jobs["'])\s*:""", line):
+                jobs_count += 1
+                if line != "jobs:":
+                    raise ValueError("ambiguous jobs mapping")
+                in_jobs = True
+            else:
+                in_jobs = False
+            continue
+        if in_jobs and line.startswith("  ") and not line.startswith("   "):
+            if not re.fullmatch(r"  [a-zA-Z][a-zA-Z0-9_-]*:", line):
+                raise ValueError("ambiguous jobs mapping")
+            in_container = False
+            key = line[2:-1]
+            if key == "build":
+                build_count += 1
+                in_build = True
+            else:
+                in_build = False
+            continue
+        if in_build and line.startswith("    ") and not line.startswith("     "):
+            if not re.match(r"^    [a-zA-Z][a-zA-Z0-9_-]*\s*:", line):
+                raise ValueError("ambiguous build job field")
+            key = line.strip().split(":", 1)[0].strip()
+            if key == "container":
+                if line != "    container:":
+                    raise ValueError("ambiguous container")
+                container_count += 1
+                in_container = True
+            else:
+                in_container = False
+            continue
+        if in_container and line.startswith("      ") and not line.startswith("       "):
+            if not re.fullmatch(r"      image: [^\s#]+", line):
+                raise ValueError("unsupported or ambiguous container field")
+            images.append(line.split(": ", 1)[1])
+    if jobs_count != 1 or build_count != 1 or container_count != 1 or len(images) != 1:
+        raise ValueError("no unique pinned build container under jobs")
     return pinned_image(images[0])
 
 

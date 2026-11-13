@@ -32,3 +32,20 @@ Example for an isolated future candidate checkout (not current CI):
 ## Safety
 
 No current CI workflow, Android runtime, permissions, keys, MemoryVault, executor, device, root, firmware, or protected branch was modified by this preflight. CI-003 issue #66 remains open. Independent review pending. M1–M8 independently accepted: 0/8. Local PROJECT-ADAPTER.md is present; upstream shared SKILL.md remains absent and unverified.
+
+
+## CI-003G scoped YAML binding hardening (2026-11-14)
+
+The candidate-only preflight now requires exactly one literal top-level `jobs:`
+mapping, exactly one literal `jobs.build:` job, one `container:` mapping
+inside that job and exactly one literal `image:` child. It rejects duplicate
+or quoted shadow keys, image overrides, unsupported container mapping fields,
+YAML merge keys at job/container scope, and ambiguous tab indentation. Sibling jobs remain supported.
+
+This closes a candidate-preflight false-positive in which a `build:` key
+outside `jobs:` or a second `image:` entry could be mistaken for the
+actual GitHub Actions build container. The parser deliberately recognizes a
+strict YAML subset; it does **not** establish general YAML equivalence or
+prove GitHub Actions runtime interpretation. A real pinned image, signed
+provenance, SBOM, dual-builder evidence and independent approval remain
+separate mandatory gates. No workflow was activated or security policy relaxed.

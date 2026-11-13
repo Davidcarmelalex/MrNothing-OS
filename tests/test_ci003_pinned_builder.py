@@ -75,5 +75,53 @@ class CandidatePinTests(unittest.TestCase):
                 validate(policy, workflow)
 
 
+    def test_build_outside_jobs_is_not_a_build_job(self):
+        misleading = ("on:\n  build:\n    container:\n      image: " + IMAGE +
+                      "\njobs:\n  test:\n    runs-on: ubuntu-24.04\n")
+        with self.assertRaisesRegex(ValueError, "no unique"):
+            workflow_image(misleading)
+
+    def test_duplicate_jobs_and_quoted_override_fail(self):
+        for workflow in (WORKFLOW + "jobs:\n  audit:\n    runs-on: ubuntu-24.04\n",
+                         WORKFLOW + '"jobs":\n  audit:\n    runs-on: ubuntu-24.04\n'):
+            with self.subTest(workflow=workflow), self.assertRaises(ValueError):
+                workflow_image(workflow)
+
+    def test_duplicate_image_and_extra_container_fields_fail(self):
+        for field in ("      image: ghcr.io/example/other@sha256:" + "2" * 64,
+                      "      credentials:",
+                      "      <<: *untrusted"):
+            workflow = WORKFLOW.replace("      image: " + IMAGE,
+                                        "      image: " + IMAGE + "\n" + field)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                workflow_image(workflow)
+
+    def test_duplicate_or_quoted_build_job_fails(self):
+        for key in ("build", '"build"', "build "):
+            workflow = WORKFLOW + "  " + key + ":\n    container:\n      image: " + IMAGE + "\n"
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                workflow_image(workflow)
+
+    def test_yaml_merge_and_quoted_container_override_fail(self):
+        for workflow in (WORKFLOW.replace("  build:", "  <<: *injected\n  build:"),
+                         WORKFLOW.replace("    container:", '    "container":\n      image: ' + IMAGE + '\n    container:'),
+                         WORKFLOW.replace("    container:", "    <<: *injected\n    container:")):
+            with self.subTest(workflow=workflow), self.assertRaises(ValueError):
+                workflow_image(workflow)
+
+    def test_valid_build_with_sibling_jobs_passes(self):
+        candidate = ("jobs:\n  lint:\n    runs-on: ubuntu-24.04\n" +
+                     WORKFLOW.split("jobs:\n", 1)[1] +
+                     "  audit:\n    runs-on: ubuntu-24.04\n")
+        self.assertEqual(workflow_image(candidate), IMAGE)
+
+    def test_tabs_and_ambiguous_jobs_mapping_fail(self):
+        for workflow in (WORKFLOW.replace("  build:", "\tbuild:"),
+                         WORKFLOW.replace("jobs:", "jobs: &other"),
+                         WORKFLOW.replace("  build:", "  build: # shadow")):
+            with self.subTest(workflow=workflow), self.assertRaises(ValueError):
+                workflow_image(workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
