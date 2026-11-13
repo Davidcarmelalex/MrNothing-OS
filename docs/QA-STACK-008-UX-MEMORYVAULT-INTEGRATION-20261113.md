@@ -15,7 +15,7 @@
 
 The integration candidate must pass (1) full Python preflight, (2) Android manifest source security and launcher accessibility source gates, (3) hosted exact-head Gradle JVM and **121 required MemoryVault security methods** from JUnit XML, (4) QA-005 emulator with the combined UX/owner/vault instrumentation inventory, and (5) CI-003 two-runner byte-identical **unsigned** debug APK comparison. Do not infer any of these from separate parent-PR runs. The emulator is not a Pixel 9 Pro; structural accessibility is not spoken TalkBack testing.
 
-**Pre-commit local verification on the isolated merge tree:** `bash scripts/phase1-preflight.sh` **1124/1124 Python tests passed**; focused QA-005 gate **38/38**, UX source **10/10**, consent protocol **26/26**; manifest source gate, Python compilation and staged whitespace checks passed. These are not independent human signoff and do not prove hosted CI.
+**Pre-commit local verification on the isolated merge tree:** `bash scripts/phase1-preflight.sh` **1127/1127 Python tests passed**; focused QA-005 gate **38/38**, UX source **10/10**, consent protocol **26/26**; manifest source gate, Python compilation and staged whitespace checks passed. Three cross-stack boundary regression tests also passed. These are not independent human signoff and do not prove hosted CI.
 
 ## Independent review and remaining blockers
 
