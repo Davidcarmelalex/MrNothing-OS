@@ -106,7 +106,7 @@ internal class MemoryVaultConsentCeremony(clockNanos: () -> Long) {
     }
 
     companion object {
-        // Must be reconciled with the separate unmerged SEC-023B1B1 key-spec PR.
+        // SEC-023B1B1 key-spec is present in this draft stack; no runtime key use is enabled.
         private const val PURPOSE = "MRNOTHING-MEMORY-OWNER-CONSENT-V1"
         private const val KEY_ALIAS = "mrnothing_memory_vault_aes_gcm_v1"
         private val sha256Hex = Regex("^[0-9a-f]{64}$")
