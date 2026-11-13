@@ -6,15 +6,33 @@ from pathlib import Path
 import re
 import sys
 
-PIN = re.compile(r"^[a-z0-9][a-z0-9.-]*(?::[0-9]{1,5})?/[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*@sha256:([0-9a-f]{64})$")
+PIN = re.compile(r"^([^/@]+)/(.*)@sha256:([0-9a-f]{64})$")
+# Conservative OCI/Docker repository component grammar: no empty or dot-only
+# segments, no leading/trailing separators, and no mutable tag before digest.
+REGISTRY_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$")
 
 
 def pinned_image(image):
     if not isinstance(image, str) or len(image) > 512:
         raise ValueError("image must be a bounded string")
     match = PIN.fullmatch(image)
-    if not match or match.group(1) == "0" * 64:
+    if not match or match.group(3) == "0" * 64:
         raise ValueError("image must use registry/repository@sha256:<64 lowercase hex>")
+    registry, repository, _digest = match.groups()
+    if registry.count(":") > 1:
+        raise ValueError("unsupported registry authority")
+    hostname, separator, port = registry.partition(":")
+    if separator and (not port.isascii() or not port.isdigit() or
+                      len(port) > 5 or port.startswith("0") or
+                      not 1 <= int(port) <= 65535):
+        raise ValueError("invalid registry port")
+    if len(hostname) > 253 or not all(REGISTRY_LABEL.fullmatch(label)
+                                      for label in hostname.split(".")):
+        raise ValueError("invalid registry hostname")
+    if not repository or any(not REPOSITORY_PART.fullmatch(part)
+                             for part in repository.split("/")):
+        raise ValueError("invalid repository component")
     return image
 
 
