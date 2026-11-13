@@ -90,6 +90,13 @@ class UnitEvidenceGateTests(unittest.TestCase):
         with self.assertRaises(EvidenceError):
             verify_reports(self.root)
 
+    def test_rejects_missing_signer_rotation_proof_method(self):
+        cls = "MemoryVaultSignerRotationProofTest"
+        xml = self.valid_xml().replace(case(cls, "wrongOldSignerBlocks"), "")
+        self.write(xml)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
     def test_rejects_duplicate_required_method_across_reports(self):
         self.write(self.valid_xml())
         self.write(suite("MemoryVaultCipherProbePolicyTest", ["shortTagBlocks"]), "TEST-duplicate.xml")
