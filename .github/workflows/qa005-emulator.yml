@@ -192,6 +192,13 @@ jobs:
             | tr -d '\r' > "$QA005_OUTPUT/keyguard-state-before-instrumentation.txt" || true
           echo "Display is interactive; instrumentation will verify the synthetic credential and use exact visible SystemUI PIN controls when Keyguard is locked"
           timeout 180s "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:connectedDebugAndroidTest
+      - name: "SEC-023B1A-QA: require executed installed-manifest instrumentation"
+        working-directory: android
+        run: |
+          set -euo pipefail
+          python3 ../scripts/qa023b1a_instrumentation_evidence.py \
+            app/build/outputs/androidTest-results/connected/debug \
+            --summary "$QA005_OUTPUT/memory-vault-instrumentation-summary.json"
       - name: Verify launcher runtime and recovery route
         run: bash scripts/qa005_emulator_smoke.sh
       - name: "QA-006: 200% font and recovery smoke"
