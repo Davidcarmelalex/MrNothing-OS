@@ -16,7 +16,12 @@ class EnrollmentCrashSourceTests(unittest.TestCase):
             p.name for p in APP.glob("*.kt")
             if p != SOURCE and "MemoryVaultEnrollmentCrashPolicy" in p.read_text(encoding="utf-8")
         ]
-        self.assertEqual(callers, [])
+        # The D9 owner-recovery policy may compose the D8 offline diagnostic,
+        # but Android runtime/service callers remain forbidden.
+        self.assertEqual(callers, ["MemoryVaultOwnerRecoveryPreflight.kt"])
+        recovery = (APP / "MemoryVaultOwnerRecoveryPreflight.kt").read_text(encoding="utf-8")
+        self.assertNotIn("import android.", recovery)
+        self.assertNotIn("MemoryVaultService(", recovery)
         text = SOURCE.read_text(encoding="utf-8")
         for forbidden in ("import android.", "KeyStore.getInstance(", "Cipher.getInstance(",
                           "File(", "writeAtomically(", "MemoryVaultService(",

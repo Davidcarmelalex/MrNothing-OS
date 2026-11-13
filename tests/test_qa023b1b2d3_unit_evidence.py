@@ -37,12 +37,12 @@ class UnitEvidenceGateTests(unittest.TestCase):
     def test_accepts_complete_execution(self):
         self.write(self.valid_xml())
         result = verify_reports(self.root)
-        self.assertEqual(result["required_methods_verified"], 73)
-        self.assertEqual(result["all_jvm_cases"], 73)
+        self.assertEqual(result["required_methods_verified"], sum(map(len, REQUIRED.values())))
+        self.assertEqual(result["all_jvm_cases"], sum(map(len, REQUIRED.values())))
 
     def test_accepts_unrelated_successful_tests(self):
         self.write(self.valid_xml()[:-13] + suite("OtherTest", ["works"]) + "</testsuites>")
-        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 74)
+        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 1 + sum(map(len, REQUIRED.values())))
 
     def test_rejects_missing_directory(self):
         with self.assertRaises(EvidenceError):
@@ -79,6 +79,13 @@ class UnitEvidenceGateTests(unittest.TestCase):
     def test_rejects_missing_enrollment_crash_window_method(self):
         cls = "MemoryVaultEnrollmentCrashPolicyTest"
         xml = self.valid_xml().replace(case(cls, "watermarkAdvanceCrashRequiresOwnerRecovery"), "")
+        self.write(xml)
+        with self.assertRaises(EvidenceError):
+            verify_reports(self.root)
+
+    def test_rejects_missing_owner_recovery_method(self):
+        cls = "MemoryVaultOwnerRecoveryPreflightTest"
+        xml = self.valid_xml().replace(case(cls, "cancellationIsTerminal"), "")
         self.write(xml)
         with self.assertRaises(EvidenceError):
             verify_reports(self.root)
