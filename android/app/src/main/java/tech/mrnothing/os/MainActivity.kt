@@ -151,6 +151,11 @@ class MainActivity : Activity() {
             startActivity(Intent(this, OwnerAuthorityTrustActivity::class.java))
         }
 
+        addAction(root, "Offline agent plan preview",
+            "Inspect fixed sample agent actions; no AI inference or device control") {
+            startActivity(Intent(this, AgentPlanPreviewActivity::class.java))
+        }
+
         addAction(root, "Owner consent safety preview",
             "Open local credential verification preview; no agent screen access is enabled") {
             startActivity(Intent(this, OwnerConsentPreviewActivity::class.java))

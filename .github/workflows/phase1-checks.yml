@@ -56,11 +56,23 @@ jobs:
           unzip -q "$HOME/.gradle/distributions/gradle-8.9-bin.zip" -d "$RUNNER_TEMP"
       - name: Build, unit test and compare repeat debug APK
         run: |
-          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:testDebugUnitTest :app:assembleDebug
+          "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+          # Verify actual JUnit XML BEFORE clean deletes Gradle test reports.
+          python3 ../scripts/qa023b1b2d3_unit_evidence.py app/build/test-results/testDebugUnitTest --summary "$RUNNER_TEMP/memory-vault-unit-evidence.json"
+          cp -R app/build/test-results/testDebugUnitTest "$RUNNER_TEMP/memory-vault-junit-xml"
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/first-build.apk"
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict clean :app:assembleDebug
           cmp "$RUNNER_TEMP/first-build.apk" app/build/outputs/apk/debug/app-debug.apk
           echo "Repeat debug APK is byte-identical within this runner"
+      - name: Publish exact-head JVM JUnit evidence (not hardware proof)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mrnothing-memoryvault-jvm-junit-evidence
+          path: |
+            ${{ runner.temp }}/memory-vault-unit-evidence.json
+            ${{ runner.temp }}/memory-vault-junit-xml/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
       - name: Negative control — reject modified Gradle dependency
         run: python3 ../scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Generate unsigned debug artifact metadata

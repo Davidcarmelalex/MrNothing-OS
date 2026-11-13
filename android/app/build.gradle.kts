@@ -19,10 +19,13 @@ android {
         // The exact class inventory is source-gated in tests/test_qa005_workflow_gate.py.
         testInstrumentationRunnerArguments["class"] = listOf(
             "tech.mrnothing.os.AccessibilityDisclosureActivityTest",
+            "tech.mrnothing.os.MemoryVaultManifestBoundaryTest",
+            "tech.mrnothing.os.AgentPlanPreviewActivityTest",
             "tech.mrnothing.os.AndroidAtomicAuthorityRecordPersistenceTest",
             "tech.mrnothing.os.AndroidAuthorityTrustCryptoFailureModeTest",
             "tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest",
-            "tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest"
+            "tech.mrnothing.os.OwnerAuthorityTrustActivityLifecycleTest",
+            "tech.mrnothing.os.MemoryVaultKeySpecContractTest"
         ).joinToString(",")
     }
     compileOptions {

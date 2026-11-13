@@ -39,6 +39,28 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow,
         )
 
+    def test_manual_exact_head_ux006_is_repo_and_branch_bound(self):
+        # Only an explicit manual run on this one scoped branch may enter the
+        # expensive emulator; never broaden automatic PR execution.
+        self.assertIn("workflow_dispatch:", self.workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", self.workflow)
+        self.assertIn("github.ref == 'refs/heads/feat/ux-agent006-rehearsal-mode-isolation-20261111'", self.workflow)
+        self.assertIn("github.repository == 'Davidcarmelalex/MrNothing-OS'", self.workflow)
+        self.assertIn("github.base_ref == 'feat/phase1-agentic-phone'", self.workflow)
+        self.assertNotIn("  push:", self.workflow)
+
+    def test_combined_stack_requires_executed_ux_rehearsal_methods(self):
+        start = self.workflow.index("QA-STACK-008: require executed UX rehearsal instrumentation")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        step = self.workflow[start:end]
+        self.assertIn("github.head_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113'", step)
+        self.assertIn("github.base_ref == 'feat/phase1-agentic-phone'", step)
+        self.assertIn("github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS'", step)
+        self.assertIn("--require-ux-rehearsal", step)
+        self.assertIn("qa023b1a_instrumentation_evidence.py", step)
+        self.assertLess(self.workflow.index("SEC-023B1A-QA: require executed installed-manifest instrumentation"), start)
+        self.assertLess(start, end)
+
     def test_single_pr_trigger_prevents_duplicate_push_emulators(self):
         self.assertIn("pull_request:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
@@ -117,6 +139,20 @@ class Qa005WorkflowGateTests(unittest.TestCase):
             self.workflow.index(":app:assembleDebugAndroidTest"),
             self.workflow.index("locksettings set-pin"),
         )
+
+    def test_emulator_stay_awake_is_scoped_and_restored_without_unlock(self):
+        start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        end = self.workflow.index("Verify launcher runtime and recovery route", start)
+        boundary = self.workflow[start:end]
+        for token in ("ORIGINAL_STAY_ON", "svc power stayon true",
+                      "settings delete global stay_on_while_plugged_in",
+                      'settings put global stay_on_while_plugged_in "$ORIGINAL_STAY_ON"',
+                      "trap cleanup EXIT INT TERM", "uid=2000(shell)"):
+            self.assertIn(token, boundary)
+        self.assertLess(boundary.index("svc power stayon true"), boundary.index(":app:connectedDebugAndroidTest"))
+        self.assertIn("power-state-after-instrumentation.txt", self.workflow)
+        self.assertNotIn("adb root", boundary)
+        self.assertNotIn("input swipe", boundary)
 
     def test_disposable_emulator_is_secure_and_awake_before_ui_instrumentation(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
@@ -404,7 +440,12 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertTrue(discovered, "no InstrumentationTestCase classes were discovered")
         self.assertEqual(sorted(discovered), sorted(configured))
         self.assertEqual(len(configured), len(set(configured)))
-        self.assertEqual(5, len(configured))
+        # Union of the MemoryVault security and UX rehearsal instrumentation
+        # inventories. Both stacks must remain explicitly enumerated.
+        self.assertEqual(8, len(configured))
+        self.assertIn("tech.mrnothing.os.MemoryVaultManifestBoundaryTest", configured)
+        self.assertIn("tech.mrnothing.os.MemoryVaultKeySpecContractTest", configured)
+        self.assertIn("tech.mrnothing.os.AgentPlanPreviewActivityTest", configured)
         self.assertIn('.joinToString(",")', gradle)
 
 
