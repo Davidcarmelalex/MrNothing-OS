@@ -24,6 +24,17 @@ REQUIRED = {
         "cancellationCanWinWhileCryptoWorkerIsBlocked",
         "finishFirstCannotBeRetroactivelyReclassified",
     }),
+    "MemoryVaultGenerationCanaryVerifierTest": frozenset({
+        "matchingKeyReferenceIsDiagnosticOnly",
+        "replacedSamePolicyKeyIsRejected",
+        "modifiedCiphertextIsRejected",
+        "modifiedGenerationIdIsRejected",
+        "modifiedConsentDigestIsRejected",
+        "wrongNonceIsRejected",
+        "missingReferenceIsRejected",
+        "truncatedTagIsRejected",
+        "arbitraryPlaintextIsRejected",
+    }),
     "MemoryVaultCipherProbePolicyTest": frozenset({
         "positiveResultStillDoesNotAuthorizePersistence",
         "callbackMismatchBlocks",
