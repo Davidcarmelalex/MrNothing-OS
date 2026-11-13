@@ -86,3 +86,35 @@ This keeps the downloader as the acquisition/checksum enforcement path while pre
 The shared downloader writes the checksum-verified Gradle ZIP to `$HOME/.gradle/distributions/gradle-8.9-bin.zip` and extracts it into `$RUNNER_TEMP`. CI-003 now passes that same cached ZIP path to the build-environment inventory generator. The previous `$RUNNER_TEMP/gradle-8.9-bin.zip` inventory path did not exist because extraction does not copy the source archive. A static workflow gate now requires the inventory to hash the exact verified cache file and rejects the nonexistent temporary path.
 
 The inventory still computes the ZIP's SHA-256 and compares it with the workflow provenance pin before recording the Gradle component. This fixes artifact-path wiring only; it does not relax the digest check.
+
+
+## CI-006D — fail-closed hosted-runner drift diagnostics (2026-11-13)
+
+CI-003 issue #66 records two exact-head failures on GitHub-hosted Ubuntu
+runners with different image versions. The unsigned APK SHA-256 and runtime
+SBOM matched in both attempts, but the complete scoped host-environment
+inventory did not. The strict full-environment equivalence gate remains
+**mandatory and failing** when any recorded inventory, runner identity,
+toolchain or SPDX document differs.
+
+The independent verifier now writes a bounded `differences` section to
+`build-environment-verification.json` even when verification fails. It
+reports changed runner identity field names, both image versions, changed
+toolchain field names, complete counts of package-URL differences, and
+up to 12 name/version/architecture examples from each runner. Arbitrary
+component metadata, paths, environment variables and secrets are excluded.
+The verifier's exception also identifies which comparison categories differ.
+
+Negative controls exercise image-version drift, 17 additional host packages
+(truncated sample but exact total count), and a changed Gradle version with
+validly rebound SPDX/provenance. All three **must fail**. The identical
+environment positive control must still pass. This change is diagnostic only:
+it does **not** suppress the failure, exempt host packages, alter APK digest
+verification, establish a pinned host image, or claim reproducibility success.
+
+**Next acceptance work:** separately design a digest-pinned isolated build
+environment or submit a reviewed policy distinguishing controlled build inputs
+from host-image drift, with full host SBOM retention and a separately failing
+host-drift status. That decision requires independent security/release review;
+this diagnostic change does not authorize it. Signed release, OTA and Pixel
+hardware gates remain blocked.

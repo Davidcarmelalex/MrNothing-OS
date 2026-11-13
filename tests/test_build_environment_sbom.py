@@ -167,6 +167,81 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         )
         return directory
 
+    def rewrite_valid_bundle(self, directory, mutate):
+        """Re-sign fixture hashes only, not actual artifact signatures."""
+        inventory_path = directory / "build-environment.inventory.json"
+        sbom_path = directory / "build-environment.spdx.json"
+        provenance_path = directory / "provenance.json"
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        mutate(inventory)
+        inventory["components"].sort(key=lambda item: (item["kind"], item["purl"]))
+        counts = {}
+        for item in inventory["components"]:
+            counts[item["kind"]] = counts.get(item["kind"], 0) + 1
+        inventory["counts"] = dict(sorted(counts.items()))
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        sbom = make_spdx(inventory, hashlib.sha256(inventory_path.read_bytes()).hexdigest())
+        sbom_path.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        provenance["build_environment"] = {
+            key: inventory["toolchain"][key] for key in provenance["build_environment"]
+        }
+        provenance.pop("build_environment_sbom", None)
+        provenance_path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        attach_provenance(inventory_path, sbom_path, provenance_path, COMMIT)
+
+    def test_runner_image_drift_diagnostics_are_actionable_and_fail_closed(self):
+        first = self.write_bundle(self.root / "runner-a")
+        second = self.write_bundle(self.root / "runner-b")
+        self.rewrite_valid_bundle(second, lambda inv: inv["runner"].update(
+            image_version="20261111.370.1"
+        ))
+        output = self.root / "verification.json"
+        with self.assertRaisesRegex(ValueError, r"runner fields=\['image_version'\]"):
+            verify_bundles(first, second, COMMIT, output)
+        report = json.loads(output.read_text(encoding="utf-8"))
+        self.assertFalse(report["build_environment_identical"])
+        self.assertEqual(report["differences"]["runner_changed_fields"], ["image_version"])
+        self.assertEqual(report["differences"]["runner_image_versions"],
+                         ["20261105.1", "20261111.370.1"])
+        self.assertEqual(report["differences"]["only_runner_b_count"], 0)
+
+    def test_host_package_drift_reports_exact_bounded_package_sample(self):
+        first = self.write_bundle(self.root / "runner-a")
+        second = self.write_bundle(self.root / "runner-b")
+
+        def mutate(inventory):
+            for index in range(17):
+                inventory["components"].append({
+                    "kind": "os-package", "name": f"host-package-{index:02}",
+                    "version": "1.0", "architecture": "amd64",
+                    "purl": f"pkg:deb/ubuntu/host-package-{index:02}@1.0?arch=amd64",
+                })
+        self.rewrite_valid_bundle(second, mutate)
+        output = self.root / "verification.json"
+        with self.assertRaisesRegex(ValueError, "component-only-B=17"):
+            verify_bundles(first, second, COMMIT, output)
+        diff = json.loads(output.read_text(encoding="utf-8"))["differences"]
+        self.assertTrue(diff["host_os_package_drift"])
+        self.assertFalse(diff["non_os_component_drift"])
+        self.assertEqual(diff["only_runner_b_count"], 17)
+        self.assertEqual(len(diff["only_runner_b_sample"]), 12)
+        self.assertEqual(diff["only_runner_b_sample"][0]["name"], "host-package-00")
+        self.assertTrue(diff["samples_truncated"])
+
+    def test_controlled_toolchain_drift_reports_field_and_remains_rejected(self):
+        first = self.write_bundle(self.root / "runner-a")
+        second = self.write_bundle(self.root / "runner-b")
+        self.rewrite_valid_bundle(second, lambda inv: inv["toolchain"].update(
+            gradle_version="9.0"
+        ))
+        output = self.root / "verification.json"
+        with self.assertRaisesRegex(ValueError, r"toolchain fields=\['gradle_version'\]"):
+            verify_bundles(first, second, COMMIT, output)
+        report = json.loads(output.read_text(encoding="utf-8"))
+        self.assertFalse(report["checks"]["toolchain_identical"])
+        self.assertEqual(report["differences"]["toolchain_changed_fields"], ["gradle_version"])
+
     def test_dpkg_parser_includes_only_installed_packages(self):
         records = parse_dpkg_inventory(self.dpkg.read_text(encoding="utf-8"))
         self.assertEqual(len(records), 2)
@@ -294,6 +369,9 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         self.assertTrue(result["build_environment_identical"])
         self.assertTrue(result["checks"]["spdx_sbom_identical"])
         self.assertTrue(output.is_file())
+        self.assertEqual(result["differences"]["runner_changed_fields"], [])
+        self.assertEqual(result["differences"]["toolchain_changed_fields"], [])
+        self.assertEqual(result["differences"]["only_runner_a_count"], 0)
 
     def test_tampered_second_runner_inventory_rejected(self):
         first = self.write_bundle(self.root / "runner-a")
