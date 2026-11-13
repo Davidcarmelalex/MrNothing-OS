@@ -8,6 +8,8 @@
         </intent>
     </queries>
     <application android:label="Mr. Nothing OS" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false">
+        <!-- SEC-023B1A: disabled until owner-authenticated vault acceptance. -->
+        <service android:name=".MemoryVaultService" android:exported="false" android:enabled="false"/>
         <activity android:name=".OwnerAuthorityTrustActivity" android:exported="false"/>
         <activity android:name=".OwnerConsentPreviewActivity" android:exported="false"/>
         <activity android:name=".AccessibilityDisclosureActivity" android:exported="false"/>
