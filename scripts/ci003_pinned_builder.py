@@ -2,8 +2,10 @@
 """Candidate-only OCI image pin syntax and workflow binding check; no attestation."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
 
 PIN = re.compile(r"^([^/@]+)/(.*)@sha256:([0-9a-f]{64})$")
@@ -45,10 +47,48 @@ def unique_object(pairs):
     return result
 
 
+
+def read_bounded_regular(path, limit, label):
+    """Read one opened inode, not a path re-resolved after symlink checks.
+
+    O_NOFOLLOW rejects a symlink substituted immediately before open;
+    O_NONBLOCK prevents an attacker-controlled FIFO from hanging the preflight.
+    This is an offline syntax gate, not filesystem or registry attestation.
+    """
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+        raise ValueError("safe POSIX file opening is unavailable")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} must be a bounded regular non-symlink file") from exc
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+            raise ValueError(f"{label} must be a bounded regular file")
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(fd, min(65536, limit + 1 - total))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise ValueError(f"{label} exceeds size limit")
+            chunks.append(chunk)
+        after = os.fstat(fd)
+        if (before.st_size != after.st_size or
+                before.st_mtime_ns != after.st_mtime_ns or
+                before.st_ctime_ns != after.st_ctime_ns):
+            raise ValueError(f"{label} changed during read")
+        return b"".join(chunks).decode("utf-8")
+    finally:
+        os.close(fd)
+
 def policy_image(path):
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4096:
-        raise ValueError("policy must be a small regular file")
-    obj = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+    obj = json.loads(read_bounded_regular(path, 4096, "policy"),
+                     object_pairs_hook=unique_object)
     if not isinstance(obj, dict) or set(obj) != {"schema_version", "platform", "image"}:
         raise ValueError("invalid policy keys")
     if type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
@@ -120,9 +160,7 @@ def workflow_image(text):
 
 def validate(policy, workflow):
     expected = policy_image(policy)
-    if workflow.is_symlink() or not workflow.is_file() or workflow.stat().st_size > 65536:
-        raise ValueError("workflow must be a bounded regular file")
-    actual = workflow_image(workflow.read_text(encoding="utf-8"))
+    actual = workflow_image(read_bounded_regular(workflow, 65536, "workflow"))
     if actual != expected:
         raise ValueError("candidate image differs from workflow")
     return "PIN_SYNTAX_VALID_NOT_ATTESTED"

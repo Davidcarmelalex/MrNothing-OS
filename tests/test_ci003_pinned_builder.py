@@ -1,8 +1,10 @@
 """Offline CI-003F pinned-image candidate negative controls; no image is built."""
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 from scripts.ci003_pinned_builder import pinned_image, policy_image, workflow_image, validate
 
 IMAGE = "ghcr.io/example/android-builder@sha256:" + "1" * 64
@@ -81,6 +83,79 @@ class CandidatePinTests(unittest.TestCase):
             link.symlink_to(path)
             with self.assertRaisesRegex(ValueError, "regular"):
                 policy_image(link)
+
+    def test_workflow_symlink_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real = root / "real.yml"
+            real.write_text(WORKFLOW)
+            link = root / "link.yml"
+            link.symlink_to(real)
+            policy = root / "candidate.json"
+            policy.write_text(json.dumps({"schema_version": 1, "platform": "linux/amd64", "image": IMAGE}))
+            with self.assertRaisesRegex(ValueError, "regular"):
+                validate(policy, link)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "requires POSIX FIFOs")
+    def test_fifo_inputs_fail_without_blocking(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fifo = root / "pipe"
+            os.mkfifo(fifo)
+            policy = root / "candidate.json"
+            policy.write_text(json.dumps({"schema_version": 1, "platform": "linux/amd64", "image": IMAGE}))
+            with self.assertRaisesRegex(ValueError, "regular"):
+                policy_image(fifo)
+            with self.assertRaisesRegex(ValueError, "regular"):
+                validate(policy, fifo)
+
+    def test_symlink_swap_before_open_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "candidate.json"
+            target = root / "target.json"
+            valid = json.dumps({"schema_version": 1, "platform": "linux/amd64", "image": IMAGE})
+            path.write_text(valid)
+            target.write_text(valid)
+            real_open = os.open
+            def swap_before_open(name, flags):
+                path.unlink()
+                path.symlink_to(target)
+                return real_open(name, flags)
+            with mock.patch("scripts.ci003_pinned_builder.os.open", side_effect=swap_before_open):
+                with self.assertRaisesRegex(ValueError, "regular"):
+                    policy_image(path)
+
+    def test_concurrent_file_mutation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "candidate.json"
+            path.write_text(json.dumps({"schema_version": 1, "platform": "linux/amd64", "image": IMAGE}))
+            real_read = os.read
+            changed = False
+            def mutate_after_read(fd, count):
+                nonlocal changed
+                data = real_read(fd, count)
+                if not changed:
+                    changed = True
+                    path.write_text(path.read_text().replace("linux/amd64", "linux/arm64"))
+                return data
+            with mock.patch("scripts.ci003_pinned_builder.os.read", side_effect=mutate_after_read):
+                with self.assertRaisesRegex(ValueError, "changed during read"):
+                    policy_image(path)
+
+    def test_oversized_inputs_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            policy = root / "candidate.json"
+            policy.write_text(" " * 4097)
+            with self.assertRaisesRegex(ValueError, "bounded"):
+                policy_image(policy)
+            policy.write_text(json.dumps({"schema_version": 1, "platform": "linux/amd64", "image": IMAGE}))
+            workflow = root / "workflow.yml"
+            workflow.write_text(WORKFLOW + " " * 65536)
+            with self.assertRaisesRegex(ValueError, "bounded"):
+                validate(policy, workflow)
 
     def test_exact_candidate_workflow_binding(self):
         with tempfile.TemporaryDirectory() as directory:
