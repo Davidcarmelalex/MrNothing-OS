@@ -404,7 +404,11 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertTrue(discovered, "no InstrumentationTestCase classes were discovered")
         self.assertEqual(sorted(discovered), sorted(configured))
         self.assertEqual(len(configured), len(set(configured)))
-        self.assertEqual(6, len(configured))
+        # The stacked dormant-service and provisioning proposals each add an
+        # explicitly enumerated instrumentation class; neither may be skipped.
+        self.assertEqual(7, len(configured))
+        self.assertIn("tech.mrnothing.os.MemoryVaultManifestBoundaryTest", configured)
+        self.assertIn("tech.mrnothing.os.MemoryVaultKeySpecContractTest", configured)
         self.assertIn('.joinToString(",")', gradle)
 
 
