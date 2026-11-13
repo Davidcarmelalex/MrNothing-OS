@@ -118,3 +118,10 @@ from host-image drift, with full host SBOM retention and a separately failing
 host-drift status. That decision requires independent security/release review;
 this diagnostic change does not authorize it. Signed release, OTA and Pixel
 hardware gates remain blocked.
+
+
+The CI-003 workflow additionally permits the **exact** same-repository
+diagnostic PR branch `feat/ci003-runner-drift-diagnostics-20261113`
+targeting its immediate parent `feat/qa-stack008-ux-memoryvault-integration-20261113`.
+Both build and verifier jobs retain matching restrictive conditions; this
+does not authorize arbitrary PRs or release jobs.
