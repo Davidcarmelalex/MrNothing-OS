@@ -526,6 +526,49 @@ def make_spdx(inventory: dict, inventory_sha256: str) -> dict:
     }
 
 
+def validate_runner_and_toolchain(inventory: dict) -> None:
+    """Fail closed on absent or malformed host identity, even if SPDX is rebound.
+
+    The runner image metadata is evidence supplied by the hosted environment,
+    not a cryptographic attestation of the runner or a pinned build image.
+    """
+    runner = inventory.get("runner")
+    toolchain = inventory.get("toolchain")
+    if not isinstance(runner, dict) or not isinstance(toolchain, dict):
+        raise ValueError("runner identity and toolchain must be objects")
+    for field in ("label", "image_os", "image_version"):
+        value = runner.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > 256:
+            raise ValueError(f"runner identity {field} is missing or malformed")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", runner["image_version"]):
+        raise ValueError("runner identity image_version has invalid characters")
+    if runner["label"] != "ubuntu-24.04" or runner["image_os"] != "ubuntu24":
+        raise ValueError("runner identity is not the expected Ubuntu 24.04 hosted image")
+    os_release = runner.get("os_release")
+    if not isinstance(os_release, dict):
+        raise ValueError("runner os_release must be an object")
+    for field in ("id", "version_id", "pretty_name"):
+        value = os_release.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > 256:
+            raise ValueError(f"runner os_release {field} is missing or malformed")
+    if os_release["id"] != "ubuntu" or os_release["version_id"] != "24.04":
+        raise ValueError("runner os_release does not match Ubuntu 24.04")
+    for field in (
+        "operating_system", "jdk_distribution", "jdk_version", "jdk_runtime_version",
+        "jdk_vendor", "gradle_version", "gradle_sha256", "agp_version",
+        "kotlin_version", "compile_sdk", "build_tools", "sdkmanager_version",
+    ):
+        value = toolchain.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > 256:
+            raise ValueError(f"toolchain {field} is missing or malformed")
+    if toolchain["operating_system"] != runner["label"]:
+        raise ValueError("toolchain operating_system disagrees with runner label")
+    if not SHA256_RE.fullmatch(toolchain["gradle_sha256"]):
+        raise ValueError("toolchain gradle_sha256 must be lowercase SHA-256")
+    if not re.fullmatch(r"[1-9][0-9]*", toolchain["compile_sdk"]):
+        raise ValueError("toolchain compile_sdk must be a positive numeric string")
+
+
 def validate_inventory_and_sbom(inventory_path: Path, sbom_path: Path, expected_commit: str) -> tuple[dict, dict]:
     if not COMMIT_RE.fullmatch(expected_commit):
         raise ValueError("expected full lowercase Git commit SHA")
@@ -535,6 +578,7 @@ def validate_inventory_and_sbom(inventory_path: Path, sbom_path: Path, expected_
         raise ValueError("unknown build environment inventory schema")
     if inventory.get("source_commit") != expected_commit:
         raise ValueError("build environment inventory source commit mismatch")
+    validate_runner_and_toolchain(inventory)
     if not isinstance(inventory.get("created"), str) or not re.fullmatch(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", inventory["created"]
     ):
@@ -793,6 +837,7 @@ def main() -> None:
 
     if args.command == "generate":
         inventory = collect_inventory(args)
+        validate_runner_and_toolchain(inventory)
         args.output_inventory.parent.mkdir(parents=True, exist_ok=True)
         args.output_inventory.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         inventory_digest = sha256_file(args.output_inventory)

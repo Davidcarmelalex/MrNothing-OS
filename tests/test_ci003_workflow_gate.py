@@ -31,13 +31,23 @@ class CI003WorkflowGateTests(unittest.TestCase):
 
     def test_drift_diagnostic_pr_is_exactly_scoped_to_its_parent_branch(self):
         self.assertIn(
-            "branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]",
+            "branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113, feat/ci003-runner-drift-diagnostics-20261113]",
             self.workflow,
         )
         condition = (
             "github.event_name == 'pull_request' && "
             "github.base_ref == 'feat/qa-stack008-ux-memoryvault-integration-20261113' && "
             "github.head_ref == 'feat/ci003-runner-drift-diagnostics-20261113' && "
+            "github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS'"
+        )
+        self.assertEqual(self.workflow.count(condition), 2)
+        self.assertNotIn("pull_request_target:", self.workflow)
+
+    def test_identity_schema_pr_is_scoped_to_its_exact_parent(self):
+        condition = (
+            "github.event_name == 'pull_request' && "
+            "github.base_ref == 'feat/ci003-runner-drift-diagnostics-20261113' && "
+            "github.head_ref == 'feat/ci006-runner-identity-schema-20261113' && "
             "github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS'"
         )
         self.assertEqual(self.workflow.count(condition), 2)

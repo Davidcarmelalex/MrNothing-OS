@@ -242,6 +242,63 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         self.assertFalse(report["checks"]["toolchain_identical"])
         self.assertEqual(report["differences"]["toolchain_changed_fields"], ["gradle_version"])
 
+    def assert_rebound_inventory_rejected(self, mutate, message):
+        """A regenerated SPDX digest must not make malformed identity acceptable."""
+        bundle = self.write_bundle(self.root / "malformed-identity")
+        inventory_path = bundle / "build-environment.inventory.json"
+        sbom_path = bundle / "build-environment.spdx.json"
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        mutate(inventory)
+        inventory_path.write_text(
+            json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        sbom = make_spdx(inventory, hashlib.sha256(inventory_path.read_bytes()).hexdigest())
+        sbom_path.write_text(
+            json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ValueError, message):
+            validate_inventory_and_sbom(inventory_path, sbom_path, COMMIT)
+
+    def test_missing_runner_image_version_rejected_even_with_rebound_spdx(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"].pop("image_version"), "runner identity image_version"
+        )
+
+    def test_empty_runner_image_version_rejected_even_with_rebound_spdx(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"].update(image_version="   "), "runner identity image_version"
+        )
+
+    def test_non_string_runner_image_version_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"].update(image_version=["20261105.1"]), "runner identity image_version"
+        )
+
+    def test_invalid_runner_image_version_characters_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"].update(image_version="20261105.1\nmalformed"), "image_version has invalid"
+        )
+
+    def test_wrong_runner_image_os_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"].update(image_os="ubuntu22"), "expected Ubuntu 24.04"
+        )
+
+    def test_wrong_os_release_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["runner"]["os_release"].update(version_id="22.04"), "os_release does not match"
+        )
+
+    def test_toolchain_os_disagreement_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["toolchain"].update(operating_system="ubuntu-22.04"), "disagrees with runner label"
+        )
+
+    def test_invalid_gradle_sha256_rejected(self):
+        self.assert_rebound_inventory_rejected(
+            lambda inv: inv["toolchain"].update(gradle_sha256="not-a-digest"), "gradle_sha256"
+        )
+
     def test_dpkg_parser_includes_only_installed_packages(self):
         records = parse_dpkg_inventory(self.dpkg.read_text(encoding="utf-8"))
         self.assertEqual(len(records), 2)

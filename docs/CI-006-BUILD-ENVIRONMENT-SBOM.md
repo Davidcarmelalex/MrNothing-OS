@@ -125,3 +125,23 @@ diagnostic PR branch `feat/ci003-runner-drift-diagnostics-20261113`
 targeting its immediate parent `feat/qa-stack008-ux-memoryvault-integration-20261113`.
 Both build and verifier jobs retain matching restrictive conditions; this
 does not authorize arbitrary PRs or release jobs.
+
+
+## CI-006E — runner identity schema preflight (2026-11-13)
+
+A pair of syntactically valid, hash-rebound SPDX inventories must not be
+accepted if the recorded hosted-runner identity is missing or malformed.
+The generator and verifier now require a non-empty bounded image identity,
+Ubuntu 24.04 runner/OS metadata, and complete non-empty controlled toolchain
+fields. The runner label must agree with the toolchain operating-system field;
+Gradle's SHA-256 and compile-SDK syntax are checked explicitly. Adversarial
+tests regenerate a valid SPDX document after tampering with runner identity
+and still require rejection.
+
+This is **validation of self-reported CI metadata**, not cryptographic
+attestation, a digest-pinned runner image, or resolution of CI-003 host drift.
+The strict cross-runner byte/SBOM comparison remains unchanged. PR #67's
+exact-head hosted Phase 1 and CI-003 workflows passed on 2026-11-13
+(runs 43463658146 and 43463658123, respectively), but earlier host-image
+mismatches remain reproducible and issue #66 remains open pending a pinned
+build environment and independent review.

@@ -25,7 +25,7 @@ class ScopedWorkflowTests(unittest.TestCase):
 
     def test_both_workflows_preserve_main_gate_and_read_only_token(self):
         expected_branches = (
-            (self.ci, "[main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]"),
+            (self.ci, "[main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113, feat/ci003-runner-drift-diagnostics-20261113]"),
             (self.qa, "[main, feat/phase1-agentic-phone]"),
         )
         for workflow, branches in expected_branches:
