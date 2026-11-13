@@ -32,6 +32,7 @@ REQUIRED = {
         "longTagBlocks",
         "emptyTagBlocks",
         "negativeTagLengthBlocks",
+        "postOperationReadinessFailureBlocks",
     }),
 }
 
