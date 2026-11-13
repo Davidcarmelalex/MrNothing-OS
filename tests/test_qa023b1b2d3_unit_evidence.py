@@ -37,12 +37,12 @@ class UnitEvidenceGateTests(unittest.TestCase):
     def test_accepts_complete_execution(self):
         self.write(self.valid_xml())
         result = verify_reports(self.root)
-        self.assertEqual(result["required_methods_verified"], 25)
-        self.assertEqual(result["all_jvm_cases"], 25)
+        self.assertEqual(result["required_methods_verified"], 42)
+        self.assertEqual(result["all_jvm_cases"], 42)
 
     def test_accepts_unrelated_successful_tests(self):
         self.write(self.valid_xml()[:-13] + suite("OtherTest", ["works"]) + "</testsuites>")
-        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 26)
+        self.assertEqual(verify_reports(self.root)["all_jvm_cases"], 43)
 
     def test_rejects_missing_directory(self):
         with self.assertRaises(EvidenceError):
