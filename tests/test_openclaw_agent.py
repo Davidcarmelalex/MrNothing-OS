@@ -196,5 +196,114 @@ class OpenClawSafetyTests(unittest.TestCase):
             self.assertFalse(agent.confirm_scan("192.168.56.10"))
 
 
+    def test_report_storage_refuses_symlink_before_network_probes(self):
+        self._allow()
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / "victim").mkdir()
+            (root / "reports").symlink_to(root / "victim", target_is_directory=True)
+            with (
+                patch.object(agent, "REPORTS_DIR", root / "reports"),
+                patch.object(agent, "confirm_scan", return_value=True),
+                patch.object(agent, "log") as log,
+                patch.object(agent, "run") as run,
+                patch.object(agent.socket, "socket") as sock,
+            ):
+                result = agent.scan_network("192.168.56.10")
+            self.assertEqual(result["reason"], "REPORT_STORAGE_UNSAFE")
+            self.assertEqual(list((root / "victim").iterdir()), [])
+            log.assert_not_called()
+            run.assert_not_called()
+            sock.assert_not_called()
+
+    def test_report_storage_refuses_shared_writable_ancestor(self):
+        self._allow()
+        with tempfile.TemporaryDirectory() as root:
+            unsafe = Path(root) / "shared"
+            unsafe.mkdir(mode=0o700)
+            unsafe.chmod(0o777)
+            try:
+                with (
+                    patch.object(agent, "REPORTS_DIR", unsafe / "reports"),
+                    patch.object(agent, "confirm_scan", return_value=True),
+                    patch.object(agent, "log") as log,
+                    patch.object(agent, "run") as run,
+                    patch.object(agent.socket, "socket") as sock,
+                ):
+                    result = agent.scan_network("192.168.56.10")
+                self.assertEqual(result["reason"], "REPORT_STORAGE_UNSAFE")
+                self.assertFalse((unsafe / "reports").exists())
+                log.assert_not_called()
+                run.assert_not_called()
+                sock.assert_not_called()
+            finally:
+                unsafe.chmod(0o700)
+
+    def test_private_report_is_exclusive_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root) / "reports"
+            report = {"target": "192.168.56.10", "status": "COMPLETED", "results": {}}
+            with patch.object(agent, "REPORTS_DIR", directory):
+                path = agent._save_private_report(report, 1234567890)
+                self.assertEqual(path.name, "192_168_56_10_1234567890.json")
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+                original = path.read_bytes()
+                with self.assertRaises(FileExistsError):
+                    agent._save_private_report({"target": report["target"], "results": {"secret": "new"}}, 1234567890)
+                self.assertEqual(path.read_bytes(), original)
+
+    def test_private_report_refuses_existing_symlink(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            victim = root / "victim"
+            victim.write_text("untouched")
+            directory = root / "reports"
+            directory.mkdir(mode=0o700)
+            (directory / "192_168_56_10_17.json").symlink_to(victim)
+            with patch.object(agent, "REPORTS_DIR", directory):
+                with self.assertRaises(OSError):
+                    agent._save_private_report({"target": "192.168.56.10"}, 17)
+            self.assertEqual(victim.read_text(), "untouched")
+
+    def test_log_refuses_symlink_and_writes_private_regular_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            victim = root / "victim"
+            victim.write_text("untouched")
+            log_path = root / "logs" / "openclaw.log"
+            log_path.parent.mkdir(mode=0o700)
+            log_path.symlink_to(victim)
+            with patch.object(agent, "LOG", log_path), patch("builtins.print"):
+                self.assertFalse(agent.log("test event"))
+                self.assertEqual(victim.read_text(), "untouched")
+                log_path.unlink()
+                self.assertTrue(agent.log("test event"))
+            self.assertEqual(log_path.stat().st_mode & 0o777, 0o600)
+            self.assertIn("test event", log_path.read_text())
+
+    def test_report_save_failure_after_consent_is_not_misreported_as_denial(self):
+        self._allow()
+        with tempfile.TemporaryDirectory() as root:
+            with (
+                patch.object(agent, "REPORTS_DIR", Path(root)),
+                patch.object(agent, "confirm_scan", return_value=True),
+                patch.object(agent, "log"),
+                patch.object(agent.shutil, "which", return_value="/usr/bin/tool"),
+                patch.object(agent, "run", return_value="mocked") as run,
+                patch.object(agent, "_save_private_report", side_effect=OSError("disk full")),
+                patch.object(agent.socket, "socket") as sock,
+            ):
+                result = agent.scan_network("192.168.56.10")
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(result["reason"], "REPORT_SAVE_FAILED")
+        self.assertEqual(run.call_count, 3)
+        sock.assert_not_called()
+
+    def test_relative_report_path_refused(self):
+        with self.assertRaises(OSError):
+            agent._open_private_directory(Path("relative/reports"))
+
+
 if __name__ == "__main__":
     unittest.main()
