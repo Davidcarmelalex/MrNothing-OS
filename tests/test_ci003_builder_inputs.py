@@ -9,7 +9,7 @@ import unittest
 import zipfile
 
 from scripts.ci003_builder_inputs import (
-    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256, verify_zip_archive, validate_zip_members,
+    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256, verify_zip_archive, validate_zip_members, stage_verified_inputs,
 )
 
 
@@ -315,6 +315,89 @@ class BuilderInputsTests(unittest.TestCase):
         self.assertNotIn("apt-get", text)
         self.assertNotIn("sdkmanager --licenses", text)
         self.assertNotIn("RUN curl", text)
+
+
+
+class VerifiedContextStagingTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.source = self.root / "source"
+        self.source.mkdir()
+        self.stage = self.root / "inputs"
+        self.lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        self.lock = dict(self.lock)
+        self.lock["archives"] = {}
+        for name, prefix in (
+            ("commandlinetools-linux-16111833_latest.zip", "cmdline-tools/"),
+            ("gradle-8.9-bin.zip", "gradle-8.9/"),
+        ):
+            with zipfile.ZipFile(self.source / name, "w") as z:
+                z.writestr(prefix + "bin/tool", b"synthetic fixture")
+            self.lock["archives"][name] = hashlib.sha256((self.source / name).read_bytes()).hexdigest()
+
+    def test_stages_two_verified_archives_without_modifying_sources(self):
+        self.assertTrue(stage_verified_inputs(self.source, self.stage, self.lock))
+        for name, digest in self.lock["archives"].items():
+            self.assertEqual(hashlib.sha256((self.stage / name).read_bytes()).hexdigest(), digest)
+            self.assertEqual((self.stage / name).stat().st_mode & 0o777, 0o400)
+            self.assertEqual((self.source / name).stat().st_mode & 0o777, 0o644)
+        self.assertEqual(self.stage.stat().st_mode & 0o777, 0o700)
+
+    def test_refuses_overwrite_even_if_existing_stage_matches(self):
+        stage_verified_inputs(self.source, self.stage, self.lock)
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            stage_verified_inputs(self.source, self.stage, self.lock)
+
+    def test_rejects_symlink_source_directory(self):
+        link = self.root / "link"
+        link.symlink_to(self.source, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "unsafe source directory"):
+            stage_verified_inputs(link, self.stage, self.lock)
+        self.assertFalse(self.stage.exists())
+
+    def test_rejects_modified_source_digest_before_publication(self):
+        name = "gradle-8.9-bin.zip"
+        with open(self.source / name, "ab") as f:
+            f.write(b"tampered")
+        with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertFalse((self.stage / name).exists())
+
+    def test_rejects_symlink_staging_destination(self):
+        link = self.root / "inputs"
+        link.symlink_to(self.source, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            stage_verified_inputs(self.source, link, self.lock)
+        self.assertEqual(len(list(self.source.iterdir())), 2)
+
+    def test_rejects_in_place_source_mutation_after_first_digest(self):
+        from scripts import ci003_builder_inputs as impl
+        actual = impl._verify_open_sha256
+        triggered = [False]
+
+        def mutate(fd, expected, maximum):
+            result = actual(fd, expected, maximum)
+            if not triggered[0]:
+                triggered[0] = True
+                name = "commandlinetools-linux-16111833_latest.zip"
+                with open(self.source / name, "ab") as stream:
+                    stream.write(b"after-hash mutation")
+            return result
+
+        with mock.patch.object(impl, "_verify_open_sha256", side_effect=mutate):
+            with self.assertRaisesRegex(ValueError, "source changed|SHA-256 mismatch"):
+                stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertTrue(triggered[0])
+
+    def test_rejects_world_writable_destination_parent(self):
+        unsafe = self.root / "unsafe"
+        unsafe.mkdir(mode=0o777)
+        unsafe.chmod(0o777)
+        with self.assertRaisesRegex(ValueError, "group/other writable"):
+            stage_verified_inputs(self.source, unsafe / "inputs", self.lock)
+        self.assertFalse((unsafe / "inputs").exists())
 
 
 if __name__ == "__main__":
