@@ -1,0 +1,12 @@
+MrNothing OS engineering product integration
+
+No project-wide distribution license has been selected or granted by this file.
+The legacy_proprietary build label records unresolved distribution status; it
+does not assert ownership of third-party components or replace their licenses.
+Do not distribute these engineering images until licensing review is complete.
+
+The imported APK includes Bouncy Castle. Its copyright and license text must
+accompany the artifact; see docs/THIRD-PARTY-NOTICES.md in the exact MrNothing
+source checkout used to produce the APK. Copy that notice into the staged NOTICE
+alongside this text before building. This source template is not a final notice
+bundle for distribution. All upstream AOSP/vendor notices remain applicable.
