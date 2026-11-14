@@ -7,5 +7,6 @@
   "archives": {
     "commandlinetools-linux-16111833_latest.zip": "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8",
     "gradle-8.9-bin.zip": "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab"
-  }
+  },
+  "recipe_sha256": "ed545369f23fb3501fd1c2fb05f75bc972c2a891f3be27124fee99108d5ba769"
 }

@@ -105,14 +105,21 @@ def check_candidate_recipe(lock, recipe):
     for forbidden in ('ADD', 'ARG', 'ONBUILD', 'ENTRYPOINT', 'CMD', 'SHELL', 'VOLUME', 'EXPOSE'):
         if declarations(forbidden):
             raise ValueError("candidate Dockerfile unexpected instruction: " + forbidden)
+    # Declaration checks alone cannot see a modified Dockerfile heredoc body,
+    # extra ENV, or other syntax the strict subset does not recognize.
+    # The exact recipe bytes are therefore locked as a separate invariant.
+    if hashlib.sha256(recipe.encode("utf-8")).hexdigest() != lock["recipe_sha256"]:
+        raise ValueError("candidate Dockerfile recipe SHA-256 mismatch")
     return True
 
 
 def check_lock(lock):
-    if not isinstance(lock, dict) or set(lock) != {"schema_version", "platform", "status", "python_base", "jdk_base", "archives"}:
+    if not isinstance(lock, dict) or set(lock) != {"schema_version", "platform", "status", "python_base", "jdk_base", "archives", "recipe_sha256"}:
         raise ValueError("invalid candidate lock schema")
     if type(lock["schema_version"]) is not int or lock["schema_version"] != 1 or lock["platform"] != "linux/amd64" or lock["status"] != "UNAPPROVED_CANDIDATE":
         raise ValueError("unexpected candidate status or platform")
+    if not isinstance(lock["recipe_sha256"], str) or not SHA.fullmatch(lock["recipe_sha256"]):
+        raise ValueError("invalid candidate Dockerfile recipe SHA-256")
     if set(lock["archives"]) != NAMES or any(not isinstance(x, str) or not SHA.fullmatch(x) for x in lock["archives"].values()):
         raise ValueError("invalid archive manifest")
     for name in ("python_base", "jdk_base"):
@@ -128,7 +135,7 @@ def main():
     args = parser.parse_args()
     try:
         lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
-        check_candidate_recipe(lock, (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8"))
+        check_candidate_recipe(lock, (LOCK.parent / "Dockerfile.candidate").read_bytes().decode("utf-8"))
         for name, digest in sorted(lock["archives"].items()):
             size = verify_regular_sha256(args.directory / name, digest)
             print(f"{name}: verified {size} bytes")
