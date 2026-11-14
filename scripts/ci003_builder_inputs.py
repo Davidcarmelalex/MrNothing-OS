@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "builder/toolchain-candidate.lock.json"
@@ -49,6 +50,64 @@ def verify_regular_sha256(path, expected, maximum=250_000_000):
         return before.st_size
     finally:
         os.close(fd)
+
+
+def validate_zip_members(path, prefix, *, max_members=100_000, max_expanded=4_000_000_000):
+    """Fail-closed metadata preflight for archives the Dockerfile will unpack.
+
+    This does not extract files, attest archive origin, or replace the SHA-256
+    check. All limits are deliberately independent of archive-supplied totals.
+    """
+    if not isinstance(prefix, str) or not prefix.endswith("/") or "/" in prefix[:-1]:
+        raise ValueError("invalid archive root prefix")
+    seen = set()
+    files = set()
+    total = 0
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            if not members or len(members) > max_members:
+                raise ValueError("invalid ZIP member count")
+            for member in members:
+                name = member.filename
+                if (not name.startswith(prefix) or "\\" in name or
+                        "\x00" in name or name.startswith("/") or
+                        any(part in ("", ".", "..") for part in name.rstrip("/").split("/"))):
+                    raise ValueError("unsafe ZIP member path")
+                canonical = name.rstrip("/")
+                if canonical in seen:
+                    raise ValueError("duplicate ZIP member path")
+                seen.add(canonical)
+                parts = canonical.split("/")
+                if any("/".join(parts[:n]) in files for n in range(1, len(parts))):
+                    raise ValueError("ZIP member nested under a file")
+                if member.flag_bits & 1:
+                    raise ValueError("encrypted ZIP member")
+                mode = member.external_attr >> 16
+                kind = stat.S_IFMT(mode)
+                if kind not in (0, stat.S_IFDIR if member.is_dir() else stat.S_IFREG):
+                    raise ValueError("ZIP special file or symlink")
+                if member.is_dir():
+                    if member.file_size:
+                        raise ValueError("ZIP directory contains data")
+                else:
+                    if canonical == prefix[:-1]:
+                        raise ValueError("ZIP root must be a directory")
+                    files.add(canonical)
+                    if any(other.startswith(canonical + "/") for other in seen):
+                        raise ValueError("ZIP file shadows directory")
+                    if member.file_size < 0 or member.file_size > max_expanded:
+                        raise ValueError("ZIP member exceeds expansion limit")
+                    total += member.file_size
+                    if total > max_expanded:
+                        raise ValueError("ZIP expanded data exceeds limit")
+                    if member.file_size > 0 and member.compress_size == 0:
+                        raise ValueError("ZIP member has invalid compressed size")
+                    if member.compress_size and member.file_size > member.compress_size * 1000:
+                        raise ValueError("ZIP member exceeds compression ratio limit")
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError) as exc:
+        raise ValueError("invalid ZIP archive") from exc
+    return len(seen), total
 
 
 def parse_candidate_lock(raw):
@@ -138,7 +197,9 @@ def main():
         check_candidate_recipe(lock, (LOCK.parent / "Dockerfile.candidate").read_bytes().decode("utf-8"))
         for name, digest in sorted(lock["archives"].items()):
             size = verify_regular_sha256(args.directory / name, digest)
-            print(f"{name}: verified {size} bytes")
+            prefix = "cmdline-tools/" if name.startswith("commandlinetools-") else "gradle-8.9/"
+            members, expanded = validate_zip_members(args.directory / name, prefix)
+            print(f"{name}: verified {size} bytes, {members} ZIP members, {expanded} expanded bytes")
         print("CANDIDATE_INPUTS_VERIFIED_NOT_ATTESTED")
         return 0
     except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as exc:

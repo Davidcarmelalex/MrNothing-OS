@@ -34,3 +34,17 @@ evidence, and independent non-author security/release signoff.
 
 The current CI-003 host-only workflow remains untouched and fail-closed.
 Issue #66 remains open. Upstream shared SKILL.md is absent/unverified.
+
+## CI-003M offline ZIP metadata preflight
+
+The candidate input verifier now rejects malformed ZIP archives, unsafe or
+ambiguous member paths, duplicate members, symlinks and other special files,
+file/directory collisions, encrypted members, excessive member counts and
+expanded-size or compression-ratio anomalies. It checks archive metadata only
+after the locked SHA-256 check; it does not extract files or execute code.
+
+This is a **local preflight**, not a proof of safe decompression or a signed
+supply-chain attestation. The Dockerfile's own extractor and the provenance of
+all archives still require independent review. Android SDK platform 35 and
+build-tools 35.0.0 remain absent, so no complete builder or reproducible APK
+is claimed.

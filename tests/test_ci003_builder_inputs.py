@@ -4,13 +4,76 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 
 from scripts.ci003_builder_inputs import (
-    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256,
+    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256, validate_zip_members,
 )
 
 
 class BuilderInputsTests(unittest.TestCase):
+    def _zip(self, entries):
+        directory = tempfile.TemporaryDirectory()
+        path = Path(directory.name) / "archive.zip"
+        with zipfile.ZipFile(path, "w") as z:
+            for name, payload in entries:
+                z.writestr(name, payload)
+        self.addCleanup(directory.cleanup)
+        return path
+
+    def test_zip_metadata_valid_archive(self):
+        path = self._zip([("cmdline-tools/", b""), ("cmdline-tools/bin/", b""),
+                          ("cmdline-tools/bin/sdkmanager", b"tool")])
+        self.assertEqual(validate_zip_members(path, "cmdline-tools/"), (3, 4))
+
+    def test_zip_metadata_traversal_and_wrong_root_rejected(self):
+        for name in ("cmdline-tools/../escape", "cmdline-tools/./escape",
+                     "cmdline-tools//escape", "cmdline-tools/dir\\escape",
+                     "other/file", "/cmdline-tools/file"):
+            with self.subTest(name=name):
+                path = self._zip([(name, b"data")])
+                with self.assertRaisesRegex(ValueError, "unsafe ZIP member path"):
+                    validate_zip_members(path, "cmdline-tools/")
+
+    def test_zip_metadata_duplicate_rejected(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            path = self._zip([("gradle-8.9/a", b"one"), ("gradle-8.9/a", b"two")])
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            validate_zip_members(path, "gradle-8.9/")
+
+    def test_zip_metadata_symlink_rejected(self):
+        path = self._zip([("gradle-8.9/file", b"content")])
+        # Reconstruct the archive with a Unix symlink mode.
+        with zipfile.ZipFile(path, "w") as z:
+            info = zipfile.ZipInfo("gradle-8.9/link")
+            info.create_system = 3
+            info.external_attr = (0o120777 << 16)
+            z.writestr(info, "target")
+        with self.assertRaisesRegex(ValueError, "special file or symlink"):
+            validate_zip_members(path, "gradle-8.9/")
+
+    def test_zip_metadata_file_directory_collision_rejected(self):
+        path = self._zip([("gradle-8.9/a", b"x"), ("gradle-8.9/a/b", b"y")])
+        with self.assertRaisesRegex(ValueError, "nested under a file"):
+            validate_zip_members(path, "gradle-8.9/")
+        path = self._zip([("gradle-8.9/a/b", b"y"), ("gradle-8.9/a", b"x")])
+        with self.assertRaisesRegex(ValueError, "shadows directory"):
+            validate_zip_members(path, "gradle-8.9/")
+
+    def test_zip_metadata_limits_and_invalid_archive(self):
+        path = self._zip([("gradle-8.9/a", b"123456")])
+        with self.assertRaisesRegex(ValueError, "expansion limit|expanded data"):
+            validate_zip_members(path, "gradle-8.9/", max_expanded=5)
+        with self.assertRaisesRegex(ValueError, "member count"):
+            validate_zip_members(path, "gradle-8.9/", max_members=0)
+        with tempfile.TemporaryDirectory() as d:
+            invalid = Path(d) / "bad.zip"
+            invalid.write_bytes(b"not a zip")
+            with self.assertRaisesRegex(ValueError, "invalid ZIP archive"):
+                validate_zip_members(invalid, "gradle-8.9/")
+
     def test_valid_small_regular_file(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "sample.zip"
