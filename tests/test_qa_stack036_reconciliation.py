@@ -18,7 +18,7 @@ MANUAL = (
 class Stack036ReconciliationTests(unittest.TestCase):
     def test_ci003_jobs_preserve_strict_repro_and_exact_scoped_manual_gate(self):
         source = (ROOT / ".github/workflows/ci003-reproducibility.yml").read_text()
-        self.assertIn("branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]", source)
+        self.assertIn("branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113, feat/ci003-same-purl-drift-20261114]", source)
         self.assertNotIn("pull_request_target", source)
         self.assertIn("permissions:\n  contents: read", source)
         self.assertNotIn("contents: write", source)

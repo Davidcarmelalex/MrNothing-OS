@@ -31,7 +31,7 @@ class CI003WorkflowGateTests(unittest.TestCase):
 
     def test_drift_diagnostic_pr_is_exactly_scoped_to_its_parent_branch(self):
         self.assertIn(
-            "branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113]",
+            "branches: [main, feat/phase1-agentic-phone, feat/qa-stack008-ux-memoryvault-integration-20261113, feat/ci003-same-purl-drift-20261114]",
             self.workflow,
         )
         condition = (
@@ -42,6 +42,22 @@ class CI003WorkflowGateTests(unittest.TestCase):
         )
         self.assertEqual(self.workflow.count(condition), 2)
         self.assertNotIn("pull_request_target:", self.workflow)
+
+    def test_ci003_exact_head_candidate_is_narrowly_enabled_on_both_jobs(self):
+        # Do not turn the stacked integration PR into a wildcard CI entrypoint.
+        condition = (
+            "(github.event_name == 'pull_request' && "
+            "github.base_ref == 'feat/ci003-same-purl-drift-20261114' && "
+            "github.head_ref == 'feat/ci003-exact-head-verify-20261114' && "
+            "github.event.pull_request.head.repo.full_name == 'Davidcarmelalex/MrNothing-OS')"
+        )
+        self.assertEqual(self.workflow.count(condition), 2)
+        self.assertIn(
+            "feat/ci003-same-purl-drift-20261114]",
+            self.workflow,
+        )
+        self.assertNotIn("pull_request_target:", self.workflow)
+        self.assertIn("cancel-in-progress: false", self.workflow)
 
     def test_independent_builder_matrix_does_not_fail_fast(self):
         self.assertIn("fail-fast: false", self.workflow)
