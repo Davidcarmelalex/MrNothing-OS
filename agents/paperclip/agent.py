@@ -50,6 +50,13 @@ def log(msg):
     try:
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         parent_fd = os.open(HOME.parent, flags)
+        parent_info = os.fstat(parent_fd)
+        # Prevent another local account from replacing the mrnothing entry.
+        # A root-owned /home and the effective user's own home are allowed.
+        if (not stat.S_ISDIR(parent_info.st_mode)
+                or parent_info.st_uid not in (0, os.geteuid())
+                or parent_info.st_mode & 0o022):
+            return False
         try:
             os.mkdir(HOME.name, mode=0o700, dir_fd=parent_fd)
         except FileExistsError:
