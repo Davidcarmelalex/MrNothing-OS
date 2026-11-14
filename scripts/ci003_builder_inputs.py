@@ -19,35 +19,74 @@ NAMES = {
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-def verify_regular_sha256(path, expected, maximum=250_000_000):
-    if not isinstance(expected, str) or not SHA.fullmatch(expected):
-        raise ValueError("invalid expected SHA-256")
+def _open_input_archive(path):
+    """Open a single no-follow descriptor, never a second pathname lookup."""
     if not hasattr(os, "O_NOFOLLOW"):
         raise ValueError("safe file opening unsupported")
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
+        return os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |
+                       getattr(os, "O_CLOEXEC", 0))
     except OSError as exc:
         raise ValueError("cannot safely open input archive") from exc
+
+
+def _verify_open_sha256(fd, expected, maximum):
+    """Hash an already-open bounded regular inode; return its initial stat."""
+    if not isinstance(expected, str) or not SHA.fullmatch(expected):
+        raise ValueError("invalid expected SHA-256")
+    before = os.fstat(fd)
+    if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= maximum:
+        raise ValueError("input must be a bounded nonempty regular file")
+    digest = hashlib.sha256()
+    total = 0
+    while True:
+        data = os.read(fd, 1024 * 1024)
+        if not data:
+            break
+        total += len(data)
+        if total > maximum:
+            raise ValueError("input exceeded maximum while hashing")
+        digest.update(data)
+    after = os.fstat(fd)
+    if _file_identity(before) != _file_identity(after):
+        raise ValueError("archive changed during hashing")
+    if digest.hexdigest() != expected:
+        raise ValueError("input SHA-256 mismatch")
+    return before
+
+
+def _file_identity(st):
+    return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns
+
+
+def verify_regular_sha256(path, expected, maximum=250_000_000):
+    if not isinstance(expected, str) or not SHA.fullmatch(expected):
+        raise ValueError("invalid expected SHA-256")
+    fd = _open_input_archive(path)
     try:
-        before = os.fstat(fd)
-        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= maximum:
-            raise ValueError("input must be a bounded nonempty regular file")
-        digest = hashlib.sha256()
-        total = 0
-        while True:
-            data = os.read(fd, 1024 * 1024)
-            if not data:
-                break
-            total += len(data)
-            if total > maximum:
-                raise ValueError("input exceeded maximum while hashing")
-            digest.update(data)
-        after = os.fstat(fd)
-        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
-            raise ValueError("archive changed during hashing")
-        if digest.hexdigest() != expected:
-            raise ValueError("input SHA-256 mismatch")
-        return before.st_size
+        return _verify_open_sha256(fd, expected, maximum).st_size
+    finally:
+        os.close(fd)
+
+
+def verify_zip_archive(path, expected, prefix, maximum=250_000_000):
+    """Hash and inspect ZIP metadata through one inode-bound descriptor.
+
+    The caller must still secure subsequent Docker COPY inputs: this does not
+    bind a later build-context pathname read to the verified inode.
+    """
+    if not isinstance(expected, str) or not SHA.fullmatch(expected):
+        raise ValueError("invalid expected SHA-256")
+    fd = _open_input_archive(path)
+    try:
+        before = _verify_open_sha256(fd, expected, maximum)
+        os.lseek(fd, 0, os.SEEK_SET)
+        # dup retains the opened inode even if the directory entry is replaced.
+        with os.fdopen(os.dup(fd), "rb") as archive_file:
+            members, expanded = validate_zip_members(archive_file, prefix)
+        if _file_identity(before) != _file_identity(os.fstat(fd)):
+            raise ValueError("archive changed during ZIP inspection")
+        return before.st_size, members, expanded
     finally:
         os.close(fd)
 
@@ -196,9 +235,8 @@ def main():
         lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
         check_candidate_recipe(lock, (LOCK.parent / "Dockerfile.candidate").read_bytes().decode("utf-8"))
         for name, digest in sorted(lock["archives"].items()):
-            size = verify_regular_sha256(args.directory / name, digest)
             prefix = "cmdline-tools/" if name.startswith("commandlinetools-") else "gradle-8.9/"
-            members, expanded = validate_zip_members(args.directory / name, prefix)
+            size, members, expanded = verify_zip_archive(args.directory / name, digest, prefix)
             print(f"{name}: verified {size} bytes, {members} ZIP members, {expanded} expanded bytes")
         print("CANDIDATE_INPUTS_VERIFIED_NOT_ATTESTED")
         return 0

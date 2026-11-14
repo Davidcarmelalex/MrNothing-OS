@@ -1,5 +1,7 @@
 """CI-003J offline archive input verification and candidate invariants."""
 import hashlib
+import os
+from unittest import mock
 import json
 from pathlib import Path
 import tempfile
@@ -7,7 +9,7 @@ import unittest
 import zipfile
 
 from scripts.ci003_builder_inputs import (
-    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256, validate_zip_members,
+    LOCK, check_lock, check_candidate_recipe, parse_candidate_lock, verify_regular_sha256, verify_zip_archive, validate_zip_members,
 )
 
 
@@ -73,6 +75,56 @@ class BuilderInputsTests(unittest.TestCase):
             invalid.write_bytes(b"not a zip")
             with self.assertRaisesRegex(ValueError, "invalid ZIP archive"):
                 validate_zip_members(invalid, "gradle-8.9/")
+
+    def test_inode_bound_zip_rejects_path_replacement_and_inspects_original(self):
+        original = self._zip([("gradle-8.9/", b""), ("gradle-8.9/bin/tool", b"safe")])
+        expected = hashlib.sha256(original.read_bytes()).hexdigest()
+        replacement = self._zip([("evil/file", b"bad")])
+        moved = original.with_name("original-moved.zip")
+        actual_validator = validate_zip_members
+
+        inspected = []
+
+        def swap_path(verified_stream, prefix):
+            # A rename may change ctime, so fail closed even though the
+            # descriptor continues to reference the original ZIP contents.
+            os.replace(original, moved)
+            original.write_bytes(replacement.read_bytes())
+            inspected.append(actual_validator(verified_stream, prefix))
+            return inspected[-1]
+
+        with mock.patch("scripts.ci003_builder_inputs.validate_zip_members",
+                        side_effect=swap_path):
+            with self.assertRaisesRegex(ValueError, "changed during ZIP inspection"):
+                verify_zip_archive(original, expected, "gradle-8.9/")
+        self.assertEqual(inspected, [(2, 4)])
+
+    def test_inode_bound_zip_detects_in_place_mutation(self):
+        path = self._zip([("gradle-8.9/", b""), ("gradle-8.9/a", b"ok")])
+        expected = hashlib.sha256(path.read_bytes()).hexdigest()
+        actual_validator = validate_zip_members
+
+        def mutate_inode(stream, prefix):
+            result = actual_validator(stream, prefix)
+            with path.open("ab") as writer:
+                writer.write(b"changed")
+            return result
+
+        with mock.patch("scripts.ci003_builder_inputs.validate_zip_members",
+                        side_effect=mutate_inode):
+            with self.assertRaisesRegex(ValueError, "changed during ZIP inspection"):
+                verify_zip_archive(path, expected, "gradle-8.9/")
+
+    def test_inode_bound_zip_rejects_invalid_digest_and_symlink(self):
+        path = self._zip([("gradle-8.9/a", b"ok")])
+        with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            verify_zip_archive(path, "0" * 64, "gradle-8.9/")
+        link = path.with_name("archive-link.zip")
+        link.symlink_to(path)
+        self.addCleanup(link.unlink)
+        with self.assertRaisesRegex(ValueError, "safely open"):
+            verify_zip_archive(link, hashlib.sha256(path.read_bytes()).hexdigest(),
+                               "gradle-8.9/")
 
     def test_valid_small_regular_file(self):
         with tempfile.TemporaryDirectory() as d:
