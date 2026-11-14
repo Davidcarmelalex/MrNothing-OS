@@ -258,6 +258,8 @@ def stage_verified_inputs(source_directory, stage_directory, lock):
                 raise ValueError("stage parent is group/other writable")
             os.mkdir(stage_directory.name, 0o700, dir_fd=parent_fd)
             stage_fd = os.open(stage_directory.name, flags, dir_fd=parent_fd)
+            created_stat = None
+            published_ok = False
             try:
                 created_stat = os.fstat(stage_fd)
                 for name, expected in sorted(lock["archives"].items()):
@@ -308,7 +310,31 @@ def stage_verified_inputs(source_directory, stage_directory, lock):
                 if (published.st_dev, published.st_ino) != (created_stat.st_dev, created_stat.st_ino):
                     raise ValueError("staged directory was substituted")
                 os.fsync(parent_fd)
+                published_ok = True
             finally:
+                if not published_ok and created_stat is not None:
+                    # A failed verification must not leave a misleading,
+                    # partially populated build context. Only remove files
+                    # owned by this exact newly-created directory inode.
+                    # Unexpected entries or a substituted directory are left
+                    # untouched for investigation rather than deleted.
+                    try:
+                        current = os.stat(stage_directory.name, dir_fd=parent_fd,
+                                          follow_symlinks=False)
+                        if ((current.st_dev, current.st_ino) ==
+                                (created_stat.st_dev, created_stat.st_ino) and
+                                set(os.listdir(stage_fd)).issubset(NAMES)):
+                            for name in NAMES:
+                                try:
+                                    os.unlink(name, dir_fd=stage_fd)
+                                except FileNotFoundError:
+                                    pass
+                            os.rmdir(stage_directory.name, dir_fd=parent_fd)
+                            os.fsync(parent_fd)
+                    except OSError:
+                        # Preserve the original verification failure; a
+                        # nonempty/modified directory remains fail-closed.
+                        pass
                 os.close(stage_fd)
         finally:
             os.close(parent_fd)

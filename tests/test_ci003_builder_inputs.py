@@ -365,6 +365,32 @@ class VerifiedContextStagingTests(unittest.TestCase):
             stage_verified_inputs(self.source, self.stage, self.lock)
         self.assertFalse((self.stage / name).exists())
 
+    def test_failed_second_archive_cleans_partial_context_and_allows_retry(self):
+        name = "gradle-8.9-bin.zip"
+        original = (self.source / name).read_bytes()
+        (self.source / name).write_bytes(b"corrupt" + original)
+        with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertFalse(self.stage.exists(), "partial Docker context must not survive")
+        (self.source / name).write_bytes(original)
+        self.assertTrue(stage_verified_inputs(self.source, self.stage, self.lock))
+
+    def test_missing_second_archive_cleans_partial_context(self):
+        (self.source / "gradle-8.9-bin.zip").unlink()
+        with self.assertRaises(FileNotFoundError):
+            stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertFalse(self.stage.exists())
+
+    def test_failed_staging_does_not_delete_unexpected_entries(self):
+        from scripts import ci003_builder_inputs as impl
+        def inject_unexpected(fd, expected, maximum):
+            (self.stage / "foreign.txt").write_text("leave intact")
+            raise ValueError("injected verification failure")
+        with mock.patch.object(impl, "_verify_open_sha256", side_effect=inject_unexpected):
+            with self.assertRaisesRegex(ValueError, "injected verification failure"):
+                stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertEqual((self.stage / "foreign.txt").read_text(), "leave intact")
+
     def test_rejects_symlink_staging_destination(self):
         link = self.root / "inputs"
         link.symlink_to(self.source, target_is_directory=True)
