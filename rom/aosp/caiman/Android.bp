@@ -1,0 +1,18 @@
+package {
+    default_applicable_licenses: ["MrNothingLauncher_pending_license"],
+}
+
+// This label grants no distribution rights. Project licensing is unresolved.
+license {
+    name: "MrNothingLauncher_pending_license",
+    license_kinds: ["legacy_proprietary"],
+    license_text: ["NOTICE"],
+}
+
+android_app_import {
+    name: "MrNothingLauncher",
+    apk: "prebuilts/app-release-unsigned.apk",
+    product_specific: true,
+    certificate: "testkey",
+    privileged: false,
+}
