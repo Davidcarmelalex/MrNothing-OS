@@ -135,6 +135,51 @@ class BuilderInputsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected instruction"):
             check_candidate_recipe(lock, recipe + "\nADD https://example.com/x /tmp/x\n")
 
+    def test_recipe_rejects_heredoc_payload_injection(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        tampered = recipe.replace("import pathlib, zipfile, os", "import pathlib, zipfile, os\nprint('UNAPPROVED_PAYLOAD')")
+        with self.assertRaisesRegex(ValueError, "recipe SHA-256 mismatch"):
+            check_candidate_recipe(lock, tampered)
+
+    def test_recipe_rejects_extra_env_and_undeclared_instructions(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        for payload in ("ENV PATH=/tmp/unsafe\n", "HEALTHCHECK NONE\n", "LABEL reviewer=approved\n"):
+            with self.subTest(payload=payload), self.assertRaisesRegex(ValueError, "recipe SHA-256 mismatch"):
+                check_candidate_recipe(lock, recipe + payload)
+
+    def test_recipe_rejects_comment_and_line_continuation_changes(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        for payload in ("# attacker comment\n", chr(92) + "\n"):
+            with self.subTest(payload=payload), self.assertRaisesRegex(ValueError, "recipe SHA-256 mismatch"):
+                check_candidate_recipe(lock, recipe + payload)
+
+    def test_recipe_lock_digest_invalid_or_missing(self):
+        lock = parse_candidate_lock(LOCK.read_text(encoding="utf-8"))
+        for value in ("xyz", None, "A" * 64):
+            candidate = dict(lock, recipe_sha256=value)
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "recipe SHA-256"):
+                check_lock(candidate)
+        del lock["recipe_sha256"]
+        with self.assertRaisesRegex(ValueError, "schema"):
+            check_lock(lock)
+
+    def test_recipe_rejects_newline_encoding_change(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        raw = (LOCK.parent / "Dockerfile.candidate").read_bytes()
+        # A different byte representation must not be accepted as identical.
+        with self.assertRaisesRegex(ValueError, "recipe SHA-256 mismatch"):
+            check_candidate_recipe(lock, raw.decode("utf-8").replace("\n", "\r\n"))
+
+    def test_recipe_lock_digest_mismatch_rejected(self):
+        lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
+        recipe = (LOCK.parent / "Dockerfile.candidate").read_text(encoding="utf-8")
+        tampered_lock = dict(lock, recipe_sha256="0" * 64)
+        with self.assertRaisesRegex(ValueError, "recipe SHA-256 mismatch"):
+            check_candidate_recipe(tampered_lock, recipe)
+
     def test_build_context_excludes_repository_files(self):
         rules = (LOCK.parent / "Dockerfile.candidate.dockerignore").read_text().splitlines()
         self.assertEqual(rules[0], "**")

@@ -64,3 +64,18 @@ builder adoption. The active CI-003 workflow remains unchanged and unpinned.
 The upstream shared `SKILL.md` is still absent and unverified; the local
 `PROJECT-ADAPTER.md` remains the project-specific engineering contract.
 Independent security/release acceptance and hardware testing remain pending.
+
+## CI-003L — Complete candidate recipe byte binding (2026-11-14)
+
+The earlier declaration-only preflight did not examine the Python heredoc body,
+extra ENV instructions, or arbitrary unrecognized Dockerfile syntax. A malicious
+change inside the allowed heredoc could retain every checked FROM/COPY/RUN/USER
+declaration. The candidate lock now includes `recipe_sha256`, checked against
+the complete UTF-8 Dockerfile bytes in addition to existing declaration checks.
+Negative tests cover heredoc injection, extra ENV/LABEL/HEALTHCHECK instructions,
+comment changes, and invalid/missing recipe digests.
+
+This is a local change-detection and review aid, not a cryptographic attestation:
+an adversary who can edit both the Dockerfile and lockfile can rehash the payload.
+The unapproved candidate has NOT been built, independently attested, adopted in CI,
+or used for releases. CI-003 issue #66 and independent security review remain open.
