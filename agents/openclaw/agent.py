@@ -73,6 +73,10 @@ def _open_private_directory(path):
                 raise PermissionError("untrusted directory ancestor")
             os.close(fd)
             fd = child
+        # The final logs/reports directory must hide filenames as well as
+        # protect file contents. Ancestors may be traversable but not writable.
+        if path.parts[1:] and os.fstat(fd).st_mode & 0o077:
+            raise PermissionError("output directory is not owner-private")
         return fd
     except BaseException:
         os.close(fd)

@@ -28,8 +28,8 @@ rather than overwriting an existing report.
 
 ## Evidence and acceptance boundary
 
-- `python3 -m unittest -q tests.test_openclaw_agent`: 24/24 passed.
-- `PYTHONWARNINGS=ignore::ResourceWarning python3 -m unittest discover -s tests -p 'test_*.py' -q`: 945/945 passed.
+- `python3 -m unittest -q tests.test_openclaw_agent`: 26/26 passed.
+- `PYTHONWARNINGS=ignore::ResourceWarning python3 -m unittest discover -s tests -p 'test_*.py' -q`: 947/947 passed.
 - `python3 -m compileall -q core agents tests scripts`: passed.
 - `python3 scripts/android_manifest_gate.py android/app/src/main/AndroidManifest.xml`: passed.
 - `python3 scripts/launcher_accessibility_gate.py`: passed (source-only).

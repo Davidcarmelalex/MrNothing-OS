@@ -239,6 +239,40 @@ class OpenClawSafetyTests(unittest.TestCase):
             finally:
                 unsafe.chmod(0o700)
 
+    def test_readable_report_directory_refused_before_network(self):
+        self._allow()
+        with tempfile.TemporaryDirectory() as root:
+            reports = Path(root) / "reports"
+            reports.mkdir(mode=0o700)
+            reports.chmod(0o755)
+            try:
+                with (
+                    patch.object(agent, "REPORTS_DIR", reports),
+                    patch.object(agent, "confirm_scan", return_value=True),
+                    patch.object(agent, "log") as log,
+                    patch.object(agent, "run") as run,
+                    patch.object(agent.socket, "socket") as sock,
+                ):
+                    result = agent.scan_network("192.168.56.10")
+                self.assertEqual(result["reason"], "REPORT_STORAGE_UNSAFE")
+                log.assert_not_called()
+                run.assert_not_called()
+                sock.assert_not_called()
+            finally:
+                reports.chmod(0o700)
+
+    def test_readable_log_directory_refused_without_writing(self):
+        with tempfile.TemporaryDirectory() as root:
+            logs = Path(root) / "logs"
+            logs.mkdir(mode=0o700)
+            logs.chmod(0o755)
+            try:
+                with patch.object(agent, "LOG", logs / "openclaw.log"), patch("builtins.print"):
+                    self.assertFalse(agent.log("test event"))
+                self.assertFalse((logs / "openclaw.log").exists())
+            finally:
+                logs.chmod(0o700)
+
     def test_private_report_is_exclusive_and_never_overwrites(self):
         with tempfile.TemporaryDirectory() as root:
             directory = Path(root) / "reports"
