@@ -62,6 +62,30 @@ class PaperclipSecureLoggingTests(unittest.TestCase):
             self.assertFalse(home.exists())
             self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o1777)
 
+    def test_symlinked_intermediate_ancestor_refuses_without_log_creation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actual = root / "actual"
+            safe_parent = actual / "private"
+            safe_parent.mkdir(parents=True)
+            (root / "alias").symlink_to(actual, target_is_directory=True)
+            home = root / "alias" / "private" / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse((safe_parent / "mrnothing").exists())
+
+    def test_writable_intermediate_ancestor_refuses_without_log_creation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shared = Path(temp) / "shared"
+            safe_parent = shared / "private"
+            safe_parent.mkdir(parents=True)
+            shared.chmod(0o770)
+            home = safe_parent / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse(home.exists())
+            self.assertEqual(stat.S_IMODE(shared.stat().st_mode), 0o770)
+
     def test_group_writable_home_refuses_without_log_creation(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp) / "mrnothing"

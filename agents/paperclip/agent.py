@@ -37,6 +37,38 @@ def _harden_log_directory(fd):
     return True
 
 
+
+def _open_trusted_log_parent(parent):
+    """Walk absolute ancestors by descriptor; reject symlinks and unsafe ownership.
+
+    A root-owned sticky directory (such as /tmp) may be an intermediate
+    ancestor, but the immediate log parent must never be shared-writable.
+    This cannot defend against same-UID or privileged concurrent mutation.
+    """
+    if not parent.is_absolute() or ".." in parent.parts:
+        raise PermissionError("log parent must be an absolute non-traversing path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open("/", flags)
+    try:
+        parts = parent.parts[1:]
+        for index, component in enumerate(parts):
+            child_fd = os.open(component, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child_fd
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.geteuid()):
+                raise PermissionError("untrusted log ancestor")
+            if info.st_mode & 0o022:
+                # A sticky root-owned intermediate protects other users'
+                # entries, but a shared-writable final parent is forbidden.
+                if (index == len(parts) - 1 or info.st_uid != 0
+                        or not (info.st_mode & stat.S_ISVTX)):
+                    raise PermissionError("writable log ancestor")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
 def log(msg):
     """Best-effort, owner-only local event logging; never follow log symlinks."""
     if type(msg) is not str or msg not in SAFE_LOG_EVENTS:
@@ -49,14 +81,7 @@ def log(msg):
     parent_fd = home_fd = logs_fd = file_fd = None
     try:
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-        parent_fd = os.open(HOME.parent, flags)
-        parent_info = os.fstat(parent_fd)
-        # Prevent another local account from replacing the mrnothing entry.
-        # A root-owned /home and the effective user's own home are allowed.
-        if (not stat.S_ISDIR(parent_info.st_mode)
-                or parent_info.st_uid not in (0, os.geteuid())
-                or parent_info.st_mode & 0o022):
-            return False
+        parent_fd = _open_trusted_log_parent(HOME.parent)
         try:
             os.mkdir(HOME.name, mode=0o700, dir_fd=parent_fd)
         except FileExistsError:
