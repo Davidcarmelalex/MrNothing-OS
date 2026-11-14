@@ -417,6 +417,30 @@ class VerifiedContextStagingTests(unittest.TestCase):
                 stage_verified_inputs(self.source, self.stage, self.lock)
         self.assertTrue(triggered[0])
 
+    def test_rejects_symlinked_intermediate_stage_ancestor(self):
+        actual = self.root / "actual"
+        actual.mkdir()
+        alias = self.root / "alias"
+        alias.symlink_to(actual, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "unsafe stage ancestor"):
+            stage_verified_inputs(self.source, alias / "inputs", self.lock)
+        self.assertFalse((actual / "inputs").exists())
+
+    def test_rejects_writable_intermediate_stage_ancestor(self):
+        shared = self.root / "shared"
+        parent = shared / "private"
+        parent.mkdir(parents=True)
+        shared.chmod(0o770)
+        with self.assertRaisesRegex(ValueError, "writable stage ancestor"):
+            stage_verified_inputs(self.source, parent / "inputs", self.lock)
+        self.assertFalse((parent / "inputs").exists())
+        self.assertEqual(shared.stat().st_mode & 0o777, 0o770)
+
+    def test_rejects_relative_stage_parent(self):
+        with self.assertRaisesRegex(ValueError, "absolute non-traversing"):
+            stage_verified_inputs(self.source, Path("relative") / "inputs", self.lock)
+
+
     def test_rejects_world_writable_destination_parent(self):
         unsafe = self.root / "unsafe"
         unsafe.mkdir(mode=0o777)
