@@ -4,10 +4,13 @@ This is a prototype admission gate, NOT a deployed remote-control endpoint.
 The caller must authenticate the transport and select a unique key for the
 authenticated device. No command is executed by this module.
 """
+from contextlib import closing
 from dataclasses import dataclass
 import hmac
 import math
+import os
 import sqlite3
+import stat
 import string
 from pathlib import Path
 
@@ -25,6 +28,7 @@ MAX_CANONICAL_PAYLOAD_BYTES = 8192
 MAX_JSON_DEPTH = 32
 MAX_JSON_NODES = 4096
 MAX_JSON_TEXT_CHARS = 16384
+MAX_SQLITE_INTEGER = (1 << 63) - 1
 
 
 def _is_strict_json_value(value: object) -> bool:
@@ -77,27 +81,237 @@ class DurableReplayLedger:
     """
 
     def __init__(self, path: str | Path, *, ttl_seconds: int = 60, max_entries: int = 10000):
-        if ttl_seconds < 1 or max_entries < 1:
+        if (type(ttl_seconds) is not int or ttl_seconds < 1
+                or type(max_entries) is not int or max_entries < 1
+                or ttl_seconds > MAX_SQLITE_INTEGER):
             raise ValueError("invalid ledger limits")
-        self.path = str(path)
+        raw_path = os.fspath(path)
+        if (type(raw_path) is not str or not raw_path.strip()
+                or raw_path == ":memory:" or raw_path.startswith("file:")):
+            raise ValueError("replay ledger requires a durable filesystem path")
+        self.path = str(Path(raw_path).absolute())
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
-        with self._connect() as db:
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS seen ("
-                "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
-                "PRIMARY KEY (device_id, command_id))"
-            )
-            db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
+        self._file_identity = self._prepare_file()
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                self._verify_no_triggers(db)
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS seen ("
+                    "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
+                    "PRIMARY KEY (device_id, command_id))"
+                )
+                db.execute("CREATE INDEX IF NOT EXISTS seen_age ON seen (seen_at)")
+                self._verify_seen_schema(db)
+                # The high-water mark survives TTL pruning and process restarts.
+                # On legacy ledgers, seed from the latest still-retained nonce.
+                clock_table_exists = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='ledger_clock'"
+                ).fetchone() is not None
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS ledger_clock ("
+                    "id INTEGER PRIMARY KEY CHECK (id=1), max_now INTEGER NOT NULL)"
+                )
+                if not clock_table_exists:
+                    # Only a genuinely legacy database may initialize the
+                    # watermark. Never repair a deleted row on restart.
+                    db.execute(
+                        "INSERT INTO ledger_clock (id,max_now) "
+                        "SELECT 1, MAX(COALESCE((SELECT MAX(seen_at) FROM seen),0),0)"
+                    )
+                self._verify_clock_schema(db)
+                row = db.execute(
+                    "SELECT max_now FROM ledger_clock WHERE id=1"
+                ).fetchone()
+                latest_nonce = db.execute(
+                    "SELECT COALESCE(MAX(seen_at),0) FROM seen"
+                ).fetchone()[0]
+                if (row is None or type(row[0]) is not int
+                        or not 0 <= row[0] <= MAX_SQLITE_INTEGER
+                        or type(latest_nonce) is not int
+                        or not 0 <= latest_nonce <= row[0]):
+                    raise sqlite3.DatabaseError("replay ledger clock watermark inconsistent")
+                db.execute("COMMIT")
+            except Exception:
+                db.execute("ROLLBACK")
+                raise
+
+    @staticmethod
+    def _verify_no_triggers(db: sqlite3.Connection) -> None:
+        """Refuse unreviewed schema hooks that can erase replay reservations.
+
+        This dedicated ledger has no application-defined triggers. Check under
+        the write transaction so another SQLite writer cannot install a trigger
+        between the schema check and the reservation.
+        """
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1"
+        ).fetchone() is not None:
+            raise sqlite3.DatabaseError("replay ledger unexpected trigger")
+
+    @staticmethod
+    def _verify_seen_schema(db: sqlite3.Connection) -> None:
+        """Refuse altered replay-key columns or a missing composite primary key.
+
+        This intentionally accepts the original legacy table layout, not
+        arbitrary user-defined schemas. It cannot detect deletion of rows
+        from an otherwise intact database by a same-user adversary.
+        """
+        table = db.execute(
+            "SELECT type FROM sqlite_master WHERE name='seen'"
+        ).fetchone()
+        columns = db.execute("PRAGMA table_info(seen)").fetchall()
+        expected = [
+            ("device_id", "TEXT", 1, None, 1),
+            ("command_id", "TEXT", 1, None, 2),
+            ("seen_at", "INTEGER", 1, None, 0),
+        ]
+        actual = [(row[1], row[2].upper(), row[3], row[4], row[5])
+                  for row in columns]
+        if table != ("table",) or actual != expected:
+            raise sqlite3.DatabaseError("replay ledger seen schema inconsistent")
+
+    @staticmethod
+    def _verify_clock_schema(db: sqlite3.Connection) -> None:
+        """Require a single, structurally valid high-water-mark record.
+
+        Check under the writer transaction at initialization and reservation;
+        a second SQLite writer must not downgrade the key or add clock rows
+        between verification and the signed command's nonce reservation.
+        """
+        table = db.execute(
+            "SELECT type FROM sqlite_master WHERE name='ledger_clock'"
+        ).fetchone()
+        columns = db.execute("PRAGMA table_info(ledger_clock)").fetchall()
+        expected = [
+            ("id", "INTEGER", 0, None, 1),
+            ("max_now", "INTEGER", 1, None, 0),
+        ]
+        actual = [(row[1], row[2].upper(), row[3], row[4], row[5])
+                  for row in columns]
+        rows = db.execute("SELECT id FROM ledger_clock LIMIT 2").fetchall()
+        # Preserve the existing missing-row error path ("watermark inconsistent").
+        # Additional or non-canonical rows are schema corruption.
+        if (table != ("table",) or actual != expected
+                or len(rows) > 1 or (rows and rows[0] != (1,))):
+            raise sqlite3.DatabaseError("replay ledger clock schema inconsistent")
+
+    def _parent_is_safe(self) -> bool:
+        """Reject directories where other users can replace the ledger path."""
+        if os.name != "posix":
+            return True
+        # SQLite creates rollback/WAL/shared-memory sidecars beside the DB.
+        # Sticky directories protect the DB inode but not unclaimed sidecar
+        # names, so the immediate parent must be private to this process UID.
+        # Ancestors may be trusted sticky directories (e.g. /tmp), but must
+        # not be untrusted, nonsticky-writable or symlink components.
+        directory = os.path.dirname(self.path)
+        immediate_parent = True
+        while True:
+            try:
+                info = os.lstat(directory)
+            except OSError:
+                return False
+            writable_by_others = bool(info.st_mode & 0o022)
+            sticky_protected = bool(info.st_mode & stat.S_ISVTX)
+            trusted_directory_owner = info.st_uid in (os.geteuid(), 0)
+            if (immediate_parent and (
+                    info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) & 0o077)):
+                return False
+            if (not stat.S_ISDIR(info.st_mode)
+                    or not trusted_directory_owner
+                    or (writable_by_others and not sticky_protected)):
+                return False
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                return True
+            directory = parent
+            immediate_parent = False
+
+    def _prepare_file(self) -> tuple[int, int]:
+        """Create a private ledger before SQLite opens it; reject unsafe files."""
+        if not self._parent_is_safe():
+            raise ValueError("replay ledger parent directory is unsafe")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(self.path, flags, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            os.close(fd)
+        try:
+            info = os.stat(self.path, follow_symlinks=False)
+        except OSError as error:
+            raise ValueError("replay ledger file unavailable") from error
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("replay ledger must be a regular non-symlink file")
+        if os.name == "posix" and (
+            stat.S_IMODE(info.st_mode) & 0o077
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+        ):
+            raise ValueError("replay ledger file must be owner-only and unlinked elsewhere")
+        return (info.st_dev, info.st_ino)
+
+    def _verify_file(self) -> None:
+        """Deny reuse if the file is deleted, replaced, or made accessible to others."""
+        try:
+            info = os.stat(self.path, follow_symlinks=False)
+        except OSError as error:
+            raise sqlite3.OperationalError("replay ledger file unavailable") from error
+        if (not stat.S_ISREG(info.st_mode)
+                or (info.st_dev, info.st_ino) != self._file_identity
+                or not self._parent_is_safe()
+                or (os.name == "posix" and (
+                    stat.S_IMODE(info.st_mode) & 0o077
+                    or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1
+                ))):
+            raise sqlite3.OperationalError("replay ledger file identity or permissions changed")
 
     def _connect(self):
-        return sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        self._verify_file()
+        db = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        try:
+            self._verify_file()
+            return db
+        except Exception:
+            db.close()
+            raise
 
     def reserve(self, device_id: str, command_id: str, now: int) -> bool:
         """Reserve once atomically; database failures propagate to fail closed."""
-        with self._connect() as db:
+        if type(now) is not int or not 0 <= now <= MAX_SQLITE_INTEGER:
+            raise sqlite3.DataError("replay ledger timestamp outside SQLite INTEGER range")
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                self._verify_no_triggers(db)
+                self._verify_seen_schema(db)
+                self._verify_clock_schema(db)
+                row = db.execute(
+                    "SELECT max_now FROM ledger_clock WHERE id=1"
+                ).fetchone()
+                # Revalidate in the write transaction on every admission.
+                # Another writer could corrupt the clock after initialization.
+                latest_nonce = db.execute(
+                    "SELECT COALESCE(MAX(seen_at),0) FROM seen"
+                ).fetchone()[0]
+                if (row is None or type(row[0]) is not int
+                        or not 0 <= row[0] <= MAX_SQLITE_INTEGER
+                        or type(latest_nonce) is not int
+                        or not 0 <= latest_nonce <= row[0]):
+                    raise sqlite3.DatabaseError("replay ledger clock watermark inconsistent")
+                if now < row[0]:
+                    raise sqlite3.DataError("replay ledger clock rollback")
+                # Clock and nonce reservation commit together. Rejected requests
+                # roll back both, preserving the last accepted time.
+                db.execute("UPDATE ledger_clock SET max_now=? WHERE id=1", (now,))
                 db.execute("DELETE FROM seen WHERE seen_at < ?", (now - self.ttl_seconds,))
                 if db.execute("SELECT 1 FROM seen WHERE device_id=? AND command_id=?",
                               (device_id, command_id)).fetchone():
@@ -109,10 +323,18 @@ class DurableReplayLedger:
                     return False
                 db.execute("INSERT INTO seen(device_id,command_id,seen_at) VALUES(?,?,?)",
                            (device_id, command_id, now))
+                # Detect canonical-path substitution after connection setup and
+                # before acknowledging the write. SQLite may keep a valid open
+                # handle even after a same-UID writer replaces the pathname.
+                self._verify_file()
                 db.execute("COMMIT")
+                # A replacement during COMMIT must not produce a successful
+                # admission result for a detached, non-canonical database.
+                self._verify_file()
                 return True
             except Exception:
-                db.execute("ROLLBACK")
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
                 raise
 
 
@@ -143,7 +365,9 @@ def admit_signed_command(
         return AdmissionResult(False, "INVALID_COMMAND")
     if not isinstance(command.command_id, str) or not (1 <= len(command.command_id) <= 128):
         return AdmissionResult(False, "INVALID_COMMAND_ID")
-    if type(command.issued_at) is not int or type(now) is not int:
+    if (type(command.issued_at) is not int or type(now) is not int
+            or not 0 <= command.issued_at <= MAX_SQLITE_INTEGER
+            or not 0 <= now <= MAX_SQLITE_INTEGER):
         return AdmissionResult(False, "INVALID_TIMESTAMP")
     if type(command.action) is not str or not (1 <= len(command.action) <= 128):
         return AdmissionResult(False, "INVALID_PAYLOAD")

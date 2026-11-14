@@ -2203,3 +2203,18 @@ Added one-shot callback object/cipher identity and credential-type gating on the
 ## SEC-023B1B2D1 — dormant StrongBox authenticated-Cipher probe (2026-11-10)
 
 Scoped PR #21 follow-up; no change to the authorized development branch. Read-only AndroidKeyStore alias acquisition, strict preflight, one-shot CryptoObject callback binding, post-callback second preflight, canonical consent-digest AAD, empty-synthetic-input GCM doFinal and discarded tag. No key generation, permission change, UI, persistence, agent execution or physical-device action. New JVM policy and Python source tests do not prove hardware behavior. Independent security approval, physical Pixel credential-only CryptoObject compatibility, isolation, key invalidation, spoken TalkBack and signed releases remain mandatory. Upstream shared SKILL.md unverified. M1/M2/M6 in progress; M3 partial; M4 not started; M5 not accepted; M7/M8 blocked; no milestone complete.
+
+## QA-STACK-028 — Replay watermark restart integrity (2026-11-12)
+
+A scoped draft change hardens the offline replay-ledger initializer against silently recreating a deleted watermark row or accepting a watermark older than retained nonces. Three regressions verify restart refusal and invalid watermark state. See [QA-STACK-028 evidence](QA-STACK-028-LEDGER-WATERMARK-INTEGRITY.md). This is a prototype-only security correction; independent human review, exact-head hosted CI, Pixel hardware, signed release, and OTA acceptance remain separate gates. **No M1–M8 milestone is independently accepted.**
+
+## QA-STACK-029 — runtime replay clock consistency (2026-11-12)
+An already initialized ledger could accept reservations after another SQLite writer lowered its clock. QA-STACK-029 checks bounded clock type/value and retained-nonce consistency inside every write transaction, failing closed on corruption. Three new regression tests cover the live ledger and signed admission. Hosted CI, independent human approval, hardware, signed releases, and production readiness remain separate gates. Upstream SKILL.md remains unverified.
+
+## QA-STACK-031 — SQLite replay schema-trigger hardening (2026-11-12)
+
+A reproducible host-side bypass was identified: a persistent `AFTER INSERT` trigger could delete each nonce and allow the same signed command ID to be admitted twice. The bounded change refuses persisted SQLite triggers under the write transaction on initialization and reservation, including a clock-reset trigger case. See `docs/QA-STACK-031-LEDGER-TRIGGER-INTEGRITY.md`. This does not protect against same-UID direct DB tampering, filesystem races or cross-host replay. Hosted exact-head CI and independent human security/accessibility review are required; **M1–M8 remain 0/8 independently accepted**. No Pixel hardware, signed release or OTA claim.
+
+## QA-STACK-034 — Replay ledger canonical-path acknowledgement (2026-11-12)
+
+A bounded host-side replay-ledger change adds inode/permissions/parent checks before and after SQLite `COMMIT`, refusing admission if the canonical path was replaced during the transaction or commit. Two new POSIX negative tests reproduced the prior acceptance gap and passed after mitigation; full local Python suite: 1,213/1,213. See `docs/QA-STACK-034-LEDGER-PATH-ACK-GATE.md`. This is **not** a same-UID tamper-proof design; independent security review, exact-head hosted CI and an isolated execution identity/integrity anchor remain required. No milestone is accepted.
