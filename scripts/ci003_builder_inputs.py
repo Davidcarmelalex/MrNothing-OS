@@ -218,7 +218,9 @@ def check_lock(lock):
         raise ValueError("unexpected candidate status or platform")
     if not isinstance(lock["recipe_sha256"], str) or not SHA.fullmatch(lock["recipe_sha256"]):
         raise ValueError("invalid candidate Dockerfile recipe SHA-256")
-    if set(lock["archives"]) != NAMES or any(not isinstance(x, str) or not SHA.fullmatch(x) for x in lock["archives"].values()):
+    if (not isinstance(lock["archives"], dict) or set(lock["archives"]) != NAMES or
+            any(not isinstance(x, str) or not SHA.fullmatch(x)
+                for x in lock["archives"].values())):
         raise ValueError("invalid archive manifest")
     for name in ("python_base", "jdk_base"):
         ref = lock[name]

@@ -187,6 +187,13 @@ class BuilderInputsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "schema"):
             check_lock(lock)
 
+    def test_malformed_archive_manifest_rejected_without_exception_leak(self):
+        lock = parse_candidate_lock(LOCK.read_text(encoding="utf-8"))
+        for malformed in (list(lock["archives"]), None, "not-a-map", 7):
+            with self.subTest(malformed=repr(malformed)):
+                with self.assertRaisesRegex(ValueError, "invalid archive manifest"):
+                    check_lock(dict(lock, archives=malformed))
+
     def test_duplicate_root_lock_key_rejected(self):
         raw = LOCK.read_text(encoding="utf-8").replace('"schema_version": 1,', '"schema_version": 1, "schema_version": 1,')
         with self.assertRaisesRegex(ValueError, "duplicate"):
