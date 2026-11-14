@@ -637,6 +637,35 @@ def describe_environment_drift(left: dict, right: dict, sample_limit: int = 12) 
     right_components = {item["purl"]: item for item in right["components"]}
     only_left = [left_components[key] for key in sorted(left_components.keys() - right_components.keys())]
     only_right = [right_components[key] for key in sorted(right_components.keys() - left_components.keys())]
+    # A shared package URL is not proof of identical package metadata or digest.
+    # Keep diagnostics useful when a package's bytes change without a version bump.
+    changed_common = [
+        (left_components[key], right_components[key])
+        for key in sorted(left_components.keys() & right_components.keys())
+        if left_components[key] != right_components[key]
+    ]
+
+    def safe_changed_sample(items: list[tuple[dict, dict]]) -> list[dict]:
+        allowed_fields = ("kind", "name", "version", "architecture", "sha256", "metadata")
+        samples = []
+        for left_item, right_item in items[:sample_limit]:
+            changed_fields = [
+                field for field in allowed_fields
+                if left_item.get(field) != right_item.get(field)
+            ]
+            if (set(left_item) | set(right_item)) - set(allowed_fields):
+                if any(
+                    left_item.get(field) != right_item.get(field)
+                    for field in (set(left_item) | set(right_item)) - set(allowed_fields)
+                ):
+                    changed_fields.append("other")
+            samples.append({
+                "kind": left_item["kind"][:64],
+                "name": left_item["name"][:120],
+                "version": left_item["version"][:120],
+                "changed_fields": changed_fields,
+            })
+        return samples
 
     def safe_sample(items: list[dict]) -> list[dict]:
         # Package identities are captured from installed package managers. Keep
@@ -660,12 +689,25 @@ def describe_environment_drift(left: dict, right: dict, sample_limit: int = 12) 
         "only_runner_b_count": len(only_right),
         "only_runner_a_sample": safe_sample(only_left),
         "only_runner_b_sample": safe_sample(only_right),
-        "samples_truncated": len(only_left) > sample_limit or len(only_right) > sample_limit,
-        "host_os_package_drift": any(
-            item["kind"] == "os-package" for item in only_left + only_right
+        "changed_common_component_count": len(changed_common),
+        "changed_common_component_sample": safe_changed_sample(changed_common),
+        "samples_truncated": (
+            len(only_left) > sample_limit or len(only_right) > sample_limit
+            or len(changed_common) > sample_limit
         ),
-        "non_os_component_drift": any(
-            item["kind"] != "os-package" for item in only_left + only_right
+        "host_os_package_drift": (
+            any(item["kind"] == "os-package" for item in only_left + only_right)
+            or any(
+                left_item["kind"] == "os-package" or right_item["kind"] == "os-package"
+                for left_item, right_item in changed_common
+            )
+        ),
+        "non_os_component_drift": (
+            any(item["kind"] != "os-package" for item in only_left + only_right)
+            or any(
+                left_item["kind"] != "os-package" or right_item["kind"] != "os-package"
+                for left_item, right_item in changed_common
+            )
         ),
     }
 
@@ -742,6 +784,7 @@ def verify_bundles(first: Path, second: Path, expected_commit: str, output: Path
             f"toolchain fields={differences['toolchain_changed_fields']}; "
             f"component-only-A={differences['only_runner_a_count']}, "
             f"component-only-B={differences['only_runner_b_count']}; "
+            f"same-purl-changed={differences['changed_common_component_count']}; "
             "inspect build-environment-verification.json"
         )
     return result

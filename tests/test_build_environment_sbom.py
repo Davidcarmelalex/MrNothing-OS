@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from scripts.build_environment_sbom import (
     attach_provenance,
     collect_inventory,
+    describe_environment_drift,
     make_spdx,
     parse_action_pins,
     parse_dpkg_inventory,
@@ -380,6 +381,71 @@ class BuildEnvironmentSbomTests(unittest.TestCase):
         path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "namespace does not bind|hashes do not match|canonical inventory-derived"):
             verify_bundles(first, second, COMMIT, self.root / "verification.json")
+
+    def test_same_purl_metadata_drift_reports_fail_closed_without_leaking_values(self):
+        first = self.write_bundle(self.root / "same-purl-first")
+        second = self.write_bundle(self.root / "same-purl-second")
+        secret_marker = "fixture-secret-do-not-log"
+        def mutate(inventory):
+            component = next(item for item in inventory["components"] if item["kind"] == "python-package")
+            component["metadata"] = {"opaque": secret_marker}
+        self.rewrite_valid_bundle(second, mutate)
+        report_path = self.root / "same-purl-verification.json"
+        with self.assertRaisesRegex(ValueError, "same-purl-changed=1"):
+            verify_bundles(first, second, COMMIT, report_path)
+        report_text = report_path.read_text(encoding="utf-8")
+        report = json.loads(report_text)
+        drift = report["differences"]
+        self.assertFalse(report["build_environment_identical"])
+        self.assertEqual(drift["only_runner_a_count"], 0)
+        self.assertEqual(drift["only_runner_b_count"], 0)
+        self.assertEqual(drift["changed_common_component_count"], 1)
+        self.assertIn("metadata", drift["changed_common_component_sample"][0]["changed_fields"])
+        self.assertTrue(drift["non_os_component_drift"])
+        self.assertFalse(drift["host_os_package_drift"])
+        self.assertNotIn(secret_marker, report_text)
+
+    def test_same_purl_os_package_metadata_drift_is_classified(self):
+        first = self.write_bundle(self.root / "os-first")
+        second = self.write_bundle(self.root / "os-second")
+        def mutate(inventory):
+            component = next(item for item in inventory["components"] if item["kind"] == "os-package")
+            component["metadata"] = {"opaque": "private-host-data"}
+        self.rewrite_valid_bundle(second, mutate)
+        report_path = self.root / "os-verification.json"
+        with self.assertRaisesRegex(ValueError, "not identical"):
+            verify_bundles(first, second, COMMIT, report_path)
+        drift = json.loads(report_path.read_text(encoding="utf-8"))["differences"]
+        self.assertEqual(drift["changed_common_component_count"], 1)
+        self.assertTrue(drift["host_os_package_drift"])
+        self.assertFalse(drift["non_os_component_drift"])
+
+    def test_same_purl_checksum_drift_reports_field_without_exposing_digest(self):
+        first = self.write_bundle(self.root / "digest-first")
+        second = self.write_bundle(self.root / "digest-second")
+        def mutate(inventory):
+            component = next(item for item in inventory["components"] if item["kind"] == "gradle-distribution")
+            component["sha256"] = "f" * 64
+        self.rewrite_valid_bundle(second, mutate)
+        report_path = self.root / "digest-verification.json"
+        with self.assertRaisesRegex(ValueError, "same-purl-changed=1"):
+            verify_bundles(first, second, COMMIT, report_path)
+        report_text = report_path.read_text(encoding="utf-8")
+        drift = json.loads(report_text)["differences"]
+        self.assertIn("sha256", drift["changed_common_component_sample"][0]["changed_fields"])
+        self.assertNotIn('"sha256": "' + "f" * 64 + '"', report_text)
+        self.assertTrue(drift["non_os_component_drift"])
+
+    def test_same_purl_drift_samples_are_bounded(self):
+        left = collect_inventory(self.args)
+        right = json.loads(json.dumps(left))
+        for component in right["components"][:3]:
+            component["metadata"] = {"opaque": "do-not-emit"}
+        drift = describe_environment_drift(left, right, sample_limit=1)
+        self.assertEqual(drift["changed_common_component_count"], 3)
+        self.assertEqual(len(drift["changed_common_component_sample"]), 1)
+        self.assertTrue(drift["samples_truncated"])
+        self.assertNotIn("do-not-emit", json.dumps(drift))
 
     def test_runner_image_mismatch_fails_cross_runner_gate(self):
         first = self.write_bundle(self.root / "runner-a")
