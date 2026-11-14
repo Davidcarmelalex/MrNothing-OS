@@ -40,6 +40,28 @@ class PaperclipSecureLoggingTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(home.stat().st_mode), 0o700)
             self.assertEqual(stat.S_IMODE(logs.stat().st_mode), 0o700)
 
+    def test_group_writable_parent_refuses_without_creating_home(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp) / "shared"
+            parent.mkdir(mode=0o770)
+            parent.chmod(0o770)
+            home = parent / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse(home.exists())
+            self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o770)
+
+    def test_sticky_world_writable_parent_refuses_without_creating_home(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp) / "shared"
+            parent.mkdir()
+            parent.chmod(0o1777)
+            home = parent / "mrnothing"
+            with patch.object(AGENT, "HOME", home):
+                self.assertFalse(AGENT.log(EVENT))
+            self.assertFalse(home.exists())
+            self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o1777)
+
     def test_group_writable_home_refuses_without_log_creation(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp) / "mrnothing"
