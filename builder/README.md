@@ -63,3 +63,29 @@ does not guarantee that a later Docker build context COPY reads the same inode.
 A future controlled builder must stage verified immutable input snapshots and
 recheck their digest at build time; neither archive origin nor safe extraction
 nor production builder acceptance is established by this change.
+
+## CI-003O — Verified, exclusive Docker-context staging (experimental)
+
+To avoid the preflight-to-copy pathname gap, use a **separate, trusted,
+read-only input directory** containing the two archives and run:
+
+```sh
+python3 scripts/ci003_builder_inputs.py \
+  --stage-from /trusted/offline-archives --directory builder/inputs
+```
+
+The command creates `builder/inputs` **only if absent**, copies from the same
+verified source file descriptors into exclusively created, private staging
+files, and re-verifies SHA-256 and ZIP metadata on the staged bytes. It
+refuses symlink source directories, group/other-writable staging parents,
+existing staging directories and mismatched input digests. Files are
+mode 0400 and the staging directory is mode 0700. A failure may leave a
+partial, intentionally untrusted directory; inspect and remove it manually
+before a new attempt. No Docker build is launched.
+
+**Remaining trust boundary:** File modes are not immutable snapshots against
+a privileged writer, and Docker's context capture occurs later. The
+Dockerfile's exact SHA-256 checks remain mandatory, and no builder is approved
+until image provenance, Android SDK packages, isolated build comparisons and
+independent review pass. Never point staging at untrusted third-party data
+without validating origin and licensing.

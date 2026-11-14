@@ -227,13 +227,108 @@ def check_lock(lock):
     return lock
 
 
+
+
+def stage_verified_inputs(source_directory, stage_directory, lock):
+    """Publish a new, exclusively created Docker context from verified FDs.
+
+    This is a local offline staging helper, not a security boundary against
+    privileged actors who can mutate the Docker context after publication.
+    Dockerfile's locked SHA-256 check remains mandatory at build time.
+    """
+    check_lock(lock)
+    source_directory = Path(source_directory)
+    stage_directory = Path(stage_directory)
+    if stage_directory.exists() or stage_directory.is_symlink():
+        raise ValueError("stage directory already exists; refusing overwrite")
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise ValueError("safe directory opening unsupported")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        source_dir_fd = os.open(source_directory, flags)
+    except OSError as exc:
+        raise ValueError("unsafe source directory") from exc
+    try:
+        # Refuse an attacker-writable parent, where a staged directory could
+        # be replaced between verification and Docker context capture.
+        parent_fd = os.open(stage_directory.parent, flags)
+        try:
+            parent_stat = os.fstat(parent_fd)
+            if parent_stat.st_mode & 0o022:
+                raise ValueError("stage parent is group/other writable")
+            os.mkdir(stage_directory.name, 0o700, dir_fd=parent_fd)
+            stage_fd = os.open(stage_directory.name, flags, dir_fd=parent_fd)
+            try:
+                created_stat = os.fstat(stage_fd)
+                for name, expected in sorted(lock["archives"].items()):
+                    prefix = "cmdline-tools/" if name.startswith("commandlinetools-") else "gradle-8.9/"
+                    src_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |
+                                     getattr(os, "O_CLOEXEC", 0), dir_fd=source_dir_fd)
+                    try:
+                        initial = _verify_open_sha256(src_fd, expected, 250_000_000)
+                        os.lseek(src_fd, 0, os.SEEK_SET)
+                        with os.fdopen(os.dup(src_fd), "rb") as stream:
+                            validate_zip_members(stream, prefix)
+                        if _file_identity(initial) != _file_identity(os.fstat(src_fd)):
+                            raise ValueError("source changed during inspection")
+                        os.lseek(src_fd, 0, os.SEEK_SET)
+                        out_fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL |
+                                         os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+                                         0o400, dir_fd=stage_fd)
+                        try:
+                            total = 0
+                            while True:
+                                chunk = os.read(src_fd, 1024 * 1024)
+                                if not chunk:
+                                    break
+                                total += len(chunk)
+                                if total > 250_000_000:
+                                    raise ValueError("source exceeded copy limit")
+                                view = memoryview(chunk)
+                                while view:
+                                    written = os.write(out_fd, view)
+                                    if written <= 0:
+                                        raise ValueError("short staged write")
+                                    view = view[written:]
+                            os.fsync(out_fd)
+                            os.lseek(out_fd, 0, os.SEEK_SET)
+                            _verify_open_sha256(out_fd, expected, 250_000_000)
+                            os.lseek(out_fd, 0, os.SEEK_SET)
+                            with os.fdopen(os.dup(out_fd), "rb") as stream:
+                                validate_zip_members(stream, prefix)
+                            if _file_identity(initial) != _file_identity(os.fstat(src_fd)):
+                                raise ValueError("source changed during staging")
+                            os.fchmod(out_fd, 0o400)
+                        finally:
+                            os.close(out_fd)
+                    finally:
+                        os.close(src_fd)
+                os.fsync(stage_fd)
+                published = os.stat(stage_directory.name, dir_fd=parent_fd, follow_symlinks=False)
+                if (published.st_dev, published.st_ino) != (created_stat.st_dev, created_stat.st_ino):
+                    raise ValueError("staged directory was substituted")
+                os.fsync(parent_fd)
+            finally:
+                os.close(stage_fd)
+        finally:
+            os.close(parent_fd)
+    finally:
+        os.close(source_dir_fd)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--stage-from", type=Path, help="offline source directory; exclusively create builder/inputs")
     args = parser.parse_args()
     try:
         lock = check_lock(parse_candidate_lock(LOCK.read_text(encoding="utf-8")))
         check_candidate_recipe(lock, (LOCK.parent / "Dockerfile.candidate").read_bytes().decode("utf-8"))
+        if args.stage_from is not None:
+            if args.directory.absolute() != (ROOT / "builder/inputs").absolute():
+                raise ValueError("staging destination must be builder/inputs")
+            stage_verified_inputs(args.stage_from, args.directory, lock)
         for name, digest in sorted(lock["archives"].items()):
             prefix = "cmdline-tools/" if name.startswith("commandlinetools-") else "gradle-8.9/"
             size, members, expanded = verify_zip_archive(args.directory / name, digest, prefix)
