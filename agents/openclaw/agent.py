@@ -12,6 +12,7 @@ import json
 import math
 import os
 import shutil
+import stat
 import socket
 import subprocess
 import time
@@ -41,13 +42,103 @@ _PRIVATE_SCAN_NETWORKS = tuple(
 _COMMON_PORTS = (22, 80, 443, 8080, 3000, 5000)
 
 
+def _open_private_directory(path):
+    """Walk an absolute path without following symlinks; create private children.
+
+    The root-owned sticky /tmp pattern is allowed as an ancestor, but a
+    shared-writable user-owned or non-sticky directory is never trusted.
+    The caller owns the returned directory descriptor.
+    """
+    path = Path(path)
+    if not path.is_absolute():
+        raise OSError("report/log path must be absolute")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open("/", flags)
+    try:
+        for part in path.parts[1:]:
+            if part in ("", ".", ".."):
+                raise OSError("unsafe path component")
+            try:
+                os.mkdir(part, mode=0o700, dir_fd=fd)
+            except FileExistsError:
+                pass
+            child = os.open(part, flags, dir_fd=fd)
+            info = os.fstat(child)
+            trusted_owner = info.st_uid in (0, os.geteuid())
+            root_sticky = info.st_uid == 0 and bool(info.st_mode & stat.S_ISVTX)
+            if not stat.S_ISDIR(info.st_mode) or not trusted_owner or (
+                info.st_mode & 0o022 and not root_sticky
+            ):
+                os.close(child)
+                raise PermissionError("untrusted directory ancestor")
+            os.close(fd)
+            fd = child
+        # The final logs/reports directory must hide filenames as well as
+        # protect file contents. Ancestors may be traversable but not writable.
+        if path.parts[1:] and os.fstat(fd).st_mode & 0o077:
+            raise PermissionError("output directory is not owner-private")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _write_all(fd, data):
+    while data:
+        count = os.write(fd, data)
+        if count <= 0:
+            raise OSError("short output write")
+        data = data[count:]
+
+
+def _open_private_file(directory_fd, name, *, append=False):
+    if not name or name in (".", "..") or "/" in name:
+        raise OSError("invalid output filename")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+    flags |= os.O_APPEND if append else os.O_EXCL
+    fd = os.open(name, flags, 0o600, dir_fd=directory_fd)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.geteuid() or info.st_mode & 0o077):
+            raise PermissionError("untrusted output file")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _save_private_report(report, timestamp):
+    name = f"{report['target'].replace('.', '_')}_{int(timestamp)}.json"
+    directory_fd = _open_private_directory(REPORTS_DIR)
+    try:
+        file_fd = _open_private_file(directory_fd, name)
+        try:
+            _write_all(file_fd, json.dumps(report, indent=2).encode("utf-8"))
+        finally:
+            os.close(file_fd)
+    finally:
+        os.close(directory_fd)
+    return REPORTS_DIR / name
+
+
 def log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
     line = f"[{ts}] [OPENCLAW] {msg}"
     print(line)
-    LOG.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG, "a", encoding="utf-8") as handle:
-        handle.write(line + "\n")
+    try:
+        directory_fd = _open_private_directory(LOG.parent)
+        try:
+            file_fd = _open_private_file(directory_fd, LOG.name, append=True)
+            try:
+                _write_all(file_fd, (line + "\n").encode("utf-8"))
+            finally:
+                os.close(file_fd)
+        finally:
+            os.close(directory_fd)
+        return True
+    except OSError:
+        return False
 
 
 def _canonical_private_ipv4(value):
@@ -167,10 +258,14 @@ def scan_network(target):
     if not approved:
         return _denied(canonical, "CONFIRMATION_DENIED")
 
-    # No subprocess, socket, report directory or log side effect occurs before
-    # exact-target allowlisting and fresh confirmation both succeed.
+    # No subprocess, socket or filesystem side effect occurs before consent.
+    # Refuse unsafe storage before emitting any network probes.
+    try:
+        directory_fd = _open_private_directory(REPORTS_DIR)
+        os.close(directory_fd)
+    except OSError:
+        return _denied(canonical, "REPORT_STORAGE_UNSAFE")
     log(f"Authorized private IPv4 scan: {canonical}")
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = time.time()
     report = {
         "target": canonical,
@@ -200,10 +295,14 @@ def scan_network(target):
     else:
         report["results"]["http_headers"] = "curl unavailable"
 
-    report_file = REPORTS_DIR / f"{canonical.replace('.', '_')}_{int(timestamp)}.json"
-    with open(report_file, "w", encoding="utf-8") as handle:
-        json.dump(report, handle, indent=2)
-    log(f"Report saved: {report_file}")
+    try:
+        _save_private_report(report, timestamp)
+    except OSError:
+        # Probes already ran with explicit consent; do not mislabel as denied.
+        report["status"] = "FAILED"
+        report["reason"] = "REPORT_SAVE_FAILED"
+        return report
+    log("Report saved to private local directory")
     return report
 
 
