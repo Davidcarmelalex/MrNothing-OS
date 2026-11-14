@@ -1,0 +1,76 @@
+{
+  "schema": "mrnothing-device-v1",
+  "device": "caiman",
+  "variant": "Pixel 9 Pro: exact SKU, region and carrier unresolved",
+  "edition": "aosp_rom",
+  "tier": "research",
+  "baseline": "AOSP/kernel/vendor/firmware combination unresolved; see ROM-001 PR 89",
+  "hardware": {
+    "arch": "arm64",
+    "ram_gib": 4,
+    "storage_gib": 64,
+    "android_api": 35
+  },
+  "gates": {
+    "bootloader": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "kernel": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "vendor_blobs": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "modem_ims": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "gpu": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "camera": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "selinux": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "avb": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "ota": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "accessibility": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "recovery": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    },
+    "secure_keys": {
+      "status": "unknown",
+      "evidence": [],
+      "reason": "No independently verified evidence for this exact variant and baseline."
+    }
+  }
+}

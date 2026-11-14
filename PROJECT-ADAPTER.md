@@ -1,11 +1,11 @@
 # MrNothing OS — Universal Engineering Factory project adapter
 
-**Scope:** `Davidcarmelalex/MrNothing-OS`, exclusively `feat/phase1-agentic-phone`. Target device: **Google Pixel 9 Pro (`caiman`)**.
+**Scope:** `Davidcarmelalex/MrNothing-OS`, exclusively `feat/phase1-agentic-phone`. First reference device: **Google Pixel 9 Pro (`caiman`)**. Broader product requirement: supported-device AOSP ROM, independently qualified mobile Linux, and Android app/launcher editions. See [COMPAT-001](docs/COMPAT-001-UNIVERSAL-PLATFORM.md); specifications alone do not establish compatibility.
 
 **Provenance:** At the 2026-11-02 audit, no `SKILL.md` or `PROJECT-ADAPTER.md` existed in the audited repository tree. No authorized copy of the reusable upstream Universal Autonomous Engineering Factory package was found in the supplied files. **This adapter is a local, project-specific implementation of the user's factory contract, not a claim that the upstream shared skill was installed or verified.** Do not silently overwrite it if the upstream package later arrives; review differences first.
 
 ## Mission and architecture
-Build an accessible, privacy-preserving, agent-first Android experience that can replace the stock launcher with explicit user choice. Preserve compatibility with ordinary Android apps. Investigate a Pixel-specific AOSP distribution separately, only after device and firmware safety gates. Root is not a prerequisite for basic functionality and must never be silently obtained.
+Build an accessible, privacy-preserving, agent-first Android experience that can replace the stock launcher with explicit user choice. Preserve compatibility with ordinary Android apps. Develop device-qualified AOSP ROM support with Pixel 9 Pro first, and investigate native mobile Linux only where its own hardware support permits, after device and firmware safety gates. Keep the Android app/launcher edition available as a distinct compatibility path. Root is not a prerequisite for basic functionality and must never be silently obtained.
 
 Components: Kotlin HOME launcher and device diagnostics; consented Android system integrations; Python HERMES policy/orchestration; authenticated, device-bound command channel; audited tool registry; voice interface; optional AOSP/device build; signed OTA/recovery. Existing Termux modules remain legacy prototypes, not proof of integrated functionality.
 
