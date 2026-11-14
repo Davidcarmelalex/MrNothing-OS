@@ -353,6 +353,40 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertNotIn("input tap", helper)
         self.assertNotIn("input swipe", helper)
 
+    def test_credential_and_uncredentialed_instrumentation_are_partitioned(self):
+        # Both suites must execute. The credential-protected lifecycle class
+        # cannot share a globally locked emulator with launcher UI tests.
+        preflight = self.workflow.index("QA-STACK-009: uncredentialed instrumentation before synthetic PIN")
+        credential = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
+        gate = self.workflow.index("SEC-023B1A-QA: require executed installed-manifest instrumentation")
+        self.assertLess(preflight, credential)
+        self.assertLess(credential, gate)
+        self.assertEqual(2, self.workflow.count(":app:connectedDebugAndroidTest"))
+        unlocked = self.workflow[preflight:credential]
+        secure = self.workflow[credential:gate]
+        gradle = (WORKFLOW.parents[2] / "android/app/build.gradle.kts").read_text()
+        configured = set(re.findall(r'"(tech\.mrnothing\.os\.\w+Test)"', gradle))
+        self.assertEqual(8, len(configured))
+        class_arg = re.search(r'UNLOCKED_CLASSES="([^"]+)"', unlocked)
+        self.assertIsNotNone(class_arg)
+        uncredentialed = class_arg.group(1).split(",")
+        secure_class = "tech.mrnothing.os.OwnerAuthorityTrustActivityCommitLifecycleTest"
+        self.assertEqual(7, len(uncredentialed))
+        self.assertEqual(7, len(set(uncredentialed)))
+        self.assertNotIn(secure_class, uncredentialed)
+        self.assertEqual(configured, set(uncredentialed) | {secure_class})
+        self.assertIn(
+            "-Pandroid.testInstrumentationRunnerArguments.class=$UNLOCKED_CLASSES", unlocked
+        )
+        self.assertIn(
+            "-Pandroid.testInstrumentationRunnerArguments.class=" + secure_class, secure
+        )
+        self.assertLess(unlocked.index(":app:connectedDebugAndroidTest"), unlocked.index("uncredentialed-instrumentation"))
+        self.assertIn('cp -a app/build/outputs/androidTest-results/connected/debug/.', unlocked)
+        self.assertIn('"$QA005_OUTPUT/uncredentialed-instrumentation"', self.workflow[gate:])
+        self.assertNotIn("locksettings set-pin", unlocked)
+        self.assertNotIn("adb root", unlocked)
+
     def test_instrumentation_command_is_invoked_exactly_once(self):
         start = self.workflow.index("SEC-020B4D: Activity destruction before/after trust commit claim")
         end = self.workflow.index("Verify launcher runtime and recovery route", start)
@@ -448,6 +482,22 @@ class Qa005WorkflowGateTests(unittest.TestCase):
         self.assertIn("tech.mrnothing.os.AgentPlanPreviewActivityTest", configured)
         self.assertIn('.joinToString(",")', gradle)
 
+
+    def test_split_instrumentation_evidence_gate_is_required_before_smoke(self):
+        gate = self.workflow.index("QA-STACK-011: require complete split instrumentation evidence")
+        self.assertLess(self.workflow.index("SEC-020B4D: Activity destruction"), gate)
+        self.assertLess(self.workflow.index("SEC-023B1A-QA: require executed"), gate)
+        self.assertLess(gate, self.workflow.index("Verify launcher runtime and recovery route"))
+        step = self.workflow[gate:self.workflow.index("Verify launcher runtime and recovery route", gate)]
+        for token in (
+            "scripts/qa_stack011_instrumentation_evidence.py",
+            '"$QA005_OUTPUT/uncredentialed-instrumentation"',
+            "android/app/build/outputs/androidTest-results/connected/debug",
+            '"$QA005_OUTPUT/split-instrumentation-summary.json"',
+        ):
+            self.assertIn(token, step)
+        self.assertIn("'scripts/qa_stack011_*'", self.workflow)
+        self.assertIn("'tests/test_qa_stack011_*'", self.workflow)
 
 
 if __name__ == "__main__":

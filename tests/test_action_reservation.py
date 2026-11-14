@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import Mock, patch
 from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -981,6 +982,14 @@ class DurableActionReservationTests(unittest.TestCase):
             self.assertEqual(db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
             self.assertEqual(db.execute("PRAGMA synchronous").fetchone()[0], 2)
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+
+    def test_failed_connection_setup_closes_handle(self):
+        handle = Mock()
+        handle.execute.side_effect = sqlite3.DatabaseError("injected PRAGMA failure")
+        with patch("core.action_reservation.sqlite3.connect", return_value=handle):
+            with self.assertRaises(sqlite3.DatabaseError):
+                self.ledger._connect()
+        handle.close.assert_called_once()
 
     def test_corrupt_database_fails_closed(self):
         corrupt = os.path.join(self.temp.name, "corrupt.sqlite")

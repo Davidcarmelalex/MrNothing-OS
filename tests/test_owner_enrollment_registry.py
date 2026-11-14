@@ -9,7 +9,8 @@ import subprocess
 import sys
 import time
 import unittest
-from contextlib import contextmanager
+from unittest.mock import Mock, patch
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -656,6 +657,14 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(EnrollmentRegistryError):
             self.registry.lookup_active_device("pixel-1")
 
+    def test_failed_connection_setup_closes_handle_and_denies(self):
+        handle = Mock()
+        handle.execute.side_effect = sqlite3.DatabaseError("injected PRAGMA failure")
+        with patch("core.owner_enrollment_registry.sqlite3.connect", return_value=handle):
+            with self.assertRaises(EnrollmentRegistryError):
+                self.registry._connect()
+        handle.close.assert_called_once()
+
     def test_corrupt_database_fails_closed_without_reset(self):
         self.path.write_bytes(b"corrupt")
         with self.assertRaises(EnrollmentRegistryError):
@@ -1170,7 +1179,7 @@ class RegistryTests(unittest.TestCase):
     def test_reconcile_unknown_outcome_rejects_current_row_history_mismatch(self):
         envelope = self.statement(enrollment_id="current-row-mismatch")
         outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute(
                 "UPDATE owner_device SET transport_certificate_sha256=? WHERE device_id=?",
                 ("0" * 64, "pixel-1"),
