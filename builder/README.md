@@ -48,3 +48,18 @@ supply-chain attestation. The Dockerfile's own extractor and the provenance of
 all archives still require independent review. Android SDK platform 35 and
 build-tools 35.0.0 remain absent, so no complete builder or reproducible APK
 is claimed.
+
+
+## CI-003N inode-bound ZIP verification
+
+The offline preflight now opens each input once with no-follow semantics,
+verifies SHA-256 and parses ZIP metadata from the **same open file descriptor**.
+It checks inode identity and file metadata before/after inspection and rejects
+observed in-place mutations. Regression tests cover pathname substitution,
+in-place mutation, mismatched digest and symlink inputs.
+
+**Boundary:** This closes the preflight hash-to-ZIP-parse pathname race, but
+does not guarantee that a later Docker build context COPY reads the same inode.
+A future controlled builder must stage verified immutable input snapshots and
+recheck their digest at build time; neither archive origin nor safe extraction
+nor production builder acceptance is established by this change.
