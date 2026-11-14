@@ -229,6 +229,42 @@ def check_lock(lock):
 
 
 
+def _open_trusted_stage_parent(parent):
+    """Open every destination ancestor without following symlinks.
+
+    Only root or the effective UID may own path components. Root-owned
+    sticky intermediate directories (such as /tmp) are allowed, but the
+    immediate destination parent must not be group/other writable. This
+    cannot defend against same-UID or privileged concurrent modification.
+    """
+    parent = Path(parent)
+    if not parent.is_absolute() or ".." in parent.parts:
+        raise ValueError("stage parent must be an absolute non-traversing path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open("/", flags)
+    try:
+        components = parent.parts[1:]
+        for index, component in enumerate(components):
+            child_fd = os.open(component, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child_fd
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.geteuid()):
+                raise ValueError("untrusted stage ancestor")
+            if info.st_mode & 0o022:
+                if index == len(components) - 1:
+                    raise ValueError("stage parent is group/other writable")
+                if info.st_uid != 0 or not (info.st_mode & stat.S_ISVTX):
+                    raise ValueError("writable stage ancestor")
+        return fd
+    except OSError as exc:
+        os.close(fd)
+        raise ValueError("unsafe stage ancestor") from exc
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def stage_verified_inputs(source_directory, stage_directory, lock):
     """Publish a new, exclusively created Docker context from verified FDs.
 
@@ -251,7 +287,7 @@ def stage_verified_inputs(source_directory, stage_directory, lock):
     try:
         # Refuse an attacker-writable parent, where a staged directory could
         # be replaced between verification and Docker context capture.
-        parent_fd = os.open(stage_directory.parent, flags)
+        parent_fd = _open_trusted_stage_parent(stage_directory.parent)
         try:
             parent_stat = os.fstat(parent_fd)
             if parent_stat.st_mode & 0o022:
