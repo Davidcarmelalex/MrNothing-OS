@@ -293,11 +293,35 @@ def stage_verified_inputs(source_directory, stage_directory, lock):
             if parent_stat.st_mode & 0o022:
                 raise ValueError("stage parent is group/other writable")
             os.mkdir(stage_directory.name, 0o700, dir_fd=parent_fd)
-            stage_fd = os.open(stage_directory.name, flags, dir_fd=parent_fd)
-            created_stat = None
+            # Capture the newly created directory identity *before* opening
+            # it: an entry replaced between mkdir and open must not become
+            # an apparently valid, attacker-controlled Docker context.
+            created_stat = os.stat(stage_directory.name, dir_fd=parent_fd,
+                                   follow_symlinks=False)
+            if not stat.S_ISDIR(created_stat.st_mode):
+                raise ValueError("staged directory substituted after creation")
+            try:
+                stage_fd = os.open(stage_directory.name, flags, dir_fd=parent_fd)
+            except OSError as exc:
+                # A failed open must not strand an empty context. Never
+                # remove a replacement entry or a populated directory.
+                try:
+                    current = os.stat(stage_directory.name, dir_fd=parent_fd,
+                                      follow_symlinks=False)
+                    if (stat.S_ISDIR(current.st_mode) and
+                            (current.st_dev, current.st_ino) ==
+                            (created_stat.st_dev, created_stat.st_ino)):
+                        os.rmdir(stage_directory.name, dir_fd=parent_fd)
+                        os.fsync(parent_fd)
+                except OSError:
+                    pass
+                raise ValueError("cannot safely open staged directory") from exc
             published_ok = False
             try:
-                created_stat = os.fstat(stage_fd)
+                opened_stat = os.fstat(stage_fd)
+                if ((opened_stat.st_dev, opened_stat.st_ino) !=
+                        (created_stat.st_dev, created_stat.st_ino)):
+                    raise ValueError("staged directory substituted before opening")
                 for name, expected in sorted(lock["archives"].items()):
                     prefix = "cmdline-tools/" if name.startswith("commandlinetools-") else "gradle-8.9/"
                     src_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |

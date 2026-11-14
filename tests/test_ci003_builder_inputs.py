@@ -391,6 +391,42 @@ class VerifiedContextStagingTests(unittest.TestCase):
                 stage_verified_inputs(self.source, self.stage, self.lock)
         self.assertEqual((self.stage / "foreign.txt").read_text(), "leave intact")
 
+    def test_stage_open_failure_cleans_only_owned_empty_context(self):
+        from scripts import ci003_builder_inputs as impl
+        original_open = impl.os.open
+
+        def fail_stage_open(path, flags, *args, **kwargs):
+            if path == self.stage.name and kwargs.get("dir_fd") is not None:
+                raise OSError("synthetic stage directory open failure")
+            return original_open(path, flags, *args, **kwargs)
+
+        with mock.patch.object(impl.os, "open", side_effect=fail_stage_open):
+            with self.assertRaisesRegex(ValueError, "cannot safely open staged directory"):
+                stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertFalse(self.stage.exists(), "failed open must not strand a context")
+
+    def test_rejects_stage_directory_substitution_before_open(self):
+        from scripts import ci003_builder_inputs as impl
+        original_open = impl.os.open
+        original_stage = self.root / "original-stage"
+        swapped = [False]
+
+        def swap_before_open(path, flags, *args, **kwargs):
+            if (path == self.stage.name and kwargs.get("dir_fd") is not None
+                    and not swapped[0]):
+                swapped[0] = True
+                self.stage.rename(original_stage)
+                self.stage.mkdir(mode=0o700)
+            return original_open(path, flags, *args, **kwargs)
+
+        with mock.patch.object(impl.os, "open", side_effect=swap_before_open):
+            with self.assertRaisesRegex(ValueError, "substituted before opening"):
+                stage_verified_inputs(self.source, self.stage, self.lock)
+        self.assertTrue(swapped[0])
+        self.assertTrue(original_stage.is_dir())
+        self.assertTrue(self.stage.is_dir(), "do not delete a substituted directory")
+        self.assertEqual(list(self.stage.iterdir()), [])
+
     def test_rejects_symlink_staging_destination(self):
         link = self.root / "inputs"
         link.symlink_to(self.source, target_is_directory=True)
