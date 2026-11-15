@@ -18,6 +18,8 @@ import zipfile
 
 SHA = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
+MAX_ZIP_ENTRIES = 4096
+MAX_ZIP_NAME_BYTES = 4096
 REQUIRED = {"schema", "source_commit", "apk_sha256", "apk_kind", "build_variant",
             "unsigned", "provenance_sha256", "release_manifest_sha256"}
 
@@ -134,7 +136,10 @@ def verify(apk, record, provenance, release_manifest, expected_source):
         reject_apk_signing_block(apk_file)
         apk_file.seek(0)
         with zipfile.ZipFile(apk_file) as z:
-            names = z.namelist()
+            entries = z.infolist()
+            if len(entries) > MAX_ZIP_ENTRIES or any(len(e.filename.encode("utf-8")) > MAX_ZIP_NAME_BYTES for e in entries):
+                raise ValueError("APK ZIP entry limits exceeded")
+            names = [e.filename for e in entries]
             if len(names) != len(set(names)) or "AndroidManifest.xml" not in names or "classes.dex" not in names:
                 raise ValueError("invalid APK structure")
             if any(n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC", ".SF")) for n in names):
