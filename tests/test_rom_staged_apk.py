@@ -132,6 +132,48 @@ class StagedApkTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "mutated during verification"):
                 self.check()
 
+    def test_in_place_provenance_mutation_during_zip_check_rejected(self):
+        original = mod.reject_apk_signing_block
+
+        def mutate_after_initial_digest(handle):
+            original(handle)
+            with open(self.prov, "r+b") as writable:
+                writable.seek(0)
+                writable.write(b"XXXX")
+                writable.flush()
+
+        with patch.object(mod, "reject_apk_signing_block", side_effect=mutate_after_initial_digest):
+            with self.assertRaisesRegex(ValueError, "mutated during verification"):
+                self.check()
+
+    def test_in_place_manifest_mutation_during_zip_check_rejected(self):
+        original = mod.reject_apk_signing_block
+
+        def mutate_after_initial_digest(handle):
+            original(handle)
+            with open(self.manifest, "r+b") as writable:
+                writable.seek(0)
+                writable.write(b"XXXX")
+                writable.flush()
+
+        with patch.object(mod, "reject_apk_signing_block", side_effect=mutate_after_initial_digest):
+            with self.assertRaisesRegex(ValueError, "mutated during verification"):
+                self.check()
+
+    def test_in_place_record_mutation_during_zip_check_rejected(self):
+        original = mod.reject_apk_signing_block
+
+        def mutate_after_initial_digest(handle):
+            original(handle)
+            with open(self.record, "r+b") as writable:
+                writable.seek(0)
+                writable.write(b"XXXX")
+                writable.flush()
+
+        with patch.object(mod, "reject_apk_signing_block", side_effect=mutate_after_initial_digest):
+            with self.assertRaises((ValueError, json.JSONDecodeError)):
+                self.check()
+
     def test_apk_signature_entry_rejected(self):
         with zipfile.ZipFile(self.apk, "a") as z:
             z.writestr("META-INF/CERT.RSA", b"signature")
