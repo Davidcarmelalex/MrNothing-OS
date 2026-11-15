@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -89,6 +90,33 @@ class StagedApkTests(unittest.TestCase):
             self.apk.symlink_to(target)
         except (OSError, NotImplementedError):
             self.skipTest("symlink creation unavailable")
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_leaf_symlink_rejected_even_if_opened_after_validation(self):
+        target = self.apk.with_suffix(".original")
+        self.apk.rename(target)
+        self.apk.symlink_to(target)
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_replaced_path_after_open_uses_pinned_inode(self):
+        original_open = mod.open_regular_file
+        moved = False
+
+        def replace_after_open(path):
+            nonlocal moved
+            handle = original_open(path)
+            if path == self.apk and not moved:
+                moved = True
+                old = self.apk.with_suffix(".pinned")
+                self.apk.rename(old)
+                self.apk.write_bytes(b"substituted attacker bytes")
+            return handle
+
+        with patch.object(mod, "open_regular_file", side_effect=replace_after_open):
+            self.assertTrue(self.check())
+        self.assertTrue(moved)
         with self.assertRaises(ValueError):
             self.check()
 
