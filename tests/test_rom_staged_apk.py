@@ -100,6 +100,31 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
+    def inject_block(self, malformed=False):
+        raw = self.apk.read_bytes()
+        end = raw.rfind(bytes.fromhex("504b0506"))
+        off = int.from_bytes(raw[end + 16:end + 20], "little")
+        payload = b"synthetic-pair"
+        size = len(payload) + 24
+        block = size.to_bytes(8, "little") + payload + (size + int(malformed)).to_bytes(8, "little") + b"APK Sig Block 42"
+        out = bytearray(raw[:off] + block + raw[off:])
+        end += len(block)
+        out[end + 16:end + 20] = (off + len(block)).to_bytes(4, "little")
+        self.apk.write_bytes(out)
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+
+    def test_v2_v3_signing_block_rejected(self):
+        self.inject_block()
+        with self.assertRaisesRegex(ValueError, "signing block"):
+            self.check()
+
+    def test_malformed_signing_block_rejected(self):
+        self.inject_block(malformed=True)
+        with self.assertRaisesRegex(ValueError, "signing block"):
+            self.check()
+
 
 if __name__ == "__main__":
     unittest.main()
+
