@@ -139,6 +139,13 @@ def verify(apk, record, provenance, release_manifest, expected_source):
             entries = z.infolist()
             if len(entries) > MAX_ZIP_ENTRIES or any(len(e.filename.encode("utf-8")) > MAX_ZIP_NAME_BYTES for e in entries):
                 raise ValueError("APK ZIP entry limits exceeded")
+            # Fail closed on ambiguous, unsafe or encrypted ZIP metadata. APK
+            # entries are never extracted here, but downstream tooling may be.
+            if any(e.flag_bits & 1 or e.filename.startswith(("/", "\\")) or
+                   "\\" in e.filename or "\x00" in e.filename or
+                   any(part in ("", ".", "..") for part in e.filename.rstrip("/").split("/"))
+                   for e in entries):
+                raise ValueError("unsafe APK ZIP entry")
             names = [e.filename for e in entries]
             if len(names) != len(set(names)) or "AndroidManifest.xml" not in names or "classes.dex" not in names:
                 raise ValueError("invalid APK structure")

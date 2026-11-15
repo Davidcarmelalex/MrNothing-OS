@@ -200,6 +200,22 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ZIP entry limits"):
             self.check()
 
+    def test_parent_traversal_zip_entry_rejected(self):
+        with zipfile.ZipFile(self.apk, "a") as z:
+            z.writestr("assets/../payload", b"test")
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "unsafe APK ZIP entry"):
+            self.check()
+
+    def test_backslash_zip_entry_rejected(self):
+        with zipfile.ZipFile(self.apk, "a") as z:
+            z.writestr("assets\\payload", b"test")
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "unsafe APK ZIP entry"):
+            self.check()
+
     def inject_block(self, malformed=False):
         raw = self.apk.read_bytes()
         end = raw.rfind(bytes.fromhex("504b0506"))
