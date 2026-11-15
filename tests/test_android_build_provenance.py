@@ -28,6 +28,20 @@ class AndroidBuildProvenanceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build_record(path, "a" * 40)
 
+    def test_symlink_apk_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "actual.apk"
+            target.write_bytes(b"debug-test")
+            link = Path(directory) / "app-debug.apk"
+            link.symlink_to(target)
+            with self.assertRaises(ValueError):
+                build_record(link, "a" * 40)
+
+    def test_directory_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                build_record(Path(directory), "a" * 40)
+
     def test_invalid_commit_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "app-debug.apk"
