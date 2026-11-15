@@ -182,6 +182,24 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
+    def test_excessive_zip_entry_count_rejected(self):
+        with zipfile.ZipFile(self.apk, "a") as z:
+            for i in range(mod.MAX_ZIP_ENTRIES):
+                z.writestr(f"extra/{i}", b"")
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "ZIP entry limits"):
+            self.check()
+
+    def test_excessive_zip_filename_rejected(self):
+        # ZIP names can be long even when the archive itself is small.
+        with zipfile.ZipFile(self.apk, "a") as z:
+            z.writestr("x" * (mod.MAX_ZIP_NAME_BYTES + 1), b"")
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "ZIP entry limits"):
+            self.check()
+
     def inject_block(self, malformed=False):
         raw = self.apk.read_bytes()
         end = raw.rfind(bytes.fromhex("504b0506"))
