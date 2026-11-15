@@ -139,6 +139,17 @@ def verify(apk, record, provenance, release_manifest, expected_source):
                 raise ValueError("invalid APK structure")
             if any(n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC", ".SF")) for n in names):
                 raise ValueError("signed APK not permitted")
+        # Detect in-place changes made while parsing pinned files. Descriptor binding
+        # prevents path substitution, but not writes to the same inode.
+        for handle, expected in ((apk_file, r["apk_sha256"]),
+                                 (provenance_file, r["provenance_sha256"]),
+                                 (manifest_file, r["release_manifest_sha256"])):
+            if digest_handle(handle) != expected:
+                raise ValueError("input mutated during verification")
+        # The record itself is not independently authenticated; ensure its
+        # contents did not change after the initial parse.
+        if read_json(record_file) != r:
+            raise ValueError("record mutated during verification")
         return True
 
 
