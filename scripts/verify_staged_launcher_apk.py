@@ -51,6 +51,38 @@ def digest(path):
     return h.hexdigest()
 
 
+def reject_apk_signing_block(apk):
+    """Reject APK v2/v3 signing blocks; unsigned staging only, not cryptographic verification."""
+    with safe_regular_file(apk).open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        length = f.tell()
+        f.seek(max(0, length - 65557))
+        tail = f.read()
+        i = tail.rfind(bytes.fromhex("504b0506"))
+        if i < 0 or len(tail) - i < 22:
+            raise ValueError("missing ZIP end-of-central-directory")
+        eocd = tail[i:]
+        if len(eocd) != 22 + int.from_bytes(eocd[20:22], "little"):
+            raise ValueError("invalid ZIP end-of-central-directory")
+        offset = int.from_bytes(eocd[16:20], "little")
+        size = int.from_bytes(eocd[12:16], "little")
+        if offset == 0xffffffff or size == 0xffffffff or offset + size != length - len(eocd):
+            raise ValueError("unsupported ZIP central directory")
+        if offset < 24:
+            return
+        f.seek(offset - 24)
+        footer = f.read(24)
+        if footer[8:] != b"APK Sig Block 42":
+            return
+        block_size = int.from_bytes(footer[:8], "little")
+        if block_size < 24 or block_size > offset - 8:
+            raise ValueError("malformed APK signing block")
+        f.seek(offset - block_size - 8)
+        if int.from_bytes(f.read(8), "little") != block_size:
+            raise ValueError("malformed APK signing block header")
+        raise ValueError("APK v2/v3 signing block forbidden")
+
+
 def verify(apk, record, provenance, release_manifest, expected_source):
     for p in (apk, record, provenance, release_manifest):
         safe_regular_file(p)
@@ -77,6 +109,7 @@ def verify(apk, record, provenance, release_manifest, expected_source):
             raise ValueError("evidence source commit mismatch")
     if not zipfile.is_zipfile(apk):
         raise ValueError("invalid APK ZIP")
+    reject_apk_signing_block(apk)
     with zipfile.ZipFile(apk) as z:
         names = z.namelist()
         if len(names) != len(set(names)) or "AndroidManifest.xml" not in names or "classes.dex" not in names:
@@ -105,3 +138,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+
