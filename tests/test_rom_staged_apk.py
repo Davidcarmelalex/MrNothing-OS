@@ -212,6 +212,30 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsafe raw APK ZIP entry"):
             self.check()
 
+    def test_eocd_multi_disk_and_entry_count_mismatch_rejected(self):
+        # Mutate one EOCD field at a time; all other bytes remain a valid ZIP.
+        original = self.apk.read_bytes()
+        end = original.rfind(bytes.fromhex("504b0506"))
+        for field, value in ((4, 1), (6, 1), (8, 1)):
+            with self.subTest(eocd_field=field):
+                raw = bytearray(original)
+                raw[end + field:end + field + 2] = value.to_bytes(2, "little")
+                self.apk.write_bytes(raw)
+                self.data["apk_sha256"] = mod.digest(self.apk)
+                self.save()
+                with self.assertRaisesRegex(ValueError, "multi-disk ZIP metadata"):
+                    self.check()
+
+    def test_central_directory_disk_start_rejected(self):
+        raw = bytearray(self.apk.read_bytes())
+        marker = raw.index(bytes.fromhex("504b0102"))
+        raw[marker + 34:marker + 36] = (1).to_bytes(2, "little")
+        self.apk.write_bytes(raw)
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "multi-disk ZIP metadata"):
+            self.check()
+
     def test_parent_traversal_zip_entry_rejected(self):
         with zipfile.ZipFile(self.apk, "a") as z:
             z.writestr("assets/../payload", b"test")

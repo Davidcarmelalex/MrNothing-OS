@@ -114,6 +114,12 @@ def reject_unsafe_raw_zip_names(handle):
     eocd = tail[end:]
     if len(eocd) != 22 + int.from_bytes(eocd[20:22], "little"):
         raise ValueError("invalid ZIP central directory")
+    # APK staging accepts only single-disk ZIPs with consistent entry counts.
+    # zipfile may otherwise normalize or ignore multi-disk EOCD fields.
+    if (int.from_bytes(eocd[4:6], "little") != 0 or
+            int.from_bytes(eocd[6:8], "little") != 0 or
+            eocd[8:10] != eocd[10:12]):
+        raise ValueError("unsupported multi-disk ZIP metadata")
     count = int.from_bytes(eocd[10:12], "little")
     size = int.from_bytes(eocd[12:16], "little")
     offset = int.from_bytes(eocd[16:20], "little")
@@ -128,6 +134,9 @@ def reject_unsafe_raw_zip_names(handle):
         header = handle.read(46)
         if len(header) != 46 or header[:4] != bytes.fromhex("504b0102"):
             raise ValueError("invalid ZIP central directory")
+        # Central directory entry must not reference a different ZIP disk.
+        if int.from_bytes(header[34:36], "little") != 0:
+            raise ValueError("unsupported multi-disk ZIP metadata")
         name_len = int.from_bytes(header[28:30], "little")
         extra_len = int.from_bytes(header[30:32], "little")
         comment_len = int.from_bytes(header[32:34], "little")
