@@ -203,7 +203,7 @@ class StagedApkTests(unittest.TestCase):
     def test_raw_central_directory_nul_rejected(self):
         # Mutate the raw central-directory name, not ZipInfo.filename.
         raw = bytearray(self.apk.read_bytes())
-        marker = raw.index(b"PK\\x01\\x02")
+        marker = raw.index(bytes.fromhex("504b0102"))
         name_start = marker + 46
         raw[name_start + 7] = 0  # AndroidManifest.xml -> Android\\0anifest.xml
         self.apk.write_bytes(raw)
