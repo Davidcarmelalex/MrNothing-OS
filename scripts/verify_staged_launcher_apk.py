@@ -108,7 +108,7 @@ def reject_unsafe_raw_zip_names(handle):
     length = handle.tell()
     handle.seek(max(0, length - 65557))
     tail = handle.read()
-    end = tail.rfind(b"PK\\x05\\x06")
+    end = tail.rfind(bytes.fromhex("504b0506"))
     if end < 0 or len(tail) - end < 22:
         raise ValueError("invalid ZIP central directory")
     eocd = tail[end:]
@@ -124,7 +124,7 @@ def reject_unsafe_raw_zip_names(handle):
     consumed = 0
     for _ in range(count):
         header = handle.read(46)
-        if len(header) != 46 or header[:4] != b"PK\\x01\\x02":
+        if len(header) != 46 or header[:4] != bytes.fromhex("504b0102"):
             raise ValueError("invalid ZIP central directory")
         name_len = int.from_bytes(header[28:30], "little")
         extra_len = int.from_bytes(header[30:32], "little")
@@ -133,7 +133,7 @@ def reject_unsafe_raw_zip_names(handle):
         if name_len > MAX_ZIP_NAME_BYTES or consumed > size:
             raise ValueError("ZIP entry limits exceeded")
         name = handle.read(name_len)
-        if len(name) != name_len or b"\\x00" in name:
+        if len(name) != name_len or 0 in name:
             raise ValueError("unsafe raw APK ZIP entry")
         handle.seek(extra_len + comment_len, os.SEEK_CUR)
     if consumed != size:
