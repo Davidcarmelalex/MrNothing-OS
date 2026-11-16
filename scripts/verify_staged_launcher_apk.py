@@ -102,6 +102,46 @@ def reject_apk_signing_block(f):
         raise ValueError("malformed APK signing block header")
     raise ValueError("APK v2/v3 signing block forbidden")
 
+def reject_unsafe_raw_zip_names(handle):
+    """Inspect central-directory filename bytes before zipfile can truncate NULs."""
+    handle.seek(0, os.SEEK_END)
+    length = handle.tell()
+    handle.seek(max(0, length - 65557))
+    tail = handle.read()
+    end = tail.rfind(bytes.fromhex("504b0506"))
+    if end < 0 or len(tail) - end < 22:
+        raise ValueError("invalid ZIP central directory")
+    eocd = tail[end:]
+    if len(eocd) != 22 + int.from_bytes(eocd[20:22], "little"):
+        raise ValueError("invalid ZIP central directory")
+    count = int.from_bytes(eocd[10:12], "little")
+    size = int.from_bytes(eocd[12:16], "little")
+    offset = int.from_bytes(eocd[16:20], "little")
+    if count > MAX_ZIP_ENTRIES and count != 0xffff:
+        raise ValueError("ZIP entry limits exceeded")
+    if (count == 0xffff or size == 0xffffffff or offset == 0xffffffff or
+            offset + size != length - len(eocd)):
+        raise ValueError("unsupported ZIP central directory")
+    handle.seek(offset)
+    consumed = 0
+    for _ in range(count):
+        header = handle.read(46)
+        if len(header) != 46 or header[:4] != bytes.fromhex("504b0102"):
+            raise ValueError("invalid ZIP central directory")
+        name_len = int.from_bytes(header[28:30], "little")
+        extra_len = int.from_bytes(header[30:32], "little")
+        comment_len = int.from_bytes(header[32:34], "little")
+        consumed += 46 + name_len + extra_len + comment_len
+        if name_len > MAX_ZIP_NAME_BYTES or consumed > size:
+            raise ValueError("ZIP entry limits exceeded")
+        name = handle.read(name_len)
+        if len(name) != name_len or 0 in name:
+            raise ValueError("unsafe raw APK ZIP entry")
+        handle.seek(extra_len + comment_len, os.SEEK_CUR)
+    if consumed != size:
+        raise ValueError("invalid ZIP central directory")
+
+
 def verify(apk, record, provenance, release_manifest, expected_source):
     with ExitStack() as stack:
         apk_file, record_file, provenance_file, manifest_file = (
@@ -134,6 +174,7 @@ def verify(apk, record, provenance, release_manifest, expected_source):
         if not zipfile.is_zipfile(apk_file):
             raise ValueError("invalid APK ZIP")
         reject_apk_signing_block(apk_file)
+        reject_unsafe_raw_zip_names(apk_file)
         apk_file.seek(0)
         with zipfile.ZipFile(apk_file) as z:
             entries = z.infolist()

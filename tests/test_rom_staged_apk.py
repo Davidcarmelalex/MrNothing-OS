@@ -200,6 +200,18 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ZIP entry limits"):
             self.check()
 
+    def test_raw_central_directory_nul_rejected(self):
+        # Mutate the raw central-directory name, not ZipInfo.filename.
+        raw = bytearray(self.apk.read_bytes())
+        marker = raw.index(bytes.fromhex("504b0102"))
+        name_start = marker + 46
+        raw[name_start + 7] = 0  # AndroidManifest.xml -> Android\\0anifest.xml
+        self.apk.write_bytes(raw)
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "unsafe raw APK ZIP entry"):
+            self.check()
+
     def test_parent_traversal_zip_entry_rejected(self):
         with zipfile.ZipFile(self.apk, "a") as z:
             z.writestr("assets/../payload", b"test")
