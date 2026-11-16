@@ -117,8 +117,10 @@ def reject_unsafe_raw_zip_names(handle):
     count = int.from_bytes(eocd[10:12], "little")
     size = int.from_bytes(eocd[12:16], "little")
     offset = int.from_bytes(eocd[16:20], "little")
+    if count > MAX_ZIP_ENTRIES and count != 0xffff:
+        raise ValueError("ZIP entry limits exceeded")
     if (count == 0xffff or size == 0xffffffff or offset == 0xffffffff or
-            count > MAX_ZIP_ENTRIES or offset + size != length - len(eocd)):
+            offset + size != length - len(eocd)):
         raise ValueError("unsupported ZIP central directory")
     handle.seek(offset)
     consumed = 0
