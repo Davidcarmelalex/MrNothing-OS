@@ -236,6 +236,19 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "multi-disk ZIP metadata"):
             self.check()
 
+    def test_local_central_filename_mismatch_rejected(self):
+        # Preserve central-directory metadata and digest, mutate only the
+        # local filename bytes. Python's ZipInfo uses the central name.
+        raw = bytearray(self.apk.read_bytes())
+        marker = raw.index(bytes.fromhex("504b0304"))
+        local_name = marker + 30
+        raw[local_name] = ord("X")
+        self.apk.write_bytes(raw)
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "ZIP local/central filename mismatch"):
+            self.check()
+
     def test_parent_traversal_zip_entry_rejected(self):
         with zipfile.ZipFile(self.apk, "a") as z:
             z.writestr("assets/../payload", b"test")
