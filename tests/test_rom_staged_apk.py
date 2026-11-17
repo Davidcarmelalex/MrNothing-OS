@@ -249,6 +249,45 @@ class StagedApkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ZIP local/central filename mismatch"):
             self.check()
 
+    def test_zip64_eocd_sentinel_rejected(self):
+        # ZIP64 requires explicit handling; staging must fail closed.
+        original = self.apk.read_bytes()
+        end = original.rfind(bytes.fromhex("504b0506"))
+        for field, width, sentinel in ((10, 2, 0xffff),
+                                       (12, 4, 0xffffffff),
+                                       (16, 4, 0xffffffff)):
+            with self.subTest(eocd_field=field):
+                raw = bytearray(original)
+                raw[end + field:end + field + width] = sentinel.to_bytes(width, "little")
+                self.apk.write_bytes(raw)
+                self.data["apk_sha256"] = mod.digest(self.apk)
+                self.save()
+                with self.assertRaisesRegex(ValueError, "unsupported ZIP central directory"):
+                    self.check()
+
+    def test_central_extra_and_comment_length_overrun_rejected(self):
+        original = self.apk.read_bytes()
+        central = original.index(bytes.fromhex("504b0102"))
+        for field in (30, 32):
+            with self.subTest(central_length_field=field):
+                raw = bytearray(original)
+                raw[central + field:central + field + 2] = (0xffff).to_bytes(2, "little")
+                self.apk.write_bytes(raw)
+                self.data["apk_sha256"] = mod.digest(self.apk)
+                self.save()
+                with self.assertRaisesRegex(ValueError, "ZIP entry limits exceeded"):
+                    self.check()
+
+    def test_stable_corrupt_local_header_remains_malformed(self):
+        raw = bytearray(self.apk.read_bytes())
+        local = raw.index(bytes.fromhex("504b0304"))
+        raw[local:local + 4] = b"XXXX"
+        self.apk.write_bytes(raw)
+        self.data["apk_sha256"] = mod.digest(self.apk)
+        self.save()
+        with self.assertRaisesRegex(ValueError, "invalid ZIP local header"):
+            self.check()
+
     def test_parent_traversal_zip_entry_rejected(self):
         with zipfile.ZipFile(self.apk, "a") as z:
             z.writestr("assets/../payload", b"test")
