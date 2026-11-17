@@ -146,7 +146,23 @@ def reject_unsafe_raw_zip_names(handle):
         name = handle.read(name_len)
         if len(name) != name_len or 0 in name:
             raise ValueError("unsafe raw APK ZIP entry")
-        handle.seek(extra_len + comment_len, os.SEEK_CUR)
+        # A ZIP reader may trust central names while another consumer trusts
+        # local-header names. Reject disagreement before downstream processing.
+        local_offset = int.from_bytes(header[42:46], "little")
+        if local_offset >= offset or local_offset + 30 > offset:
+            raise ValueError("invalid ZIP local header offset")
+        after_name = handle.tell()
+        handle.seek(local_offset)
+        local_header = handle.read(30)
+        if len(local_header) != 30 or local_header[:4] != bytes.fromhex("504b0304"):
+            raise ValueError("invalid ZIP local header")
+        local_name_len = int.from_bytes(local_header[26:28], "little")
+        local_extra_len = int.from_bytes(local_header[28:30], "little")
+        if (local_name_len != name_len or
+                local_offset + 30 + local_name_len + local_extra_len > offset or
+                handle.read(local_name_len) != name):
+            raise ValueError("ZIP local/central filename mismatch")
+        handle.seek(after_name + extra_len + comment_len)
     if consumed != size:
         raise ValueError("invalid ZIP central directory")
 
