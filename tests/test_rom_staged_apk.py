@@ -262,7 +262,9 @@ class StagedApkTests(unittest.TestCase):
                 self.apk.write_bytes(raw)
                 self.data["apk_sha256"] = mod.digest(self.apk)
                 self.save()
-                with self.assertRaisesRegex(ValueError, "unsupported ZIP central directory"):
+                # Disk/count ZIP64 sentinels may fail the earlier single-disk gate.
+                # Either explicit rejection is acceptable; no ZIP64 input may pass.
+                with self.assertRaisesRegex(ValueError, r"unsupported (?:ZIP central directory|multi-disk ZIP metadata)"):
                     self.check()
 
     def test_central_extra_and_comment_length_overrun_rejected(self):
