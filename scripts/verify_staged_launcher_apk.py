@@ -198,25 +198,37 @@ def verify(apk, record, provenance, release_manifest, expected_source):
         apk_file.seek(0)
         if not zipfile.is_zipfile(apk_file):
             raise ValueError("invalid APK ZIP")
-        reject_apk_signing_block(apk_file)
-        reject_unsafe_raw_zip_names(apk_file)
-        apk_file.seek(0)
-        with zipfile.ZipFile(apk_file) as z:
-            entries = z.infolist()
-            if len(entries) > MAX_ZIP_ENTRIES or any(len(e.filename.encode("utf-8")) > MAX_ZIP_NAME_BYTES for e in entries):
-                raise ValueError("APK ZIP entry limits exceeded")
-            # Fail closed on ambiguous, unsafe or encrypted ZIP metadata. APK
-            # entries are never extracted here, but downstream tooling may be.
-            if any(e.flag_bits & 1 or e.filename.startswith(("/", "\\")) or
-                   "\\" in e.filename or "\x00" in e.filename or
-                   any(part in ("", ".", "..") for part in e.filename.rstrip("/").split("/"))
-                   for e in entries):
-                raise ValueError("unsafe APK ZIP entry")
-            names = [e.filename for e in entries]
-            if len(names) != len(set(names)) or "AndroidManifest.xml" not in names or "classes.dex" not in names:
-                raise ValueError("invalid APK structure")
-            if any(n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC", ".SF")) for n in names):
-                raise ValueError("signed APK not permitted")
+        # A concurrent in-place write can corrupt ZIP headers before structural
+        # parsing finishes. Attribute such failures to mutation only when a
+        # fresh digest of the pinned descriptors actually differs; otherwise
+        # preserve the original fail-closed malformed-ZIP exception.
+        try:
+            reject_apk_signing_block(apk_file)
+            reject_unsafe_raw_zip_names(apk_file)
+            apk_file.seek(0)
+            with zipfile.ZipFile(apk_file) as z:
+                entries = z.infolist()
+                if len(entries) > MAX_ZIP_ENTRIES or any(len(e.filename.encode("utf-8")) > MAX_ZIP_NAME_BYTES for e in entries):
+                    raise ValueError("APK ZIP entry limits exceeded")
+                # Fail closed on ambiguous, unsafe or encrypted ZIP metadata. APK
+                # entries are never extracted here, but downstream tooling may be.
+                if any(e.flag_bits & 1 or e.filename.startswith(("/", "\\")) or
+                       "\\" in e.filename or "\x00" in e.filename or
+                       any(part in ("", ".", "..") for part in e.filename.rstrip("/").split("/"))
+                       for e in entries):
+                    raise ValueError("unsafe APK ZIP entry")
+                names = [e.filename for e in entries]
+                if len(names) != len(set(names)) or "AndroidManifest.xml" not in names or "classes.dex" not in names:
+                    raise ValueError("invalid APK structure")
+                if any(n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC", ".SF")) for n in names):
+                    raise ValueError("signed APK not permitted")
+        except (ValueError, zipfile.BadZipFile):
+            for handle, expected in ((apk_file, r["apk_sha256"]),
+                                     (provenance_file, r["provenance_sha256"]),
+                                     (manifest_file, r["release_manifest_sha256"])):
+                if digest_handle(handle) != expected:
+                    raise ValueError("input mutated during verification") from None
+            raise
         # Detect in-place changes made while parsing pinned files. Descriptor binding
         # prevents path substitution, but not writes to the same inode.
         for handle, expected in ((apk_file, r["apk_sha256"]),
