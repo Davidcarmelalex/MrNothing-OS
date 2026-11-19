@@ -11,6 +11,7 @@ import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
@@ -183,6 +184,33 @@ class RegistryTests(unittest.TestCase):
         registry.apply_signed_enrollment(self.statement(), now_epoch_ms=NOW)
         registry.initialize(explicit_first_install=False)
         self.assertEqual(registry.lookup_active_device("pixel-1").device_id, "pixel-1")
+
+    def test_failed_sqlite_pragma_closes_opened_connection(self):
+        real_connect = sqlite3.connect
+        opened = []
+
+        class FailingPragmaConnection:
+            def __init__(self, connection):
+                self.connection = connection
+                self.closed = False
+
+            def execute(self, statement, *args):
+                raise sqlite3.OperationalError("simulated PRAGMA failure")
+
+            def close(self):
+                self.closed = True
+                self.connection.close()
+
+        def connect(*args, **kwargs):
+            proxy = FailingPragmaConnection(real_connect(*args, **kwargs))
+            opened.append(proxy)
+            return proxy
+
+        with patch("core.owner_enrollment_registry.sqlite3.connect", side_effect=connect):
+            with self.assertRaisesRegex(EnrollmentRegistryError, "cannot open enrollment database"):
+                self.registry._connect()
+        self.assertEqual(len(opened), 1)
+        self.assertTrue(opened[0].closed)
 
     def test_database_is_owner_only(self):
         self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
