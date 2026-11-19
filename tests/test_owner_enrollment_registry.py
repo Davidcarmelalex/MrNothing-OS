@@ -212,6 +212,28 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(len(opened), 1)
         self.assertTrue(opened[0].closed)
 
+    def test_pragma_failure_preserves_original_error_when_close_also_fails(self):
+        class FailingConnection:
+            def __init__(self):
+                self.close_attempted = False
+
+            def execute(self, statement):
+                raise sqlite3.OperationalError("original PRAGMA failure")
+
+            def close(self):
+                self.close_attempted = True
+                raise sqlite3.OperationalError("secondary close failure")
+
+        proxy = FailingConnection()
+        with patch("core.owner_enrollment_registry.sqlite3.connect", return_value=proxy):
+            with self.assertRaisesRegex(
+                EnrollmentRegistryError, "cannot open enrollment database"
+            ) as raised:
+                self.registry._connect()
+        self.assertTrue(proxy.close_attempted)
+        self.assertIsInstance(raised.exception.__cause__, sqlite3.OperationalError)
+        self.assertEqual(str(raised.exception.__cause__), "original PRAGMA failure")
+
     def test_database_is_owner_only(self):
         self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
 
