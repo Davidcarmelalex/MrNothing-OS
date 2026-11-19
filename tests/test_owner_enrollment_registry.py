@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -604,12 +604,11 @@ class RegistryTests(unittest.TestCase):
 
     def test_v1_database_migration_is_explicit_additive_and_idempotent(self):
         self.enroll()
-        db = sqlite3.connect(self.path)
-        db.execute("DROP INDEX owner_consent_replay_age")
-        db.execute("DROP TABLE owner_consent_replay")
-        db.execute("PRAGMA user_version=1")
-        db.commit()
-        db.close()
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP INDEX owner_consent_replay_age")
+            db.execute("DROP TABLE owner_consent_replay")
+            db.execute("PRAGMA user_version=1")
+            db.commit()
         with self.assertRaises(EnrollmentRegistryError):
             self.registry.lookup_active_device("pixel-1")
         with self.assertRaises(EnrollmentRegistryError):
@@ -1149,11 +1148,12 @@ class RegistryTests(unittest.TestCase):
     def test_reconcile_unknown_outcome_rejects_current_row_history_mismatch(self):
         envelope = self.statement(enrollment_id="current-row-mismatch")
         outcome = self._apply_with_lost_commit_acknowledgement(envelope, mode="after")
-        with sqlite3.connect(self.path) as db:
-            db.execute(
-                "UPDATE owner_device SET transport_certificate_sha256=? WHERE device_id=?",
-                ("0" * 64, "pixel-1"),
-            )
+        with closing(sqlite3.connect(self.path)) as db:
+            with db:
+                db.execute(
+                    "UPDATE owner_device SET transport_certificate_sha256=? WHERE device_id=?",
+                    ("0" * 64, "pixel-1"),
+                )
 
         reconciliation = self.registry.reconcile_outcome_unknown(outcome)
         self.assertEqual(reconciliation.status, "UNRESOLVED")
