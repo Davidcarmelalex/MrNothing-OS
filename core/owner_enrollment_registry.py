@@ -521,7 +521,12 @@ class SQLiteOwnerEnrollmentRegistry:
         except sqlite3.Error as exc:
             # A failed PRAGMA must not leave an opened connection alive.
             if db is not None:
-                db.close()
+                try:
+                    db.close()
+                except sqlite3.Error:
+                    # Preserve the original PRAGMA failure as the error cause.
+                    # A failed close must not change the fail-closed contract.
+                    pass
             raise EnrollmentRegistryError("cannot open enrollment database") from exc
 
     @staticmethod
