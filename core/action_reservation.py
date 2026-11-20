@@ -227,7 +227,11 @@ class DurableActionReservationLedger:
             db.execute("PRAGMA synchronous=FULL")
             return db
         except BaseException:
-            db.close()
+            try:
+                db.close()
+            except BaseException:
+                # Preserve the original setup failure for fail-closed diagnostics.
+                pass
             raise
 
     @contextmanager
