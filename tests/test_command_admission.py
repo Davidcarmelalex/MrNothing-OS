@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 import unittest
+from unittest.mock import patch
 from dataclasses import replace
 
 from core.command_admission import DurableReplayLedger, admit_signed_command
@@ -33,6 +34,29 @@ class AdmissionTests(unittest.TestCase):
             ledger=kwargs.pop("ledger", self.ledger),
             now=kwargs.pop("now", 1001),
         )
+
+    def test_ledger_connections_closed_after_init_and_reservations(self):
+        real_connect = sqlite3.connect
+        connections = []
+
+        class TrackedConnection(sqlite3.Connection):
+            was_closed = False
+
+            def close(self):
+                self.was_closed = True
+                return super().close()
+
+        def tracked_connect(*args, **kwargs):
+            db = real_connect(*args, factory=TrackedConnection, **kwargs)
+            connections.append(db)
+            return db
+
+        with patch("core.command_admission.sqlite3.connect", side_effect=tracked_connect):
+            ledger = DurableReplayLedger(self.path)
+            self.assertTrue(ledger.reserve("device", "id", 1000))
+            self.assertFalse(ledger.reserve("device", "id", 1000))
+        self.assertEqual(len(connections), 3)
+        self.assertTrue(all(db.was_closed for db in connections))
 
     def test_valid_battery_command(self):
         self.assertEqual(self.check().reason, "ADMITTED_NO_EXECUTION")
