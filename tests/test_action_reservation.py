@@ -11,6 +11,7 @@ import unittest
 from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
@@ -1182,3 +1183,22 @@ class DurableActionReservationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionReservationConnectionSetupFailureTests(unittest.TestCase):
+    def test_failed_pragma_closes_connection(self):
+        class FailingConnection:
+            closed = False
+            row_factory = None
+            def execute(self, sql):
+                raise sqlite3.OperationalError("injected PRAGMA failure")
+            def close(self):
+                self.closed = True
+        conn = FailingConnection()
+        ledger = object.__new__(DurableActionReservationLedger)
+        ledger.path = "/unused"
+        ledger._busy_timeout_ms = 1000
+        with patch("core.action_reservation.sqlite3.connect", return_value=conn):
+            with self.assertRaisesRegex(sqlite3.OperationalError, "injected"):
+                ledger._connect()
+        self.assertTrue(conn.closed)
