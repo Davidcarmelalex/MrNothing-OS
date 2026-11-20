@@ -4,6 +4,7 @@ This is a prototype admission gate, NOT a deployed remote-control endpoint.
 The caller must authenticate the transport and select a unique key for the
 authenticated device. No command is executed by this module.
 """
+from contextlib import closing
 from dataclasses import dataclass
 import hmac
 import math
@@ -82,7 +83,7 @@ class DurableReplayLedger:
         self.path = str(path)
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS seen ("
                 "device_id TEXT NOT NULL, command_id TEXT NOT NULL, seen_at INTEGER NOT NULL,"
@@ -95,7 +96,7 @@ class DurableReplayLedger:
 
     def reserve(self, device_id: str, command_id: str, now: int) -> bool:
         """Reserve once atomically; database failures propagate to fail closed."""
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
                 db.execute("DELETE FROM seen WHERE seen_at < ?", (now - self.ttl_seconds,))
