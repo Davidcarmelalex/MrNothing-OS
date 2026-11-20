@@ -1186,6 +1186,22 @@ if __name__ == "__main__":
 
 
 class ActionReservationConnectionSetupFailureTests(unittest.TestCase):
+    def test_failed_pragma_preserves_original_exception_if_close_fails(self):
+        class FailingConnection:
+            row_factory = None
+            def execute(self, sql):
+                raise sqlite3.OperationalError("original setup failure")
+            def close(self):
+                raise OSError("secondary close failure")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = DurableActionReservationLedger.__new__(DurableActionReservationLedger)
+            ledger.path = os.path.join(tmp, "ledger.db")
+            ledger._busy_timeout_ms = 1000
+            with patch("core.action_reservation.sqlite3.connect", return_value=FailingConnection()):
+                with self.assertRaisesRegex(sqlite3.OperationalError, "original setup failure"):
+                    ledger._connect()
+
     def test_failed_pragma_closes_connection(self):
         class FailingConnection:
             closed = False
