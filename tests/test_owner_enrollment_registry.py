@@ -36,6 +36,7 @@ MAX_TTL = 300_000
 
 _ENROLLMENT_COMMIT_CRASH_SUBPROCESS = r"""
 import base64
+import os
 import sys
 import time
 from pathlib import Path
@@ -61,7 +62,10 @@ class CommitBoundaryConnection:
         if statement.strip().upper() == "COMMIT":
             if mode == "after":
                 self._connection.execute(statement, *parameters)
-            Path(marker_path).write_text("ready", encoding="ascii")
+            # Publish the marker atomically: the parent must never read a partial file.
+            pending_marker = Path(marker_path + ".pending")
+            pending_marker.write_text("ready", encoding="ascii")
+            os.replace(pending_marker, marker_path)
             while True:
                 time.sleep(1)
         return self._connection.execute(statement, *parameters)
