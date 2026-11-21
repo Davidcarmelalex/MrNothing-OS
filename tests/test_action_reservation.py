@@ -1181,10 +1181,6 @@ class DurableActionReservationTests(unittest.TestCase):
         self.assertEqual(retry.reason, "TERMINAL_STATE")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ActionReservationConnectionSetupFailureTests(unittest.TestCase):
     def test_failed_pragma_closes_connection(self):
         class FailingConnection:
@@ -1202,3 +1198,7 @@ class ActionReservationConnectionSetupFailureTests(unittest.TestCase):
             with self.assertRaisesRegex(sqlite3.OperationalError, "injected"):
                 ledger._connect()
         self.assertTrue(conn.closed)
+
+
+if __name__ == "__main__":
+    unittest.main()
