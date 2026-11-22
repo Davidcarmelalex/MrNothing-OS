@@ -65,6 +65,42 @@ jobs:
           "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon --dependency-verification=strict clean :app:assembleDebug
           cmp "$RUNNER_TEMP/first-build.apk" app/build/outputs/apk/debug/app-debug.apk
           echo "Repeat debug APK is byte-identical within this runner"
+      - name: Diagnose Kotlin plugin marker integrity on Android failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          group = "org.jetbrains.kotlin.android"
+          artifact = "org.jetbrains.kotlin.android.gradle.plugin"
+          version = "2.0.21"
+          filename = f"{artifact}-{version}.pom"
+          root = ET.parse("gradle/verification-metadata.xml").getroot()
+          ns = {"v": "https://schema.gradle.org/dependency-verification"}
+          expected = None
+          for component in root.findall(".//v:component", ns):
+              if (component.get("group"), component.get("name"), component.get("version")) == (group, artifact, version):
+                  for item in component.findall("v:artifact", ns):
+                      if item.get("name") == filename:
+                          expected = item.find("v:sha256", ns).get("value")
+          print("Pinned SHA-256:", expected or "NOT FOUND")
+          path = f"{group.replace('.', '/')}/{artifact}/{version}/{filename}"
+          for base in ("https://plugins.gradle.org/m2", "https://repo.maven.apache.org/maven2"):
+              url = f"{base}/{path}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "MrNothing-OS-integrity-diagnostic/1"}), timeout=15) as response:
+                      data = response.read(1024 * 1024 + 1)
+                      if len(data) > 1024 * 1024:
+                          raise ValueError("unexpectedly large plugin marker POM")
+                  digest = hashlib.sha256(data).hexdigest()
+                  print(f"{base}: sha256={digest}; bytes={len(data)}; matches_pin={digest == expected}")
+              except Exception as exc:
+                  print(f"{base}: unavailable ({type(exc).__name__}: {exc})")
+          PY
       - name: Negative control — reject modified Gradle dependency
         run: python3 ../scripts/ci005_dependency_verification_negative.py "$RUNNER_TEMP/gradle-8.9/bin/gradle"
       - name: Generate unsigned debug artifact metadata
