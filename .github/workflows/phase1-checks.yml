@@ -86,7 +86,8 @@ jobs:
               if (component.get("group"), component.get("name"), component.get("version")) == (group, artifact, version):
                   for item in component.findall("v:artifact", ns):
                       if item.get("name") == filename:
-                          expected = item.find("v:sha256", ns).get("value")
+                          sha256 = item.find("v:sha256", ns)
+                          expected = sha256.get("value") if sha256 is not None else None
           print("Pinned SHA-256:", expected or "NOT FOUND")
           path = f"{group.replace('.', '/')}/{artifact}/{version}/{filename}"
           for base in ("https://plugins.gradle.org/m2", "https://repo.maven.apache.org/maven2"):
