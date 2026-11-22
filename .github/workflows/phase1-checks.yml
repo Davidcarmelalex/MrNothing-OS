@@ -22,7 +22,7 @@ jobs:
         run: bash scripts/phase1-preflight.sh
       - name: SEC-019 dual entrypoint regression verification
         run: |
-          python3 tests/test_action_reservation.py
+          PYTHONPATH=. python3 tests/test_action_reservation.py
           python3 -m unittest discover -s tests -p 'test_action_reservation.py' -v
       - name: Android source-manifest security gate
         run: python3 scripts/android_manifest_gate.py android/app/src/main/AndroidManifest.xml
