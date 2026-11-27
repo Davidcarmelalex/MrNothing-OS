@@ -20,7 +20,7 @@ The Android service must bind each operation to the verified calling UID/package
 
 Versioned envelope (canonical CBOR or strictly validated bounded JSON, chosen and frozen before implementation):
 - `format_version`, `vault_id` (random 128-bit), `record_id` (random 128-bit), `generation` (monotonic within a trusted ledger), `created_at`, `expires_at`, `key_version`, `nonce` (96-bit unique per encryption key), `ciphertext` and `tag` (128-bit).
-- AES-256-GCM authenticated associated data must bind exact canonical `format_version|vault_id|record_id|generation|key_version|owner_profile_id|application_identity`. Reject unknown fields, duplicate fields, oversized payloads, invalid UTF-8 and inconsistent timestamps.
+- AES-256-GCM authenticated associated data must bind exact canonical `format_version|vault_id|record_id|generation|created_at|expires_at|key_version|owner_profile_id|application_identity`. Reject unknown fields, duplicate fields, oversized payloads, invalid UTF-8 and inconsistent timestamps.
 - Limit to 100 conversation entries and 8,192 characters per entry; establish explicit ciphertext/database size caps, record-count cap and total retention TTL. Do not persist model prompts by default merely because an AI response was generated.
 - Use a CSPRNG nonce source with collision/reuse tests; never reuse a nonce under the same key. Do not implement deterministic nonces without a reviewed crash-safe monotonic allocator.
 - Stage ciphertext in a private same-filesystem temporary file, fsync file, atomic replace, fsync parent directory, then verify authenticated readback. Avoid plaintext temporary files and OS/log/crash-dump output. Use owner-only app-private storage, backup exclusions and explicit retention policy.
