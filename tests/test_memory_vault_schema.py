@@ -94,6 +94,7 @@ class MemoryVaultSchemaTests(unittest.TestCase):
         aad = canonical_aad(obj, owner_profile_id=OWNER, application_identity=APP_ID)
         expected = {
             "application_identity": APP_ID, "format_version": 1,
+            "created_at": 1_800_000_000, "expires_at": 1_800_086_400,
             "generation": 4, "key_version": 2, "owner_profile_id": OWNER,
             "record_id": obj["record_id"], "vault_id": obj["vault_id"],
         }
@@ -102,6 +103,18 @@ class MemoryVaultSchemaTests(unittest.TestCase):
         self.assertNotEqual(aad, canonical_aad(obj, owner_profile_id=OWNER, application_identity="b" * 64))
         changed = dict(obj, generation=5)
         self.assertNotEqual(aad, canonical_aad(changed, owner_profile_id=OWNER, application_identity=APP_ID))
+
+    def test_aad_binds_each_valid_retention_timestamp(self):
+        obj = fixture()
+        context = dict(owner_profile_id=OWNER, application_identity=APP_ID)
+        original = canonical_aad(obj, **context)
+        for field in ("created_at", "expires_at"):
+            for delta in (-1, 1):
+                with self.subTest(field=field, delta=delta):
+                    changed = dict(obj)
+                    changed[field] += delta
+                    self.assertEqual(parse_envelope(encode_envelope(changed)), changed)
+                    self.assertNotEqual(original, canonical_aad(changed, **context))
 
     def test_aad_rejects_untrusted_identity_formats(self):
         for owner, app in ((True, APP_ID), ("user/0", APP_ID), (OWNER, "A" * 64),

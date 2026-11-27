@@ -119,6 +119,8 @@ def canonical_aad(envelope, *, owner_profile_id, application_identity):
         raise EnvelopeError("invalid trusted application signing digest")
     return _canonical({
         "application_identity": application_identity,
+        "created_at": envelope["created_at"],
+        "expires_at": envelope["expires_at"],
         "format_version": envelope["format_version"],
         "generation": envelope["generation"],
         "key_version": envelope["key_version"],
